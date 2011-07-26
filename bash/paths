@@ -1,2 +1,2 @@
-export PATH="/opt/local/bin/:$PATH"
+export PATH="/opt/local/bin/:/opt/local/libexec/gnubin/:$PATH"
 export MANPATH="/opt/local/man:$MANPATH"
