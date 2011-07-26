@@ -164,11 +164,6 @@ if executable("ack")
   set grepprg=ack\ -H\ --nogroup\ --nocolor\ --ignore-dir=tmp\ --ignore-dir=coverage
 endif
 
-" Color scheme
-" colorscheme vividchalk
-" highlight NonText guibg=#060606
-" highlight Folded  guibg=#0A0A0A guifg=#9090D0
-
 " Numbers
 " set number
 " set numberwidth=5
@@ -207,3 +202,10 @@ map <Leader>w :call OpenURL()<CR>
 
 " pathogen
 call pathogen#infect()
+
+" Color scheme
+set background=dark 
+colorscheme solarized
+" highlight NonText guibg=#060606
+" highlight Folded  guibg=#0A0A0A guifg=#9090D0
+
