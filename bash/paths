@@ -1,2 +1,5 @@
 export PATH="/opt/local/bin/:/opt/local/libexec/gnubin/:$PATH"
 export MANPATH="/opt/local/man:$MANPATH"
+export ORACLE_HOME=/opt/local/lib/oracle
+export LD_LIBRARY_PATH=$ORACLE_HOME:$LD_LIBRARY_PATH
+export DYLD_LIBRARY_PATH=$ORACLE_HOME:$DYLD_LIBRARY_PATH
