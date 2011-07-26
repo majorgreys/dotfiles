@@ -54,7 +54,7 @@
 
 (require 'color-theme)
 (color-theme-initialize)
-(color-theme-clarity)
+(color-theme-solarized-dark)
 
 (custom-set-variables
   ;; custom-set-variables was added by Custom.
