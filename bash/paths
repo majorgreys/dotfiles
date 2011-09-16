@@ -1,4 +1,4 @@
-export PATH="/opt/local/bin/:/opt/local/libexec/gnubin/:$PATH"
+export PATH="/opt/local/bin/:/opt/local/libexec/gnubin/:$HOME/.cabal/bin/:$PATH"
 export MANPATH="/opt/local/man:$MANPATH"
 export ORACLE_HOME=/opt/local/lib/oracle
 export LD_LIBRARY_PATH=$ORACLE_HOME:$LD_LIBRARY_PATH
