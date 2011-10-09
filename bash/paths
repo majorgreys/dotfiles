@@ -1,4 +1,4 @@
-export PATH="/usr/local/bin/:$HOME/.cabal/bin/:$PATH"
+export PATH="/usr/local/bin:$HOME/.cabal/bin:$PATH"
 export MANPATH="/usr/local/man:$MANPATH"
 export ORACLE_HOME=/opt/local/lib/oracle
 export LD_LIBRARY_PATH=$ORACLE_HOME:$LD_LIBRARY_PATH
