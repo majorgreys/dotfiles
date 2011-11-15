@@ -1,13 +1,41 @@
+(add-to-list 'load-path "/Users/tbutt/code/3p/emacs-color-theme-solarized")
+
+(setq exec-path (append exec-path '("/usr/local/bin")))
+
+;; word count
+(defun count-words (start end)
+    "Print number of words in the region."
+    (interactive "r")
+    (save-excursion
+      (save-restriction
+        (narrow-to-region start end)
+        (goto-char (point-min))
+        (count-matches "\\sw+"))))
+
+;; recentf
+(require 'recentf)
+(recentf-mode 1)
+
+;; spellchecking
+(setq-default ispell-program-name "aspell")
+
 ;; Insert four spaces on tab
 (setq-default indent-tabs-mode nil)
 (setq-default tab-width 4)
 (setq indent-line-function 'insert-tab)
 
 ;; org-mode
-(setq org-directory "~/Dropbox/org/")
+(setq org-directory "~/org/")
 
 ;; (add-hook 'org-mode-hook 'turn-on-auto-fill)
 (add-hook 'org-mode-hook 'flyspell-mode)
+;; (add-hook 'org-mode-hook 'reftex-mode)
+
+;; use texi2dvi
+(setq org-latex-to-pdf-process '("/usr/bin/texi2dvi --pdf --clean --verbose --batch %f"))
+(if (eq window-system 'mac)
+   (add-to-list 'exec-path "/usr/local/texlive/2011/bin/universal-darwin")
+)
 
 (add-to-list 'auto-mode-alist '("\\.org\\'" . org-mode)) 
 (add-hook 'org-mode-hook 'turn-on-font-lock) ; not needed when global-font-lock-mode is on 
@@ -28,8 +56,7 @@
 	      ("wgen.org" :maxlevel . 3))))
 
 ;; for capturing notes
-(setq org-default-notes-file 
-      (concat org-directory "/personal.org")) 
+(setq org-default-notes-file (concat org-directory "/personal.org")) 
 
 (define-key global-map "\C-cc" 'org-capture)
 
@@ -39,10 +66,7 @@
         ("j" "Journal" entry (file+datetree (concat org-directory "/journal.org"))
 	     "* %?\nEntered on %U\n %i\n %a")))
  
-(setq org-agenda-files 
-      (quote ("~/Dropbox/org/wgen.org" "~/Dropbox/org/personal.org")))
-
-(color-theme-solarized-dark)
+;; (color-theme-solarized-dark)
 
 (custom-set-variables
   ;; custom-set-variables was added by Custom.
@@ -79,6 +103,7 @@
       '((?b . "[[bib:%l][%l-bib]]")
         (?n . "[[notes:%l][%l-notes]]")
         (?p . "[[papers:%l][%l-paper]]")
+        (?c . "\\citep{%l}")
         (?t . "%t")
         (?h . "** %t\n:PROPERTIES:\n:Custom_ID: %l\n:END:\n[[papers:%l][%l-paper]]")))))
   (define-key org-mode-map (kbd "C-c )") 'reftex-citation)
@@ -91,6 +116,10 @@
   (interactive)
   (org-open-link-from-string (format "[[notes:%s]]" (reftex-citation t))))
 
+(setq org-link-abbrev-alist
+      '(("bib" . (concat org-directory "/research/refs.bib::%s"))
+        ("notes" . (concat org-directory "/research/notes.org::#%s"))
+        ("papers" . (concat org-directory "/research/papers/%s.pdf")))) 
 
 ;; start emacs server
 
