@@ -113,22 +113,11 @@ vmap D y'>p
 " overwriting the default register
 vmap P p :call setreg('"', getreg('0')) <CR>
 
-" For Haml
-au! BufRead,BufNewFile *.haml         setfiletype haml
-
 " No Help, please
 nmap <F1> <Esc>
 
-" Press ^F from insert mode to insert the current file name
-imap <C-F> <C-R>=expand("%")<CR>
-
 " Maps autocomplete to tab
-imap <Tab> <C-N>
-
-imap <C-L> <Space>=><Space>
-
-" Display extra whitespace
-" set list listchars=tab:»·,trail:·
+imap <C-N>
 
 " Local config
 if filereadable(".vimrc.local")
@@ -175,6 +164,7 @@ map <Leader>w :call OpenURL()<CR>
 
 " pathogen
 call pathogen#infect()
+call pathogen#helptags()
 
 " Color scheme
 syntax enable
@@ -186,3 +176,6 @@ au BufNewFile,BufRead .r,.R  setf r
 
 " Claim .txt for pandoc
 au BufNewFile,BufRead *.txt   set filetype=pandoc
+
+" for using marked
+:nnoremap <leader>m :silent !open -a Marked.app '%:p'<cr>
