@@ -5,3 +5,4 @@ https://github.com/vim-pandoc/vim-pandoc.git
 https://github.com/vim-pandoc/vim-pandoc-extras.git
 https://github.com/garbas/vim-snipmate.git
 https://github.com/altercation/vim-colors-solarized.git
+https://github.com/Lokaltog/vim-powerline.git
