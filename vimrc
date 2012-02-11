@@ -179,3 +179,6 @@ au BufNewFile,BufRead *.txt   set filetype=pandoc
 
 " for using marked
 :nnoremap <leader>m :silent !open -a Marked.app '%:p'<cr>
+
+" for pandoc slowness
+let g:pandoc_no_empty_implicits = 1
