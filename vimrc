@@ -168,7 +168,7 @@ call pathogen#helptags()
 
 " Color scheme
 syntax enable
-set background=light
+set background=dark
 colorscheme solarized
 
 " R
@@ -178,6 +178,12 @@ au BufNewFile,BufRead .r,.R  setf r
 au BufNewFile,BufRead *.txt   set filetype=pandoc
 
 " for using marked
+:command! MarkdownPdfOpen !out="%";out="${out\%.*}.pdf";markdown2pdf --bibliography=/Users/tbutt/org/research/refs.bib -o "$out" %;open "$out"
+:command! MarkdownPdfMemo !out="%";out="${out\%.*}.pdf";markdown2pdf --bibliography=/Users/tbutt/org/research/refs.bib -H /Users/tbutt/Dropbox/School/memo-header.tex -o "$out" %;open "$out"
+:command! MarkdownOdtOpen !out="%";out="${out\%.*}.odt";pandoc -t odt -sS -o "$out" %;open "$out"
+
+map <silent> <LEADER>pdf :MarkdownPdfOpen<CR>
+map <silent> <LEADER>memo :MarkdownPdfMemo<CR>
 :nnoremap <leader>m :silent !open -a Marked.app '%:p'<cr>
 
 " for pandoc slowness
