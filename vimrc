@@ -116,9 +116,6 @@ vmap P p :call setreg('"', getreg('0')) <CR>
 " No Help, please
 nmap <F1> <Esc>
 
-" Maps autocomplete to tab
-imap <C-N>
-
 " Local config
 if filereadable(".vimrc.local")
   source .vimrc.local
