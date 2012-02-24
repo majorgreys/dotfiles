@@ -2,4 +2,4 @@ if [ -f ~/.bashrc ]; then
   source ~/.bashrc
 fi
 
-eval `dircolors ~/.dir_colors`
+eval `gdircolors ~/.dir_colors`
