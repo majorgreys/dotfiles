@@ -5,4 +5,4 @@ function c { cd ~/code/$1; }
 
 # misc
 alias reload='. ~/.bash_profile'
-alias ls="gls"
+alias ls="ls --color -F"
