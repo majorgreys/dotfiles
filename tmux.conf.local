@@ -255,6 +255,11 @@ tmux_conf_copy_to_os_clipboard=false
 # set -g prefix C-a
 # bind C-a send-prefix
 
+# do not use C-a as another prefix since I use it for line movements
+# https://github.com/gpakosz/.tmux/issues/53
+set -gu prefix2
+unbind C-a
+
 # use old-style prefix for changing windows
 bind -r p previous-window # select previous window
 bind -r n next-window     # select next window
