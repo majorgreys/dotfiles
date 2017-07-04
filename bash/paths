@@ -1,2 +1,0 @@
-export PATH="$HOME/.cabal/bin:$PATH"
-export PATH="$(brew --prefix coreutils)/libexec/gnubin:$PATH"
