@@ -1,6 +1,15 @@
+source $HOME/.mutt/vim-keys.rc
+source $HOME/.mutt/mutt-colors-solarized-dark-256.muttrc
+
+# sidebar
+set sidebar_visible
+set sidebar_format = "%B%?F? [%F]?%* %?N?%N/?%S"
+set mail_check_stats
+bind index,pager B sidebar-toggle-visible
+
 set folder      = imaps://imap.gmail.com/
-set imap_user   = tahir.butt@gmail.com
 set imap_pass   = `lpass show --password mutt`
+set imap_user   = tahir.butt@gmail.com
 set spoolfile   = +INBOX
 mailboxes       = +INBOX
 
@@ -16,10 +25,10 @@ set message_cachedir = "~/.cache/mutt"
 # Specify where to save and/or look for postponed messages.
 set postponed = +[Gmail]/Drafts
 
-# Allow Mutt to open a new IMAP connection automatically.
+# Allow Mutt to open new imap connection automatically.
 unset imap_passive
 
-# Keep the IMAP connection alive by polling intermittently (time in seconds).
+# Keep IMAP connection alive by polling intermittently (time in seconds).
 set imap_keepalive = 300
 
 # How often to check for new mail (time in seconds).
