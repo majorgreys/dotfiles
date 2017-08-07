@@ -276,3 +276,6 @@ set -g repeat-time 1000
 set -sg escape-time 0
 
 set -g default-terminal "tmux-256color"
+
+bind p previous-window
+bind n next-window
