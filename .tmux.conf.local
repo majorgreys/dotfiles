@@ -40,7 +40,7 @@ tmux_conf_new_session_prompt=false
 # RGB 24-bit colour support (tmux >= 2.2), possible values are:
 #  - true
 #  - false (default)
-tmux_conf_theme_24b_colour=false
+tmux_conf_theme_24b_colour=true
 
 # window style
 tmux_conf_theme_window_fg='default'
@@ -124,14 +124,14 @@ tmux_conf_theme_window_status_last_bg='default'
 tmux_conf_theme_window_status_last_attr='none'
 
 # status left/right sections separators
-tmux_conf_theme_left_separator_main=''
-tmux_conf_theme_left_separator_sub='|'
-tmux_conf_theme_right_separator_main=''
-tmux_conf_theme_right_separator_sub='|'
-#tmux_conf_theme_left_separator_main=''  # /!\ you don't need to install Powerline
-#tmux_conf_theme_left_separator_sub=''   #   you only need fonts patched with
-#tmux_conf_theme_right_separator_main='' #   Powerline symbols or the standalone
-#tmux_conf_theme_right_separator_sub=''  #   PowerlineSymbols.otf font
+# tmux_conf_theme_left_separator_main=''
+# tmux_conf_theme_left_separator_sub='|'
+# tmux_conf_theme_right_separator_main=''
+# tmux_conf_theme_right_separator_sub='|'
+tmux_conf_theme_left_separator_main=''  # /!\ you don't need to install Powerline
+tmux_conf_theme_left_separator_sub=''   #   you only need fonts patched with
+tmux_conf_theme_right_separator_main='' #   Powerline symbols or the standalone
+tmux_conf_theme_right_separator_sub=''  #   PowerlineSymbols.otf font
 
 # status left/right content:
 #   - separate main sections with '|'
@@ -237,14 +237,14 @@ tmux_conf_theme_clock_style='24'
 #   - false (default)
 # on macOS, this requires installing reattach-to-user-namespace, see README.md
 # on Linux, this requires xsel or xclip
-tmux_conf_copy_to_os_clipboard=false
+tmux_conf_copy_to_os_clipboard=true
 
 
 # -- user customizations -------------------------------------------------------
 # this is the place to override or undo settings
 
 # increase history size
-#set -g history-limit 10000
+set -g history-limit 10000
 
 # start with mouse mode enabled
 #set -g mouse on
@@ -263,3 +263,16 @@ tmux_conf_copy_to_os_clipboard=false
 
 # move status line to top
 #set -g status-position top
+
+# default to fish
+set-option -g default-shell /bin/fish
+
+# Set the repeat-time to 1 second so that multiple commands can be entered
+# without sending the prefix-key within 1 second. Commands are made repeatable
+# by -r option of bind-key. By default it is 500 ms.
+set -g repeat-time 1000
+
+# Faster command sequence, no delay is sending command
+set -sg escape-time 0
+
+set -g default-terminal "tmux-256color"
