@@ -1,0 +1,1 @@
+/home/tahir/.config/fisherman/get/completions/get.fish
