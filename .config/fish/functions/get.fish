@@ -1,0 +1,1 @@
+/home/tahir/.config/fisherman/get/functions/get.fish
