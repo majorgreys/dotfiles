@@ -1,9 +1,6 @@
 [submodule "dircolors-solarized"]
 	path = dircolors-solarized
 	url = https://github.com/seebi/dircolors-solarized
-[submodule ".janus"]
-	path = .janus
-	url = https://github.com/majorgreys/.janus
 [submodule "mutt-colors-solarized"]
 	path = mutt-colors-solarized
 	url = git@github.com:altercation/mutt-colors-solarized.git
