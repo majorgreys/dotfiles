@@ -26,6 +26,7 @@ if dein#load_state('/home/tbutt/.dein.vim')
   call dein#add('junegunn/goyo.vim')
   call dein#add('junegunn/limelight.vim')
   call dein#add('itchyny/lightline.vim')
+  call dein#add('itchyny/vim-gitbranch')
 
   " You can specify revision/branch/tag.
   call dein#add('Shougo/vimshell', { 'rev': '3787e5' })                              
@@ -53,6 +54,18 @@ execute "set t_8b=\e[48;2;%lu;%lu;%lum"
 set t_Co=256
 set background=dark
 
+" Lightline
+let g:lightline = {
+      \ 'colorscheme': 'solarized',
+      \ 'active': {
+      \   'left': [ [ 'mode', 'paste' ],
+      \             [ 'gitbranch', 'readonly', 'filename', 'modified' ] ]
+      \ },
+      \ 'component_function': {
+      \   'gitbranch': 'gitbranch#name'
+      \ },
+      \ }
+
 " Pencil
 let g:pencil#conceallevel = 0
 augroup pencil
@@ -64,12 +77,6 @@ augroup pencil
                             \ | setl fdo+=search
   autocmd FileType text         call pencil#init()
 augroup END
-
-" Removes trailing spaces
-function TrimWhiteSpace()
-  %s/\s*$//
-  ''
-:endfunction
 
 " Stop folding
 set nofoldenable
