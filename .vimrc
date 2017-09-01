@@ -33,6 +33,7 @@ if dein#load_state(expand('~/.dein.vim'))
   " call dein#add('vim-pandoc/vim-rmarkdown', { 'depends': 'vim-pandoc' })
   call dein#add('NLKNguyen/papercolor-theme')
   call dein#add('lambdalisue/vim-fullscreen')
+  call dein#add('itchyny/vim-gitbranch')
 
   " You can specify revision/branch/tag.
   call dein#add('Shougo/vimshell', { 'rev': '3787e5' })                              
@@ -61,6 +62,18 @@ set t_Co=256
 set background=dark
 colorscheme PaperColor
 
+
+" Lightline
+let g:lightline = {
+      \ 'colorscheme': 'solarized',
+      \ 'active': {
+      \   'left': [ [ 'mode', 'paste' ],
+      \             [ 'gitbranch', 'readonly', 'filename', 'modified' ] ]
+      \ },
+      \ 'component_function': {
+      \   'gitbranch': 'gitbranch#name'
+      \ },
+      \ }
 
 " Pencil
 let g:pencil#conceallevel = 0
