@@ -4,15 +4,15 @@ if &compatible
 endif
 
 " Required:
-set runtimepath+=/home/tbutt/.dein.vim/repos/github.com/Shougo/dein.vim
+set runtimepath+=~/.dein.vim/repos/github.com/Shougo/dein.vim
 
 " Required:
-if dein#load_state('/home/tbutt/.dein.vim')
-  call dein#begin('/home/tbutt/.dein.vim')
+if dein#load_state(expand('~/.dein.vim'))
+  call dein#begin(expand('~/.dein.vim'))
 
   " Let dein manage dein
   " Required:
-  call dein#add('/home/tbutt/.dein.vim/repos/github.com/Shougo/dein.vim')
+  call dein#add('Shougo/dein.vim')
 
   " Add or remove your plugins here:                                                 
   call dein#add('Shougo/neosnippet.vim')                                             
@@ -26,6 +26,13 @@ if dein#load_state('/home/tbutt/.dein.vim')
   call dein#add('junegunn/goyo.vim')
   call dein#add('junegunn/limelight.vim')
   call dein#add('itchyny/lightline.vim')
+  call dein#add('junegunn/fzf', { 'build': './install --all', 'merged': 0 }) 
+  call dein#add('junegunn/fzf.vim', { 'depends': 'fzf' })
+  " call dein#add('vim-pandoc/vim-pandoc')
+  " call dein#add('vim-pandoc/vim-pandoc-syntax')
+  " call dein#add('vim-pandoc/vim-rmarkdown', { 'depends': 'vim-pandoc' })
+  call dein#add('NLKNguyen/papercolor-theme')
+  call dein#add('lambdalisue/vim-fullscreen')
 
   " You can specify revision/branch/tag.
   call dein#add('Shougo/vimshell', { 'rev': '3787e5' })                              
@@ -46,12 +53,14 @@ endif
 
 "End dein Scripts-------------------------
 
-" Neovim Settings
+" Personal Settings
 
 execute "set t_8f=\e[38;2;%lu;%lu;%lum"
 execute "set t_8b=\e[48;2;%lu;%lu;%lum"
 set t_Co=256
 set background=dark
+colorscheme PaperColor
+
 
 " Pencil
 let g:pencil#conceallevel = 0
@@ -65,21 +74,11 @@ augroup pencil
   autocmd FileType text         call pencil#init()
 augroup END
 
-" Removes trailing spaces
-function TrimWhiteSpace()
-  %s/\s*$//
-  ''
-:endfunction
-
 " Stop folding
 set nofoldenable
 
 " Goyo
 function! s:goyo_enter()
-  if has('gui_running')
-    set fullscreen
-    set linespace=7
-  endif
   colorscheme pencil
   set noshowmode
   set noshowcmd
@@ -88,10 +87,6 @@ function! s:goyo_enter()
 endfunction
 
 function! s:goyo_leave()
-  if has('gui_running')
-    set nofullscreen
-    set linespace=0
-  endif
   set showmode
   set showcmd
   set scrolloff=5
