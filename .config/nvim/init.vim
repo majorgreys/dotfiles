@@ -32,6 +32,7 @@ if dein#load_state(expand('~/.dein.vim'))
   " call dein#add('vim-pandoc/vim-pandoc-syntax')
   " call dein#add('vim-pandoc/vim-rmarkdown', { 'depends': 'vim-pandoc' })
   call dein#add('NLKNguyen/papercolor-theme')
+  call dein#add('kristijanhusak/vim-hybrid-material')
   call dein#add('lambdalisue/vim-fullscreen')
   call dein#add('itchyny/vim-gitbranch')
 
@@ -62,11 +63,11 @@ execute "set t_8f=\e[38;2;%lu;%lu;%lum"
 execute "set t_8b=\e[48;2;%lu;%lu;%lum"
 set t_Co=256
 set background=dark
-colorscheme PaperColor
+colorscheme hybrid_reverse
 
 " Lightline
 let g:lightline = {
-      \ 'colorscheme': 'solarized',
+      \ 'colorscheme': 'wombat',
       \ 'active': {
       \   'left': [ [ 'mode', 'paste' ],
       \             [ 'gitbranch', 'readonly', 'filename', 'modified' ] ]
@@ -101,6 +102,7 @@ function! s:goyo_enter()
 endfunction
 
 function! s:goyo_leave()
+  colorscheme hybrid_reverse
   set showmode
   set showcmd
   set scrolloff=5
