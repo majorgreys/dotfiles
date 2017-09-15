@@ -7,3 +7,8 @@ set -gx EDITOR nvim
 
 . $HOME/.config/fish/base16-material.dark.fish
 . /opt/anaconda/etc/fish/conf.d/conda.fish
+if not test -f ~/.config/fish/functions/fisher.fish
+  echo "Installing fisherman for the first time"
+  curl -sLo ~/.config/fish/functions/fisher.fish --create-dirs git.io/fisher
+  fisher
+end
