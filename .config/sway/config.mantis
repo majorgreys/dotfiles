@@ -1,33 +1,43 @@
-# Default config for sway
+# Adapter from https://github.com/aouelete/dotfiles/blob/master/sway/config
 #
-# Copy this to ~/.config/sway/config and edit it to your liking.
-#
-# Read `man 5 sway` for a complete reference.
+# General settings {{{
 
-### Variables
-#
 # Logo key. Use Mod1 for Alt.
-set $mod Mod1
+set $mod Mod4
+
+# Font for window titles
+font pango: Fira Mono 10
+
 # Home row direction keys, like vim
 set $left h
 set $down j
 set $up k
 set $right l
+
+#}}}
+
+# Run programs {{{
+
 # Your preferred terminal emulator
 set $term termite 
 # Your preferred application launcher
 set $menu dmenu_run
 
-### Output configuration
-#
-# Default wallpaper (more resolutions are available in /usr/share/sway/)
+#}}}
+
+
+# gaps
+gaps outer 5
+gaps inner 5 
+
+# Output settings {{{
+
 output * bg /usr/share/sway/Sway_Wallpaper_Blue_1920x1080.png fill
-#
-# Example configuration:
-#
-#   output HDMI-A-1 resolution 1920x1080 position 1920,0
-#
-# You can get the names of your outputs by running: swaymsg -t get_outputs
+
+output * scale 2.0
+
+#}}}
+
 
 ### Input configuration
 #
@@ -186,16 +196,25 @@ bindsym $mod+r mode "resize"
 
 #
 # Status Bar:
-#
-# Read `man 5 sway-bar` for more information about this section.
+
 bar {
-    position bottom
-    colors {
-        statusline #ffffff
-        background #323232
-        inactive_workspace #32323200 #32323200 #5c5c5c
-    }
     status_command i3status
+    mode dock
+    position top
+    strip_workspace_numbers no
+    font pango: Fira Mono 11
+    separator_symbol " "
+    colors {
+        background #343d46
+        statusline #eff1f5
+        separator #a3be8c
+        focused_workspace #a3be8c #65737e #eff1f5
+        active_workspace #4f5b66 #5f676a #eff1f5
+        inactive_workspace #4f5b66 #4f5b66 #a7adba
+        urgent_workspace #bf616a #65737e #eff1f5
+    }
 }
 
 include /etc/sway/config.d/*
+
+# vim:filetype=sway:foldmethod=marker:foldlevel=0
