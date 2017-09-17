@@ -148,12 +148,9 @@ mode "resize" {
 bindsym $mod+r mode "resize"
 
 bar {
-    status_command i3status
-    mode dock
+    font pango:Inconsolata for Powerline, Icons 14
     position top
-    strip_workspace_numbers no
-    font xft:Inconsolata Medium 11
-    separator_symbol " "
+    status_command i3status-rs ~/.config/i3/status.toml
     colors {
         background #263238
         statusline #eff1f5
