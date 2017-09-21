@@ -150,7 +150,7 @@ bindsym $mod+r mode "resize"
 bar {
     font pango:Inconsolata for Powerline, Icons 14
     position top
-    status_command i3status-rs ~/.config/i3/status.toml
+    status_command i3blocks -c ~/.config/i3/i3blocks.conf
     colors {
         background #263238
         statusline #eff1f5
