@@ -1,5 +1,5 @@
 source $HOME/.mutt/vim-keys.rc
-# source $HOME/.mutt/mutt-colors-solarized-dark-256.muttrc
+source $HOME/.mutt/mutt-colors-base16-materialtheme.muttrc
 source "gpg -dq $HOME/.mymuttpass.gpg |"
 
 # sidebar
