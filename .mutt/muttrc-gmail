@@ -1,6 +1,6 @@
 source $HOME/.mutt/vim-keys.rc
 source $HOME/.mutt/mutt-colors-base16-materialtheme.muttrc
-source "gpg -dq $HOME/.outlookpass.gpg |"
+source "gpg -dq $HOME/.mymuttpass.gpg |"
 
 # sidebar
 set sidebar_visible
@@ -8,24 +8,14 @@ set sidebar_format = "%B%?F? [%F]?%* %?N?%N/?%S"
 set mail_check_stats
 bind index,pager B sidebar-toggle-visible
 
-set folder      = imaps://imap-mail.outlook.com
+set folder      = imaps://imap.gmail.com/
 set imap_pass   = $my_pass
-set imap_user   = tahirhbutt@outlook.com
-set ssl_use_sslv3 = yes
-
-# SMTP
-
-set realname = "Tahir H. Butt"
-set from = "tahirhbutt@outlook.com"
-set smtp_url 	= "smtp://$imap_user:$imap_pass@smtp-mail.outlook.com:587/"
-set ssl_force_tls = yes
-set smtp_authenticators = "login"
-
-# Mailboxes
-
+set imap_user   = tahir.butt@gmail.com
+set smtp_url 	= "smtp://$imap_user:$imap_pass@smtp.gmail.com:587/"
 set spoolfile   = +INBOX
 mailboxes +INBOX 
-mailboxes +Drafts
+mailboxes +[Gmail]/Drafts 
+mailboxes +[Gmail]/Scheduled
 
 # Store message headers locally to speed things up.
 # If hcache is a folder, Mutt will create sub cache folders for each account which may speeds things up even more.
@@ -37,7 +27,7 @@ set header_cache = ~/.cache/mutt
 set message_cachedir = "~/.cache/mutt"
 
 # Specify where to save and/or look for postponed messages.
-set postponed = +/Drafts
+set postponed = +[Gmail]/Drafts
 
 # Allow Mutt to open new imap connection automatically.
 unset imap_passive
@@ -54,7 +44,3 @@ auto_view text/html
 
 # text reflow
 set text_flowed
-
-# Macros
-
-macro pager \cb <pipe-entry>'urlview'<enter> 'Follow links with urlview'
