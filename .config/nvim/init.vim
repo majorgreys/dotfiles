@@ -35,6 +35,8 @@ if dein#load_state(expand('~/.dein.vim'))
   call dein#add('kristijanhusak/vim-hybrid-material')
   call dein#add('lambdalisue/vim-fullscreen')
   call dein#add('itchyny/vim-gitbranch')
+  call dein#add('Shougo/unite.vim')
+  call dein#add('Shougo/vimfiler.vim')
 
   " You can specify revision/branch/tag.
   call dein#add('Shougo/vimshell', { 'rev': '3787e5' })                              
@@ -65,6 +67,9 @@ set t_Co=256
 set background=dark
 colorscheme hybrid_reverse
 
+" vimfiler as default
+let g:vimfiler_as_default_explorer = 1
+
 " Lightline
 let g:lightline = {
       \ 'colorscheme': 'wombat',
@@ -81,12 +86,20 @@ let g:lightline = {
 let g:pencil#conceallevel = 0
 augroup pencil
   autocmd!
-  autocmd FileType markdown,mkd call pencil#init()
+  autocmd FileType markdown,mkd call pencil#init({'wrap': 'soft'})
                             \ | call litecorrect#init()
                             \ | setl spell spl=en_us fdl=4 noru nonu nornu
-                            \ | setl spellfile=$HOME/.janus/en.utf-8.add
                             \ | setl fdo+=search
-  autocmd FileType text         call pencil#init()
+  autocmd Filetype git,gitsendemail,*commit*,*COMMIT*
+                            \   call pencil#init({'wrap': 'hard', 'textwidth': 72})
+                            \ | call litecorrect#init()
+                            \ | setl spell spl=en_us et sw=2 ts=2 noai
+  autocmd Filetype mail         call pencil#init({'wrap': 'hard', 'textwidth': 60})
+                            \ | call litecorrect#init()
+                            \ | setl spell spl=en_us et sw=2 ts=2 noai nonu nornu
+  autocmd Filetype html,xml     call pencil#init({'wrap': 'soft'})
+                            \ | call litecorrect#init()
+                            \ | setl spell spl=en_us et sw=2 ts=2
 augroup END
 
 " Stop folding
@@ -124,3 +137,9 @@ set clipboard+=unnamedplus
 
 :tnoremap <Esc> <C-\><C-n>
 
+" Add format option 'w' to add trailing white space, indicating that paragraph
+" continues on next line. This is to be used with mutt's 'text_flowed' option.
+augroup mail_trailing_whitespace " {
+    autocmd!
+    autocmd FileType mail setlocal formatoptions+=w
+augroup END " }
