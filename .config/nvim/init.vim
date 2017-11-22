@@ -37,8 +37,6 @@ if dein#load_state(expand('~/.dein.vim'))
   call dein#add('kristijanhusak/vim-hybrid-material')
   call dein#add('lambdalisue/vim-fullscreen')
   call dein#add('itchyny/vim-gitbranch')
-  call dein#add('Shougo/unite.vim')
-  call dein#add('Shougo/vimfiler.vim')
 
   " You can specify revision/branch/tag.
   call dein#add('Shougo/vimshell', { 'rev': '3787e5' })                              
