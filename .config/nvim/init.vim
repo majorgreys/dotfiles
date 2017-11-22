@@ -15,8 +15,10 @@ if dein#load_state(expand('~/.dein.vim'))
   call dein#add('Shougo/dein.vim')
 
   " Add or remove your plugins here:                                                 
+  call dein#add('Shougo/unite.vim')
   call dein#add('Shougo/neosnippet.vim')                                             
   call dein#add('Shougo/neosnippet-snippets')
+  call dein#add('Shougo/vimfiler.vim')
   call dein#add('reedes/vim-pencil')
   call dein#add('reedes/vim-colors-pencil')
   call dein#add('reedes/vim-lexical')
