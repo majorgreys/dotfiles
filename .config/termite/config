@@ -1,52 +1,37 @@
 [options]
-font = Inconsolata 16px
-font = Inconsolata-dz for Powerline 16px
+font = Source Code Pro 14px
+
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# title      Nord Termite                                    +
+# project    nord-termite                                    +
+# version    0.2.0                                           +
+# repository https://github.com/arcticicestudio/nord-termite +
+# author     Arctic Ice Studio                               +
+# email      development@arcticicestudio.com                 +
+# copyright  Copyright (C) 2016                              +
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 [colors]
-# Base16 
-# Author: 
+foreground = #D8DEE9
+background = #2E3440
+foreground_bold = #D8DEE9
+cursor = #D8DEE9
+cursor_foreground = #2E3440
+highlight = #4C566A
 
-foreground      = #EEFFFF
-foreground_bold = #EEFFFF
-cursor          = #EEFFFF
-background      = #263238
-
-# 16 color space
-
-# Black, Gray, Silver, White
-color0  = #263238
-color8  = #546E7A
-color7  = #EEFFFF
-color15 = #FFFFFF
-
-# Red
-color1  = #F07178
-color9  = #F07178
-
-# Green
-color2  = #C3E88D
-color10 = #C3E88D
-
-# Yellow
-color3  = #FFCB6B
-color11 = #FFCB6B
-
-# Blue
-color4  = #82AAFF
-color12 = #82AAFF
-
-# Purple
-color5  = #C792EA
-color13 = #C792EA
-
-# Teal
-color6  = #89DDFF
-color14 = #89DDFF
-
-# Extra colors
-color16 = #F78C6C
-color17 = #FF5370
-color18 = #2E3C43
-color19 = #314549
-color20 = #B2CCD6
-color21 = #EEFFFF
+color0  = #3B4252
+color1  = #BF616A
+color2  = #A3BE8C
+color3  = #EBCB8B
+color4  = #81A1C1
+color5  = #B48EAD
+color6  = #88C0D0
+color7  = #E5E9F0
+color8  = #4C566A
+color9  = #BF616A
+color10 = #A3BE8C
+color11 = #EBCB8B
+color12 = #81A1C1
+color13 = #B48EAD
+color14 = #8FBCBB
+color15 = #ECEFF4

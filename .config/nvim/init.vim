@@ -14,11 +14,19 @@ if dein#load_state(expand('~/.dein.vim'))
   " Required:
   call dein#add('Shougo/dein.vim')
 
-  " Add or remove your plugins here:                                                 
+  " general vim
   call dein#add('Shougo/unite.vim')
   call dein#add('Shougo/neosnippet.vim')                                             
   call dein#add('Shougo/neosnippet-snippets')
   call dein#add('Shougo/vimfiler.vim')
+  call dein#add('itchyny/lightline.vim')
+  call dein#add('junegunn/fzf', { 'build': './install --all', 'merged': 0 }) 
+  call dein#add('junegunn/fzf.vim', { 'depends': 'fzf' })
+  call dein#add('Shougo/vimshell', { 'rev': '3787e5' })                              
+  " language support
+  call dein#add('Quramy/tsuquyomi')
+  call dein#add('leafgarland/typescript-vim')
+  " markdown editing
   call dein#add('reedes/vim-pencil')
   call dein#add('reedes/vim-colors-pencil')
   call dein#add('reedes/vim-lexical')
@@ -27,19 +35,12 @@ if dein#load_state(expand('~/.dein.vim'))
   call dein#add('reedes/vim-textobj-sentence')
   call dein#add('junegunn/goyo.vim')
   call dein#add('junegunn/limelight.vim')
-  call dein#add('itchyny/lightline.vim')
-  call dein#add('junegunn/fzf', { 'build': './install --all', 'merged': 0 }) 
-  call dein#add('junegunn/fzf.vim', { 'depends': 'fzf' })
-  " call dein#add('vim-pandoc/vim-pandoc')
-  " call dein#add('vim-pandoc/vim-pandoc-syntax')
-  " call dein#add('vim-pandoc/vim-rmarkdown', { 'depends': 'vim-pandoc' })
+  " color themes
   call dein#add('NLKNguyen/papercolor-theme')
   call dein#add('kristijanhusak/vim-hybrid-material')
+  call dein#add('arcticicestudio/nord-vim')
   call dein#add('lambdalisue/vim-fullscreen')
   call dein#add('itchyny/vim-gitbranch')
-
-  " You can specify revision/branch/tag.
-  call dein#add('Shougo/vimshell', { 'rev': '3787e5' })                              
                                                                                      
   " Required:                                                                        
   call dein#end()
@@ -65,7 +66,7 @@ execute "set t_8f=\e[38;2;%lu;%lu;%lum"
 execute "set t_8b=\e[48;2;%lu;%lu;%lum"
 set t_Co=256
 set background=dark
-colorscheme hybrid_reverse
+colorscheme nord
 
 " vimfiler as default
 let g:vimfiler_as_default_explorer = 1
