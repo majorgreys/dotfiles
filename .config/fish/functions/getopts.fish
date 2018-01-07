@@ -1,1 +1,0 @@
-/home/tahir/.config/fisherman/getopts/getopts.fish

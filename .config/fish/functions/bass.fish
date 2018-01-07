@@ -1,1 +1,0 @@
-/home/tahir/.config/fisherman/bass/functions/bass.fish
