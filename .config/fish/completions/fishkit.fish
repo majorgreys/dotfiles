@@ -1,0 +1,1 @@
+/home/tbutt/.config/fisherman/fishkit/completions/fishkit.fish
