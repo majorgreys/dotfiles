@@ -3,3 +3,4 @@
 .config/fish/local-config.fish
 .config/fish/fish_read_history
 .config/fish/generated_completions
+.config/fish/functions

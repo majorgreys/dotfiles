@@ -1,1 +1,1 @@
-/home/tahir/.config/fisherman/get/completions/get.fish
+/home/tbutt/.config/fisherman/get/completions/get.fish

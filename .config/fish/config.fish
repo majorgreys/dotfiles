@@ -5,11 +5,7 @@ set -gx TERM 'xterm-256color'
 set -gx CLICOLOR 1
 set -gx EDITOR nvim
 
-# bobthefish
-
-set -g theme_nerd_fonts yes
-
-. /opt/anaconda/etc/fish/conf.d/conda.fish
+. $HOME/anaconda3/etc/fish/conf.d/conda.fish
 
 # Base16 Shell
 if status --is-interactive
