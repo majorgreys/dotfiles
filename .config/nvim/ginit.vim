@@ -5,3 +5,6 @@ vmap <LeftRelease> "*ygv
 
 " Paste with <Shift> + <Insert>
 imap <S-Insert> <C-R>*
+
+" Font
+Guifont Source Code Pro:h12
