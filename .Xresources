@@ -29,6 +29,9 @@
 *fading: 35
 *fadeColor: nord3
 
+*secondary: nord3
+*active: nord4
+
 *.color0: nord1
 *.color1: nord11
 *.color2: nord14
