@@ -13,8 +13,4 @@ fisherman/pipenv
 fisherman/pwd_info
 fisherman/pwd_is_home
 fisherman/simple
-<<<<<<< HEAD
-=======
-oh-my-fish/plugin-thefuck
->>>>>>> b79a29b1df6cf8999dd75287dec3002e0dda057a
 fisherman/z
