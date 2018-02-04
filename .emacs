@@ -51,6 +51,9 @@
   :config
   (load-theme 'nord t))
 
+(use-package which-key
+  :ensure t)
+
 (use-package evil 
   :ensure t
   :config
@@ -69,7 +72,19 @@
   (define-key helm-map (kbd "S-SPC") 'helm-toggle-visible-mark)
   (define-key helm-find-files-map (kbd "C-k") 'helm-find-files-up-one-level))
 
+(use-package evil-org
+  :ensure t
+  :after org
+  :config
+  (add-hook 'org-mode-hook 'evil-org-mode)
+  (add-hook 'evil-org-mode-hook
+            (lambda ()
+              (evil-org-set-key-theme))))
+
 (use-package writeroom-mode
+  :ensure t)
+
+(use-package focus
   :ensure t)
 
 (use-package pandoc-mode
@@ -79,12 +94,24 @@
   ;; (add-hook 'org-mode-hook 'pandoc-mode)
   (add-hook 'pandoc-mode-hook 'pandoc-load-default-settings))
 
+(use-package ess
+  :ensure t
+  :config
+  (setq ess-nuke-trailing-whitespace-p t)
+  (setq ess-default-style 'RStudio)
+  (setq ess-eval-visibly 'nowait) ; don't hog Emacs
+  (setq ess-ask-for-ess-directory nil) ; don't ask for dir when starting a process
+  (setq ess-eldoc-show-on-symbol t) ; show eldoc on symbol instead of only inside of parens
+  (setq ess-use-ido nil) ; rely on helm instead of ido
+  (progn
+    ;; Save R history in one place rather than making .Rhistory files
+    ;; everywhere. Make that folder if needed.
+    (setq ess-history-directory (concat user-emacs-directory "var/Rhist/"))
+    (mkdir ess-history-directory t))
+  (setq ess-pdf-viewer-pref "emacsclient"))
+
 (add-hook 'window-setup-hook
           (lambda ()
             (when (memq window-system '(x))
               (add-to-list 'default-frame-alist '(font . "Source Code Pro"))
-              (set-face-attribute 'default nil :font "Source Code Pro")
-              (sanityinc/set-frame-font-size 16))
-
-            (when (fboundp 'powerline-reset)
-              (powerline-reset))))
+              (set-face-attribute 'default nil :font "Source Code Pro"))))
