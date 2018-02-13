@@ -1,5 +1,4 @@
 source $HOME/.mutt/vim-keys.rc
-source $HOME/.mutt/mutt-colors-base16-materialtheme.muttrc
 source "gpg -dq $HOME/.outlookpass.gpg |"
 
 # sidebar
@@ -26,6 +25,7 @@ set smtp_authenticators = "login"
 set spoolfile   = +INBOX
 mailboxes +INBOX 
 mailboxes +Drafts
+mailboxes +Archive
 
 # Store message headers locally to speed things up.
 # If hcache is a folder, Mutt will create sub cache folders for each account which may speeds things up even more.
