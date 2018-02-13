@@ -18,8 +18,35 @@ underline = ${xrdb:color3}
 ram = ${xrdb:color14}
 cpu = ${xrdb:color13}
 
-[bar/default]
+[bar/edp1]
+monitor = ${env:MONITOR:eDP1}
 height = 32
+offset-y = 0
+top = true
+fixed-center = true 
+background = ${colors.background}
+foreground = ${colors.foreground}
+
+line-size = 3
+line-color = #f00
+
+padding-left = 0
+padding-right = 1 
+module-margin = 1 
+
+font-0 = "SauceCodePro Nerd Font:size=11;1"
+font-1 = Font Awesome 5 Free:pixelsize=11;1
+font-2 = "Material Icons:size=11;4"
+font-3 = Font Awesome 5 Free Solid:pixelsize=10;1
+font-4 = Font Awesome 5 Brands:pixelsize=10;1
+
+modules-left = i3
+modules-center = xwindow
+modules-right = cpu memory volume wifi wired battery date
+
+[bar/dp2]
+monitor = ${env:MONITOR:DP2}
+height = 30
 offset-y = 0
 top = true
 fixed-center = true 
@@ -41,7 +68,7 @@ font-4 = Font Awesome 5 Brands:pixelsize=10;1
 
 modules-left = i3
 modules-center = xwindow
-modules-right = cpu memory volume wifi wired battery date
+modules-right = date
 
 [module/i3]
 type = internal/i3
@@ -130,7 +157,7 @@ label-foreground = ${colors.ram}
 
 [module/date]
 type = internal/date
-date = %{F#88C0D0}   %{F#4C566A}%B %d,  %{F#D8DEE9}%H:%M
+date = %{F#88C0D0} %{F#D8DEE9}%b %d %H:%M
 
 [module/volume]
 type = internal/volume
