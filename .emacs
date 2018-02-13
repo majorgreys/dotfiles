@@ -51,6 +51,14 @@
   :config
   (load-theme 'nord t))
 
+(use-package basic-theme
+  :ensure t
+  :defer t)
+
+(use-package base16-theme
+  :ensure t
+  :defer t)
+
 (use-package which-key
   :ensure t)
 
@@ -87,6 +95,12 @@
 (use-package focus
   :ensure t)
 
+(use-package olivetti
+  :ensure t)
+
+(use-package centered-cursor-mode
+  :ensure t)
+
 (use-package markdown-mode
   :ensure t
   :commands (markdown-mode gfm-mode)
@@ -118,8 +132,61 @@
     (mkdir ess-history-directory t))
   (setq ess-pdf-viewer-pref "emacsclient"))
 
-(add-hook 'window-setup-hook
-          (lambda ()
-            (when (memq window-system '(x))
-              (add-to-list 'default-frame-alist '(font . "Source Code Pro"))
-              (set-face-attribute 'default nil :font "Source Code Pro"))))
+(use-package ess-R-data-view
+  :ensure t
+  :config
+  ;; (define-key ess-mode-map (kbd "C-c v") 'ess-R-dv-ctable)
+  (define-key ess-mode-map (kbd "C-c v") 'ess-R-dv-pprint))
+
+(use-package ess-site
+  :ensure ess)
+
+(use-package polymode
+  :ensure t
+  :config
+   ;; R modes
+  (add-to-list 'auto-mode-alist '("\\.Snw" . poly-noweb+r-mode))
+  (add-to-list 'auto-mode-alist '("\\.Rnw" . poly-noweb+r-mode))
+  (add-to-list 'auto-mode-alist '("\\.Rmd" . poly-markdown+r-mode)))
+
+(setq ns-use-srgb-colorspace nil) ; Needed to display correctly powerline separators
+
+(use-package powerline
+  :ensure t
+  :config (progn
+          (setq powerline-default-separator 'slant)
+          (setq powerline-display-hud t)
+          (setq powerline-display-buffer-size nil)
+          (setq powerline-display-mule-info nil)
+          (powerline-center-evil-theme)))
+
+(use-package web-mode
+  :ensure t
+  :mode (("\\.html?\\'" . web-mode)
+         ("\\.html\\.erb\\'" . web-mode))
+  :config
+    (progn
+      (setq web-mode-markup-indent-offset 2)
+      (setq web-mode-css-indent-offset 2)
+      (setq web-mode-code-indent-offset 2)
+      (setq web-mode-enable-auto-pairing t))
+    (setq web-mode-enable-current-element-highlight t))
+
+(use-package yaml-mode
+  :ensure t
+  :mode (("\\.y?ml\\'" . yaml-mode)))
+
+(use-package docker-compose-mode
+  :ensure t
+  :mode (("docker-compose.yml" . docker-compose-mode)))
+
+(use-package dockerfile-mode
+  :ensure t
+  :mode (("Dockerfile\\'" . dockerfile-mode)))
+
+(use-package scss-mode
+  :ensure t
+  :mode (("\\.scss\\'" . scss-mode))
+  :config (setq scss-compile-at-save nil))
+
+(setq default-frame-alist '((font . "Source Code Pro-14")))
