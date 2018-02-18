@@ -62,11 +62,32 @@
 (use-package which-key
   :ensure t)
 
+(use-package eww
+  :ensure t
+  :commands eww eww-follow-link
+  :init
+  (setq browse-url-browser-function 'eww-browse-url)
+  (setq eww-search-prefix "http://www.duckduckgo.com/?q=")
+
+  :bind (("C-c w w" . eww)
+         ("C-c w l" . eww-follow-link)))
+
+; ace-link supports eww
+
+(use-package ace-link
+  :ensure t
+  :config
+  (ace-link-setup-default))
+
 (use-package evil 
   :ensure t
   :config
-  (evil-mode 1)
-  )
+  (evil-mode 1))
+
+(use-package evil-surround
+  :ensure t
+  :config
+  (global-evil-surround-mode 1))
 
 (use-package helm
   :ensure t
@@ -190,3 +211,7 @@
   :config (setq scss-compile-at-save nil))
 
 (setq default-frame-alist '((font . "Source Code Pro-14")))
+
+(if (window-system)
+   (require 'init-client)
+ (require 'init-server))
