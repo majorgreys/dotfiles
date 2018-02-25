@@ -117,9 +117,9 @@ bindsym $mod+Shift+f focus mode_toggle
 # ----------------------------------------------------------------------------
 
 # Screenshots (F3 = XF86LaunchA)
-bindsym XF86LaunchA exec scrot
-bindsym $mod+XF86LaunchA exec scrot -w
-bindsym $alt+XF86LaunchA exec scrot -a
+bindsym Print exec scrot
+bindsym --release $mod+Print exec scrot -u
+bindsym $alt+Print exec scrot -s
 
 # Volume controls
 bindsym XF86AudioRaiseVolume exec --no-startup-id "pactl set-sink-mute 0 false"; exec --no-startup-id "pactl set-sink-volume 0 +1%"
