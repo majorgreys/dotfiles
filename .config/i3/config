@@ -7,13 +7,14 @@ set $mod Mod4
 # Options
 # ----------------------------------------------------------------------------
 
-font pango:Source Sans Pro 11
+font pango:Input Sans Condensed 11
 
 new_window pixel 2
 
 for_window [class=".*"] title_format " %title"
 for_window [class="(?i)firefox"] title_format " Firefox  |  %title"
-for_window [class="(?i)nemo"] title_format " Nemo  |  %title"
+
+workspace_layout tabbed
 
 # hide_edge_borders both
 
@@ -116,9 +117,9 @@ bindsym $mod+Shift+f focus mode_toggle
 # ----------------------------------------------------------------------------
 
 # Screenshots (F3 = XF86LaunchA)
-bindsym XF86LaunchA exec gnome-screenshot
-bindsym $mod+XF86LaunchA exec gnome-screenshot -w
-bindsym $alt+XF86LaunchA exec gnome-screenshot -a
+bindsym XF86LaunchA exec scrot
+bindsym $mod+XF86LaunchA exec scrot -w
+bindsym $alt+XF86LaunchA exec scrot -a
 
 # Volume controls
 bindsym XF86AudioRaiseVolume exec --no-startup-id "pactl set-sink-mute 0 false"; exec --no-startup-id "pactl set-sink-volume 0 +1%"
@@ -136,13 +137,7 @@ bindsym XF86KbdBrightnessDown exec --no-startup-id xbacklight -ctrl smc::kbd_bac
 # Rules
 # ----------------------------------------------------------------------------
 
-for_window [class="(?i)telegram"] layout tabbed 
-for_window [class="(?i)signal"] layout tabbed 
-for_window [class="Spotify"] border none
-
-assign [class="(?i)telegram"] → 1
-assign [class="(?i)signal"] → 1
-assign [class="(?i)Spotify"] → 1
+assign [class="(?i)signal"] → 3
 
 # Modes
 # ----------------------------------------------------------------------------
@@ -153,6 +148,7 @@ mode "i3" {
 	bindsym e exit
 	bindsym r restart
 	bindsym c reload
+	bindsym l exec --no-startup-id ~/.config/i3/lock.sh
 
 	bindsym Return mode "default"
 	bindsym Escape mode "default"
