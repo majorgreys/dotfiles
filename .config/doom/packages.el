@@ -1,9 +1,11 @@
 ;;; packages.el --- description -*- lexical-binding: t; -*-
 
 (package! olivetti)
-;(package! pandoc-mode)
 (package! centered-cursor-mode)
-(package! pdf-tools :ignore t)
+(package! wttrin)
+(package! monotropic-theme)
+(package! eink-theme)
+(package! writeroom-mode)
 
 (provide 'packages)
 ;;; packages.el ends here
