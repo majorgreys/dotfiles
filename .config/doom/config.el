@@ -1,6 +1,7 @@
 ;;; config.el --- description -*- lexical-binding: t; -*-
 
-(require 'monotropic-theme)
+(require 'doom-themes)
+(require 'nord-theme)
 
 (setq user-mail-address "tahirhbutt@outlook.com"
       user-full-name    "Tahir H. Butt"
@@ -14,7 +15,8 @@
 
       org-ellipsis " ▼ "
 
-      doom-theme 'monotropic)
+      doom-theme 'nord
+      )
 
 (after! mu4e
   (setq mu4e-bookmarks

@@ -1,11 +1,9 @@
 ;;; packages.el --- description -*- lexical-binding: t; -*-
 
-(package! olivetti)
-(package! centered-cursor-mode)
 (package! wttrin)
-(package! monotropic-theme)
-(package! eink-theme)
+(package! nord-theme)
 (package! writeroom-mode)
+(package! zotxt)
 
 (provide 'packages)
 ;;; packages.el ends here

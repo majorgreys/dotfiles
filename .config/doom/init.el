@@ -1,20 +1,17 @@
 ;;; init.el -*- lexical-binding: t; -*-
 
-(def-package! olivetti
-  :config
-  (map! (:map olivetti-mode-map
-          "M-[" #'olivetti-shrink
-          "M-]" #'olivetti-expand)))
+(def-package! nord-theme)
 
-(def-package! centered-cursor-mode)
-
-(def-package! monotropic-theme)
-(def-package! eink-theme)
-(def-package! writeroom-mode
+(def-package! zotxt
   :config
-  (map! (:map writeroom-mode-map
-          "M-[" #'writeroom-increase-width
-          "M-]" #'writeroom-decrease-width)))
+  (setq org-zotxt-default-search-method :everything)
+  (setq zotxt-default-bibliography-style "chicago-note-bibliography"))
+
+;(def-package! org-zotxt
+;  :init
+;  (add-hook 'org-mode-hook #'org-zotxt-mode)
+;  :config
+;  (setq org-zotxt-link-description-style :betterbibtexkey))
 
 (def-package! wttrin
   :init
@@ -26,9 +23,3 @@
        (write
         +wordnut
         +langtool))
-
-
-(defun reload-fonts (frame)
-  (set-face-attribute 'variable-pitch frame :font doom-variable-pitch-font))
-(add-hook 'after-make-frame-functions 'reload-fonts)
-
