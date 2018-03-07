@@ -1,9 +1,7 @@
 ;;; packages.el --- description -*- lexical-binding: t; -*-
 
-(package! wttrin)
-(package! nord-theme)
-(package! writeroom-mode)
 (package! zotxt)
+(package! nord-theme)
 
 (provide 'packages)
 ;;; packages.el ends here
