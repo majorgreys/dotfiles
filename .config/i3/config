@@ -14,8 +14,6 @@ new_window pixel 2
 for_window [class=".*"] title_format " %title"
 for_window [class="(?i)firefox"] title_format " Firefox  |  %title"
 
-workspace_layout tabbed
-
 # hide_edge_borders both
 
 gaps inner 5
@@ -211,7 +209,7 @@ bindsym $mod+Shift+period focus floating; mode "move"
 # external displays
 set $mode_display Ext Screen (v) DP2 ON, (h) HDMI ON, (x) DP2 OFF, (y) HDMI OFF
 mode "$mode_display" {
-    bindsym v exec --no-startup-id xrandr --output DP2 --auto --right-of eDP1, mode "default"
+    bindsym v exec --no-startup-id xrandr --output DP2 --auto --left-of eDP1, mode "default"
     bindsym h exec --no-startup-id xrandr --output HDMI1 --mode 2560x1440 --auto --right-of eDP1, mode "default"
     bindsym x exec --no-startup-id xrandr --output DP2 --auto --off, mode "default"
     bindsym y exec --no-startup-id xrandr --output HDMI1 --auto --off, mode "default"
