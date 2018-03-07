@@ -1,22 +1,33 @@
 ;;; config.el --- description -*- lexical-binding: t; -*-
 
-(require 'doom-themes)
 (require 'nord-theme)
 
 (setq user-mail-address "tahirhbutt@outlook.com"
       user-full-name    "Tahir H. Butt"
 
-      ; doom-font (font-spec :family "Source Code Pro" :size 18)
-      doom-font (font-spec :family "IBM Plex Mono" :size 14)
+      doom-font (font-spec :family "IBM Plex Mono" :size 16)
       doom-variable-pitch-font (font-spec :family "ETBembo" :size 18)
       doom-unicode-font (font-spec :family "Source Code Pro" :size 18)
-      ; doom-big-font (font-spec :family "Source Code Pro" :size 22)
       doom-big-font (font-spec :family "IBM Plex Mono" :size 18)
 
       org-ellipsis " ▼ "
 
       doom-theme 'nord
       )
+
+(after! ox-pandoc
+  (setq org-pandoc-options
+        '((standalone . t)
+          (mathjax . t)))
+  (setq org-pandoc-options-for-latex-pdf
+        '((pdf-engine . "xelatex"))))
+
+(def-package! org-zotxt
+  :commands org-zotxt-mode
+  :init (add-hook 'org-mode-hook #'org-zotxt-mode)
+  :config
+  (setq org-zotxt-default-search-method :everything)
+  (setq org-zotxt-link-description-style :betterbibtexkey))
 
 (after! mu4e
   (setq mu4e-bookmarks
