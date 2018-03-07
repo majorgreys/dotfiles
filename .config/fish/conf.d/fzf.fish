@@ -1,0 +1,1 @@
+/home/tbutt/.config/fisherman/fzf/conf.d/fzf.fish

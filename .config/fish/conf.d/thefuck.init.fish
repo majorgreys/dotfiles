@@ -1,0 +1,1 @@
+/home/tbutt/.config/fisherman/thefuck/init.fish
