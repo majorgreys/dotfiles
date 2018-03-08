@@ -10,9 +10,9 @@ set -gx EDITOR vim
 . $HOME/anaconda3/etc/fish/conf.d/conda.fish
 
 # Base16 Shell
-if status --is-interactive
-    eval sh $HOME/.config/base16-shell/scripts/base16-nord.sh
-end
+# if status --is-interactive
+#     eval sh $HOME/.config/base16-shell/scripts/base16-nord.sh
+# end
 
 # Set up fisherman
 if not test -f ~/.config/fish/functions/fisher.fish
