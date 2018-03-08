@@ -19,7 +19,7 @@ ram = ${xrdb:color14}
 cpu = ${xrdb:color13}
 
 [bar/edp1]
-monitor = ${env:MONITOR:eDP1}
+# monitor = ${env:MONITOR:eDP1}
 height = 32
 offset-y = 0
 top = true
@@ -35,10 +35,8 @@ padding-right = 1
 module-margin = 1 
 
 font-0 = "Input Sans Condensed:size=11;1"
-font-1 = Font Awesome 5 Free:pixelsize=11;1
+font-1 = FontAwesome:pixelsize=11;1
 font-2 = "Material Icons:size=11;4"
-font-3 = Font Awesome 5 Free Solid:pixelsize=10;1
-font-4 = Font Awesome 5 Brands:pixelsize=10;1
 
 modules-left = i3
 ;modules-center = xwindow
@@ -61,10 +59,8 @@ padding-right = 1
 module-margin = 1 
 
 font-0 = "Input Sans Condensed:size=11;1"
-font-1 = Font Awesome 5 Free:pixelsize=11;1
+font-1 = FontAwesome:pixelsize=11;1
 font-2 = "Material Icons:size=11;4"
-font-3 = Font Awesome 5 Free Solid:pixelsize=10;1
-font-4 = Font Awesome 5 Brands:pixelsize=10;1
 
 modules-left = i3
 ;modules-center = xwindow
@@ -86,11 +82,9 @@ padding-left = 0
 padding-right = 1 
 module-margin = 1 
 
-font-0 = "Input Sans Condensed:size=10;1"
-font-1 = Font Awesome 5 Free:pixelsize=11;1
+font-0 = "Input Sans Condensed:size=11;1"
+font-1 = FontAwesome:pixelsize=11;1
 font-2 = "Material Icons:size=11;4"
-font-3 = Font Awesome 5 Free Solid:pixelsize=10;1
-font-4 = Font Awesome 5 Brands:pixelsize=10;1
 
 modules-left = i3
 ;modules-center = xwindow
@@ -207,7 +201,7 @@ interface = eno1
 format-connected = <label-connected>
 format-connected-underline = ${colors.underline}
 format-disconnected = <label-disconnected>
-label-connected =  %local_ip%
+label-connected = 
 label-disconnected = 
 
 [module/wifi]
