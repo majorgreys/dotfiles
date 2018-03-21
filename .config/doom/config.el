@@ -30,10 +30,13 @@
   (setq org-zotxt-link-description-style :betterbibtexkey))
 
 (after! mu4e
+  (require 'mu4e-contrib)
+  (setq mu4e-html2text-command 'mu4e-shr2text)
+
   (setq mu4e-bookmarks
-        `(("\\\\Inbox" "Inbox" ?i)
-          ("\\\\Draft" "Drafts" ?d)
-          ("flag:unread AND \\\\Inbox" "Unread messages" ?u)
+        `(("maildir:/Inbox/" "Inbox" ?i)
+          ("maildir:/Draft/" "Drafts" ?d)
+          ("flag:unread AND maildir:/Inbox/" "Unread messages" ?u)
           ("flag:flagged" "Starred messages" ?s)
           ("date:today..now" "Today's messages" ?t)
           ("date:7d..now" "Last 7 days" ?w)))
