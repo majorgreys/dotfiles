@@ -2,7 +2,7 @@
 
 (require 'nord-theme)
 
-(setq user-mail-address "tahirhbutt@outlook.com"
+(setq user-mail-address "tahir@tahirbutt.com"
       user-full-name    "Tahir H. Butt"
 
       doom-font (font-spec :family "IBM Plex Mono" :size 16)
@@ -12,7 +12,7 @@
 
       org-ellipsis " ▼ "
 
-      doom-theme 'nord
+      doom-theme 'doom-city-lights
       )
 
 (after! ox-pandoc
@@ -51,8 +51,8 @@
       (mu4e-drafts-folder     . "/outlook/Drafts")
       (mu4e-trash-folder      . "/outlook/Deleted")
       (mu4e-refile-folder     . "/outlook/Archive")
-      (smtpmail-smtp-user     . "tahirhbutt@outlook.com")
-      (user-mail-address      . "tahirhbutt@outlook.com")
+      (smtpmail-smtp-user     . "tahir@tahirbutt.com")
+      (user-mail-address      . "tahir@tahirbutt.com")
       (mu4e-compose-signature . "---\nTahir H. Butt"))
     t)
 
