@@ -1,7 +1,5 @@
 ;;; config.el --- description -*- lexical-binding: t; -*-
 
-(require 'nord-theme)
-
 (setq user-mail-address "tahir@tahirbutt.com"
       user-full-name    "Tahir H. Butt"
 
