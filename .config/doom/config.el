@@ -12,7 +12,7 @@
 
       org-ellipsis " ▼ "
 
-      doom-theme 'doom-city-lights
+      doom-theme 'doom-nord
       )
 
 (after! ox-pandoc
