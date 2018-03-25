@@ -20,6 +20,22 @@
   (setq org-pandoc-options-for-latex-pdf
         '((pdf-engine . "xelatex"))))
 
+(setq +org-dir (expand-file-name "~/Dropbox/org/"))
+
+(after! org
+  (setq org-capture-templates
+        '(("t" "Todo" entry
+           (file+headline +org-default-todo-file "Inbox")
+           "* TODO %?\n %i\n %a" :prepend t :kill-buffer t)
+
+          ("j" "Journal" entry
+           (file+olp+datetree "journal.org" "Inbox")
+           "* %?\nEntered on %U\n %i\n %a" :prepend t :kill-buffer t)
+
+          ("n" "Notes" entry
+           (file+headline +org-default-notes-file "Inbox")
+           "* %u %?\n %i" :prepend t :kill-buffer t))))
+
 (def-package! org-zotxt
   :commands org-zotxt-mode
   :init (add-hook 'org-mode-hook #'org-zotxt-mode)
@@ -29,7 +45,9 @@
 
 (after! mu4e
   (require 'mu4e-contrib)
-  (setq mu4e-html2text-command 'mu4e-shr2text)
+  (setq mu4e-html2text-command 'mu4e-shr2text
+        mu4e-use-fancy-chars t
+        shr-color-visible-luminance-min 80)
 
   (setq mu4e-bookmarks
         `(("maildir:/Inbox/" "Inbox" ?i)
@@ -51,7 +69,7 @@
       (mu4e-refile-folder     . "/outlook/Archive")
       (smtpmail-smtp-user     . "tahir@tahirbutt.com")
       (user-mail-address      . "tahir@tahirbutt.com")
-      (mu4e-compose-signature . "---\nTahir H. Butt"))
+      (mu4e-compose-signature . "Tahir H. Butt"))
     t)
 
   (setq mu4e-view-mode-map (make-sparse-keymap)
