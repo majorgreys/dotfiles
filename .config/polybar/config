@@ -18,8 +18,31 @@ underline = ${xrdb:color3}
 ram = ${xrdb:color14}
 cpu = ${xrdb:color13}
 
+[bar/primary]
+height = 32
+offset-y = 0
+top = true
+fixed-center = true 
+background = ${colors.background}
+foreground = ${colors.foreground}
+
+line-size = 3
+line-color = #f00
+
+padding-left = 0
+padding-right = 1 
+module-margin = 1 
+
+font-0 = "Input Sans Condensed:size=11;1"
+font-1 = FontAwesome:pixelsize=11;1
+font-2 = "Material Icons:size=11;4"
+
+modules-left = i3
+;modules-center = xwindow
+modules-right = mail cpu memory volume wifi wired battery date
+
 [bar/edp1]
-# monitor = ${env:MONITOR:eDP1}
+monitor = ${env:MONITOR:eDP1}
 height = 32
 offset-y = 0
 top = true
@@ -41,54 +64,6 @@ font-2 = "Material Icons:size=11;4"
 modules-left = i3
 ;modules-center = xwindow
 modules-right = cpu memory volume wifi wired battery date
-
-[bar/dp2]
-monitor = ${env:MONITOR:DP2}
-height = 30
-offset-y = 0
-top = true
-fixed-center = true 
-background = ${colors.background}
-foreground = ${colors.foreground}
-
-line-size = 3
-line-color = #f00
-
-padding-left = 0
-padding-right = 1 
-module-margin = 1 
-
-font-0 = "Input Sans Condensed:size=11;1"
-font-1 = FontAwesome:pixelsize=11;1
-font-2 = "Material Icons:size=11;4"
-
-modules-left = i3
-;modules-center = xwindow
-modules-right = date
-
-[bar/tv]
-monitor = ${env:MONITOR:HDMI1}
-height = 30
-offset-y = 0
-top = true
-fixed-center = true 
-background = ${colors.background}
-foreground = ${colors.foreground}
-
-line-size = 3
-line-color = #f00
-
-padding-left = 0
-padding-right = 1 
-module-margin = 1 
-
-font-0 = "Input Sans Condensed:size=11;1"
-font-1 = FontAwesome:pixelsize=11;1
-font-2 = "Material Icons:size=11;4"
-
-modules-left = i3
-;modules-center = xwindow
-modules-right = date
 
 [module/i3]
 type = internal/i3
@@ -172,6 +147,15 @@ format-prefix = " "
 label = %percentage_used%%
 format-foreground = ${colors.ram}
 label-foreground = ${colors.ram}
+
+[module/mail]
+type = custom/script
+exec = $HOME/.config/polybar/bin/inbox-imap.sh
+interval = 60 
+label =   %output% 
+format-padding = 1 
+format-foreground = ${colors.urgent}
+label-foreground = ${colors.urgent}
 
 [module/date]
 type = internal/date
