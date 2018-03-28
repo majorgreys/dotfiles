@@ -7,7 +7,7 @@ killall -q polybar
 while pgrep -u $UID -x polybar >/dev/null; do sleep 1; done
 
 # Launch eDP1 bar
-polybar edp1 &
+polybar primary &
 
 
 echo "Bars launched..."
