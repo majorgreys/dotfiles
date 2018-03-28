@@ -1,0 +1,44 @@
+IMAPAccount outlook
+Host outlook.office365.com
+User tahirhbutt@outlook.com
+PassCmd "gpg -q --for-your-eyes-only --no-tty -d ~/.outlookpass.gpg"
+SSLType IMAPS
+CertificateFile /etc/ssl/certs/ca-certificates.crt
+
+IMAPStore outlook-remote
+Account outlook
+
+MaildirStore outlook-local
+Path ~/.mail/outlook/
+Inbox ~/.mail/outlook/Inbox
+
+Channel outlook
+Master :outlook-remote:
+Slave :outlook-local:
+Patterns * !* "INBOX" "Sent" "Drafts" "Archive" "Deleted"
+Create Both
+Expunge Both
+SyncState *
+
+IMAPAccount gc
+Host outlook.office365.com
+Port 993
+User tbutt@gradcenter.cuny.edu
+PassCmd "gpg -q --for-your-eyes-only --no-tty -d ~/.gcpass.gpg"
+SSLType IMAPS
+CertificateFile /etc/ssl/certs/ca-certificates.crt
+
+IMAPStore gc-remote
+Account gc
+
+MaildirStore gc-local
+Path ~/.mail/gc/
+Inbox ~/.mail/gc/Inbox
+
+Channel gc
+Master :gc-remote:
+Slave :gc-local:
+Patterns * !* "INBOX" "Sent" "Drafts" "Archive" "Deleted"
+Create Both
+Expunge Both
+SyncState *
