@@ -3,12 +3,17 @@
 (setq user-mail-address "tahir@tahirbutt.com"
       user-full-name    "Tahir H. Butt"
 
-      doom-font (font-spec :family "IBM Plex Mono" :size 16)
-      doom-variable-pitch-font (font-spec :family "ETBembo" :size 18)
-      doom-unicode-font (font-spec :family "Source Code Pro" :size 18)
+      doom-themes-enable-bold t
+      doom-themes-enable-italic t
+      doom-font (font-spec :family "Input Mono Narrow" :size 14 :weight 'semi-light)
+      doom-variable-pitch-font (font-spec :family "Input Sans" :size 14 :weight 'normal)
+      doom-unicode-font (font-spec :family "Source Code Pro" :size 14)
       doom-big-font (font-spec :family "IBM Plex Mono" :size 18)
+      doom-line-numbers-style nil
+      ivy-posframe-font (font-spec :family "Input Mono Narrow" :size 16)
+      ivy-height 12
 
-      org-ellipsis " ▼ "
+      org-ellipsis " + "
 
       doom-theme 'doom-nord
       )
@@ -62,13 +67,23 @@
         smtpmail-smtp-server "smtp-mail.outlook.com"
         smtpmail-smtp-service 587)
 
-  (set! :email "outlook.com"
+  (set! :email "outlook"
     '((mu4e-sent-folder       . "/outlook/Sent")
       (mu4e-drafts-folder     . "/outlook/Drafts")
       (mu4e-trash-folder      . "/outlook/Deleted")
       (mu4e-refile-folder     . "/outlook/Archive")
       (smtpmail-smtp-user     . "tahir@tahirbutt.com")
       (user-mail-address      . "tahir@tahirbutt.com")
+      (mu4e-compose-signature . "Tahir H. Butt"))
+    t)
+
+  (set! :email "gc"
+    '((mu4e-sent-folder       . "/gc/Sent")
+      (mu4e-drafts-folder     . "/gc/Drafts")
+      (mu4e-trash-folder      . "/gc/Deleted")
+      (mu4e-refile-folder     . "/gc/Archive")
+      (smtpmail-smtp-user     . "tbutt@gradcenter.cuny.edu")
+      (user-mail-address      . "tbutt@gradcenter.cuny.edu")
       (mu4e-compose-signature . "Tahir H. Butt"))
     t)
 
