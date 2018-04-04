@@ -1,1 +1,0 @@
-/home/tbutt/.config/fisherman/pipenv/conf.d/pipenv.fish
