@@ -48,9 +48,18 @@
   (setq org-zotxt-default-search-method :everything)
   (setq org-zotxt-link-description-style :betterbibtexkey))
 
+(after! shr
+  (require 'shr-tag-pre-highlight)
+  (add-to-list 'shr-external-rendering-functions
+               '(pre . shr-tag-pre-highlight)))
+
+(after! magithub
+  (setq magithub-clone-default-directory (expand-file-name "~/GitHub/")))
+
 (after! mu4e
   (require 'mu4e-contrib)
   (setq mu4e-html2text-command 'mu4e-shr2text
+        shr-width 100
         mu4e-use-fancy-chars t
         shr-color-visible-luminance-min 80)
 
@@ -96,8 +105,8 @@
           :leader
           :n "," #'mu4e-context-switch
           :n "." #'mu4e-headers-search-bookmark
-          :n ">" #'mu4e-headers-search-bookmark-edit
-          :n "/" #'mu4e~headers-jump-to-maildir)
+          :n "/" #'mu4e-headers-search-edit
+          :n ">" #'mu4e-headers-search-bookmark-edit)
 
 
         (:map (mu4e-headers-mode-map mu4e-view-mode-map)
@@ -152,6 +161,8 @@
           :n "r" #'mu4e-compose-reply
           :n "c" #'mu4e-compose-edit
           :n "o" #'ace-link-mu4e
+          :n "O" #'mu4e-view-go-to-url
+          :n "H" #'mu4e-view-toggle-html
 
           :n "<M-Left>"  #'mu4e-view-headers-prev
           :n "<M-Right>" #'mu4e-view-headers-next
