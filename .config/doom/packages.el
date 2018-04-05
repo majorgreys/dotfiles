@@ -2,7 +2,7 @@
 
 (package! zotxt)
 (package! shr-tag-pre-highlight)
-
+(package! html2org)
 (package! evil-snipe :disable t)
 
 (provide 'packages)
