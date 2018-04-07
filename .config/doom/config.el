@@ -44,7 +44,7 @@
            "* %u %?\n %i" :prepend t :kill-buffer t))))
 
 (def-package! ace-link
-  :commands (ace-link ace-link-eww ace-link-mu4e))
+  :commands (ace-link ace-link-eww ace-link-mu4e ace-link-elfeed))
 
 (def-package! org-zotxt
   :commands org-zotxt-mode
@@ -60,6 +60,20 @@
 
 (after! magithub
   (setq magithub-clone-default-directory (expand-file-name "~/GitHub/")))
+
+(after! elfeed-show
+  (map! (:map elfeed-show-mode-map
+          [remap kill-this-buffer]      "q"
+          [remap kill-buffer]           "q"
+          :nm "q"   #'+rss/delete-pane
+          :nm "o"   #'ace-link-elfeed
+          :nm "RET" #'org-ref-add-bibtex-entry-from-elfeed-entry
+          :nm "n"   #'elfeed-show-next
+          :nm "p"   #'elfeed-show-prev
+          :nm "+"   #'elfeed-show-tag
+          :nm "-"   #'elfeed-show-untag
+          :nm "s"   #'elfeed-show-new-live-search
+          :nm "y"   #'elfeed-show-yank)))
 
 (after! mu4e
   (setq mu4e-html2text-command 'mu4e-shr2text
