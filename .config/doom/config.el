@@ -5,10 +5,10 @@
 
       doom-themes-enable-bold t
       doom-themes-enable-italic t
-      doom-font (font-spec :family "IBM Plex Mono" :size 14)
+      doom-font (font-spec :family "IBM Plex Mono" :size 16)
       doom-variable-pitch-font (font-spec :family "IBM Plex Sans" :size 14)
-      doom-unicode-font (font-spec :family "Source Code Pro" :size 14)
-      doom-big-font (font-spec :family "IBM Plex Mono" :size 18)
+      doom-unicode-font (font-spec :family "Source Code Pro" :size 16)
+      doom-big-font (font-spec :family "IBM Plex Mono" :size 20)
       doom-line-numbers-style nil
       ivy-posframe-font (font-spec :family "Input Mono Narrow" :size 16)
       ivy-height 12
@@ -16,6 +16,7 @@
 
       org-ellipsis " + "
 
+      +write-text-scale 1.5
       doom-theme 'doom-nord
       )
 
@@ -76,6 +77,10 @@
           :nm "y"   #'elfeed-show-yank)))
 
 (after! mu4e
+  (require 'mu4e-contrib)
+
+  (setq mu4e-get-mail-command "mbsync --all --new --renew --delete --flags --pull --push --expunge --verbose")
+
   (setq mu4e-html2text-command 'mu4e-shr2text
         shr-width 100
         mu4e-use-fancy-chars t
@@ -91,19 +96,9 @@
           ("date:7d..now" "Last 7 days" ?w)))
 
   (setq smtpmail-stream-type 'starttls
-        smtpmail-default-smtp-server "smtp-mail.outlook.com"
-        smtpmail-smtp-server "smtp-mail.outlook.com"
+        smtpmail-default-smtp-server "smtp.office365.com"
+        smtpmail-smtp-server "smtp.office365.com"
         smtpmail-smtp-service 587)
-
-  (set! :email "outlook"
-    '((mu4e-sent-folder       . "/outlook/Sent")
-      (mu4e-drafts-folder     . "/outlook/Drafts")
-      (mu4e-trash-folder      . "/outlook/Deleted")
-      (mu4e-refile-folder     . "/outlook/Archive")
-      (smtpmail-smtp-user     . "tahir@tahirbutt.com")
-      (user-mail-address      . "tahir@tahirbutt.com")
-      (mu4e-compose-signature . "Tahir H. Butt"))
-    t)
 
   (set! :email "gc"
     '((mu4e-sent-folder       . "/gc/Sent")
@@ -111,9 +106,19 @@
       (mu4e-trash-folder      . "/gc/Deleted")
       (mu4e-refile-folder     . "/gc/Archive")
       (smtpmail-smtp-user     . "tbutt@gradcenter.cuny.edu")
-      (user-mail-address      . "tbutt@gradcenter.cuny.edu")
-      (mu4e-compose-signature . "Tahir H. Butt"))
-    t)
+      (user-mail-address      . "tbutt@gradcenter.cuny.edu")))
+
+  (set! :email "outlook"
+    '((mu4e-sent-folder       . "/outlook/Sent")
+      (mu4e-drafts-folder     . "/outlook/Drafts")
+      (mu4e-trash-folder      . "/outlook/Deleted")
+      (mu4e-refile-folder     . "/outlook/Archive")
+      (smtpmail-smtp-user     . "tahir@tahirbutt.com")
+      (user-mail-address      . "tahir@tahirbutt.com")) t)
+
+  (add-hook 'mu4e-index-updated-hook
+	    (defun update()
+          (mu4e-maildirs-extension-force-update '(16))))
 
   (setq mu4e-view-mode-map (make-sparse-keymap)
         ;; mu4e-compose-mode-map (make-sparse-keymap)
