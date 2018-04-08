@@ -83,21 +83,23 @@
 
   (setq mu4e-html2text-command 'mu4e-shr2text
         shr-width 100
+        mu4e-sent-messages-behavior 'delete
         mu4e-use-fancy-chars t
         shr-color-visible-distance-min 10
         shr-color-visible-luminance-min 80)
 
+
   (setq mu4e-bookmarks
         `(("maildir:/Inbox/" "Inbox" ?i)
           ("maildir:/Draft/" "Drafts" ?d)
-          ("flag:unread AND maildir:/Inbox/" "Unread messages" ?u)
           ("flag:flagged" "Starred messages" ?s)
-          ("date:today..now" "Today's messages" ?t)
+          ("flag:unread" "Unread messages" ?u)
+          ("flag:unread AND flag:l" "Unread list messages" ?l)
           ("date:7d..now" "Last 7 days" ?w)))
 
   (setq smtpmail-stream-type 'starttls
-        smtpmail-default-smtp-server "smtp.office365.com"
-        smtpmail-smtp-server "smtp.office365.com"
+        smtpmail-default-smtp-server "smtp-mail.outlook.com"
+        smtpmail-smtp-server "smtp-mail.outlook.com"
         smtpmail-smtp-service 587)
 
   (set! :email "gc"
