@@ -1,44 +1,49 @@
-IMAPAccount outlook
-Host outlook.office365.com
-User tahirhbutt@outlook.com
-PassCmd "gpg -q --for-your-eyes-only --no-tty -d ~/.outlookpass.gpg"
-SSLType IMAPS
-CertificateFile /etc/ssl/certs/ca-certificates.crt
+IMAPAccount fastmail
+    Host imap.fastmail.com
+    Port 993
+    User tahir@tahirbutt.com
+    PassCmd "gpg -q --for-your-eyes-only --no-tty -d ~/.passwords/.fastmail.gpg"
+    SSLType IMAPS
 
-IMAPStore outlook-remote
-Account outlook
+IMAPStore fastmail-remote
+    Account fastmail
 
-MaildirStore outlook-local
-Path ~/.mail/outlook/
-Inbox ~/.mail/outlook/Inbox
+MaildirStore fastmail-local
+    Path ~/.mail/tahirbutt/
+    Inbox ~/.mail/tahirbutt/Inbox
 
-Channel outlook
-Master :outlook-remote:
-Slave :outlook-local:
-Patterns * !* "INBOX" "Sent" "Drafts" "Archive" "Deleted"
-Create Both
-Expunge Both
-SyncState *
+Channel fastmail-personal
+    Master :fastmail-remote:
+    Slave :fastmail-local:
+    Patterns * !* INBOX Archive Drafts Sent Spam Trash
+    Create Slave
+    Expunge Both
+    CopyArrivalDate yes
+    Sync All
+    SyncState *
+
+Group fastmail
+    Channel fastmail-personal
 
 IMAPAccount gc
-Host outlook.office365.com
-Port 993
-User tbutt@gradcenter.cuny.edu
-PassCmd "gpg -q --for-your-eyes-only --no-tty -d ~/.gcpass.gpg"
-SSLType IMAPS
-CertificateFile /etc/ssl/certs/ca-certificates.crt
+    Host outlook.office365.com
+    Port 993
+    User tbutt@gradcenter.cuny.edu
+    SSLType IMAPS
+    PassCmd "gpg -q --for-your-eyes-only --no-tty -d ~/.passwords/.gradcenter.gpg"
+    CertificateFile /etc/ssl/certs/ca-certificates.crt
 
 IMAPStore gc-remote
-Account gc
+    Account gc
 
 MaildirStore gc-local
-Path ~/.mail/gc/
-Inbox ~/.mail/gc/Inbox
+    Path ~/.mail/gc/
+    Inbox ~/.mail/gc/Inbox
 
 Channel gc
-Master :gc-remote:
-Slave :gc-local:
-Patterns * !* "INBOX" "Sent" "Drafts" "Archive" "Deleted"
-Create Both
-Expunge Both
-SyncState *
+    Master :gc-remote:
+    Slave :gc-local:
+    Patterns * !* "INBOX" "Sent" "Drafts" "Archive" "Deleted"
+    Create Both
+    Expunge Both
+    SyncState *
