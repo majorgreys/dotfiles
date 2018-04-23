@@ -16,7 +16,7 @@ i3lock \
 	--ringcolor=$D        \
 	--linecolor=$B        \
 	--separatorcolor=$D   \
-	--verifcolor=$T       \
+	# --verifcolor=$T       \
 	--wrongcolor=$T       \
 	--timecolor=$T        \
 	--datecolor=$T        \
