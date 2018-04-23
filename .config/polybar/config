@@ -33,7 +33,7 @@ padding-left = 0
 padding-right = 1 
 module-margin = 1 
 
-font-0 = "Input Sans Condensed:size=11;1"
+font-0 = "InputSansCondensed Nerd Font:size=11;1"
 font-1 = FontAwesome:pixelsize=11;1
 font-2 = "Material Icons:size=11;4"
 
@@ -91,9 +91,10 @@ label-visible-foreground = ${colors.active}
 label-unfocused-foreground = ${colors.secondary}
 label-urgent-foreground = ${colors.urgent} 
 
-ws-icon-0 = 1;
+ws-icon-0 = 1;
 ws-icon-1 = 2;
 ws-icon-2 = 3;
+ws-icon-default = 
 
 [module/xwindow]
 type = internal/xwindow
