@@ -1,13 +1,12 @@
 set PATH $PATH $HOME/.local/bin
-set PATH $PATH $HOME/.gem/ruby/2.4.0/bin/
-# set PATH $PATH $HOME/anaconda3/bin/
+set PATH $PATH $HOME/.gem/ruby/2.5.0/bin/
 set PATH $PATH $HOME/.yarn/bin/
 
 set -gx TERM 'xterm-256color'
 set -gx CLICOLOR 1
 set -gx EDITOR vim
 
-. $HOME/anaconda3/etc/fish/conf.d/conda.fish
+. /opt/anaconda/etc/fish/conf.d/conda.fish
 
 # Base16 Shell
 # if status --is-interactive
