@@ -1,34 +1,52 @@
 [options]
 font = InputMonoNarrow Nerd Font 14px
 
-# Copyright (c) 2016-present Arctic Ice Studio <development@arcticicestudio.com>
-# Copyright (c) 2016-present Sven Greb <code@svengreb.de>
-
-# Project:    Nord Termite
-# Repository: https://github.com/arcticicestudio/nord-termite
-# License:    MIT
-
 [colors]
-foreground = #D8DEE9
-background = #2E3440
-foreground_bold = #D8DEE9
-cursor = #D8DEE9
-cursor_foreground = #2E3440
-highlight = #4C566A
+# Base16 Material
+# Author: Nate Peterson
 
-color0  = #3B4252
-color1  = #BF616A
-color2  = #A3BE8C
-color3  = #EBCB8B
-color4  = #81A1C1
-color5  = #B48EAD
-color6  = #88C0D0
-color7  = #E5E9F0
-color8  = #4C566A
-color9  = #BF616A
-color10 = #A3BE8C
-color11 = #EBCB8B
-color12 = #81A1C1
-color13 = #B48EAD
-color14 = #8FBCBB
-color15 = #ECEFF4
+foreground          = #eeffff
+foreground_bold     = #eeffff
+cursor              = #eeffff
+cursor_foreground   = #263238
+background          = rgba(i38, 50, 56, 1)
+
+# 16 color space
+
+# Black, Gray, Silver, White
+color0  = #263238
+color8  = #546e7a
+color7  = #eeffff
+color15 = #ffffff
+
+# Red
+color1  = #f07178
+color9  = #f07178
+
+# Green
+color2  = #c3e88d
+color10 = #c3e88d
+
+# Yellow
+color3  = #ffcb6b
+color11 = #ffcb6b
+
+# Blue
+color4  = #82aaff
+color12 = #82aaff
+
+# Purple
+color5  = #c792ea
+color13 = #c792ea
+
+# Teal
+color6  = #89ddff
+color14 = #89ddff
+
+# Extra colors
+color16 = #f78c6c
+color17 = #ff5370
+color18 = #2e3c43
+color19 = #314549
+color20 = #b2ccd6
+color21 = #eeffff
