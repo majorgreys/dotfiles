@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=org-capture
+Exec=/home/tbutt/.emacs.d/bin/org-capture
+Type=Application
+Terminal=false
+Categories=System;
