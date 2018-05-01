@@ -5,7 +5,7 @@ rofi.color-normal: argb:02000000,#D8DEE9,argb:02000000,argb:02000000,#EBCB8B
 rofi.color-active: argb:02000000,#D8DEE9,argb:02000000,argb:02000000,#D8DEE9
 rofi.color-urgent: argb:02000000,#D8DEE9,argb:02000000,argb:02000000,#D8DEE9
 
-rofi.font: Roboto Mono 14
+rofi.font: Input Sans Condensed 14
 rofi.eh: 1
 rofi.line-margin: 20
 rofi.separator-style: solid
