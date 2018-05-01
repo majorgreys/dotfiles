@@ -7,7 +7,7 @@ set $mod Mod4
 # Options
 # ----------------------------------------------------------------------------
 
-font pango:Roboto Mono 11
+font pango:Input Sans Condensed 11
 
 new_window pixel 2
 
