@@ -39,8 +39,9 @@ font-1 = FontAwesome:pixelsize=11;1
 font-2 = "Material Icons:size=11;4"
 
 modules-left = i3
-;modules-center = xwindow
+modules-center = xwindow
 modules-right = mail cpu memory volume wifi wired battery date
+tray-position = right
 
 [bar/edp1]
 monitor = ${env:MONITOR:eDP1}
