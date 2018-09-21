@@ -5,6 +5,7 @@ status_path = "~/.config/vdirsyncer/status/"
 a = "fastmail_contacts_local"
 b = "fastmail_contacts_remote"
 collections = ["from a", "from b"]
+conflict_resolution = "b wins"
 
 [storage fastmail_contacts_local]
 type = "filesystem"
