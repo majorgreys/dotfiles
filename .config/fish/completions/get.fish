@@ -1,1 +1,0 @@
-/home/tbutt/.config/fisherman/get/completions/get.fish
