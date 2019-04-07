@@ -1,16 +1,25 @@
-set -x PATH $PATH $HOME/.local/bin
-set -x PATH $PATH $HOME/.gem/ruby/2.5.0/bin/
-set -x PATH $PATH $HOME/.yarn/bin/
-set -x PATH $PATH $HOME/.cargo/bin/
-set -x PATH $PATH $HOME/go/bin/
+if test $HOME/.local/bin
+    set -U fish_user_paths $HOME/.local/bin $fish_user_paths
+end
 
-# set -g SSH_AUTH_SOCK $HOME/.gnupg/S.gpg-agent.ssh
+if type -q yarn
+    set -U fish_user_paths (yarn global bin) $fish_user_paths
+end
 
-# set -gx TERM 'xterm-256color'
-set -gx EDITOR vim
+if type -q cargo
+    set -U fish_user_paths $HOME/.cargo/bin $fish_user_paths
+end
 
-status --is-interactive; and source (pyenv init -|psub)
-status --is-interactive; and source (pyenv virtualenv-init -|psub)
+if type -q go
+    set -U GOROOT (go env GOROOT)
+    set -U GOPATH (go env GOPATH)
+    set -U fish_user_paths $GOROOT/bin $fish_user_paths
+    set -U fish_user_paths $GOPATH/bin $fish_user_paths
+end
+
+if type -q exa
+    abbr -a ls exa
+end
 
 # Base16 Shell
 if status --is-interactive
