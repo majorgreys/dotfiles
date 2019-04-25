@@ -1,5 +1,10 @@
 if test $HOME/.local/bin
-    set -U fish_user_paths $HOME/.local/bin $fish_user_paths
+   set -U fish_user_paths $HOME/.local/bin/ $fish_user_paths
+end
+
+if test $HOME/.asdf
+   set -U fish_user_paths $HOME/.asdf/bin/ $fish_user_paths
+   source ~/.asdf/asdf.fish
 end
 
 if type -q yarn
@@ -33,3 +38,4 @@ if not test -f ~/.config/fish/functions/fisher.fish
   curl -sLo ~/.config/fish/functions/fisher.fish --create-dirs git.io/fisher
   fisher
 end
+
