@@ -124,3 +124,32 @@ mouse_bindings:
   - { mouse: Middle, action: PasteSelection }
 
 draw_bold_text_with_bright_colors: true
+
+# Converted from https://raw.githubusercontent.com/ruimarinho/iterm2-city-lights/master/City%20Lights.itermcolors using terminal.sexy
+colors:
+  # Default colors
+  primary:
+    background: '0x181e24'
+    foreground: '0xb7c5d3'
+
+  # Normal colors
+  normal:
+    black:   '0x333f4a'
+    red:     '0xd95468'
+    green:   '0x8bd49c'
+    yellow:  '0xebbf83'
+    blue:    '0x539afc'
+    magenta: '0xb62d65'
+    cyan:    '0x70e1e8'
+    white:   '0x718ca1'
+
+  # Bright colors
+  bright:
+    black:   '0x41505e'
+    red:     '0xd95468'
+    green:   '0x8bd49c'
+    yellow:  '0xf7dab3'
+    blue:    '0x5ec4ff'
+    magenta: '0xb62d65'
+    cyan:    '0x70e1e8'
+    white:   '0xb7c5d3'
