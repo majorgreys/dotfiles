@@ -4,7 +4,7 @@ if &compatible
 endif
 
 " Required:
-set runtimepath+=~/.dein.vim/repos/github.com/Shougo/dein.vim
+set runtimepath+=~/.cache/dein/repos/github.com/Shougo/dein.vim
 
 " Required:
 if dein#load_state(expand('~/.dein.vim'))

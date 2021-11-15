@@ -1,0 +1,26 @@
+color=2e3440
+ignore-empty-password
+show-failed-attempts
+scaling=fill
+bs-hl-color=b48ead
+caps-lock-bs-hl-color=d08770
+caps-lock-key-hl-color=ebcb8b
+font=Iosevka SS08
+indicator-radius=100
+indicator-thickness=10
+inside-color=2e3440
+inside-clear-color=81a1c1
+inside-ver-color=5e81ac
+inside-wrong-color=bf616a
+key-hl-color=a3be8c
+layout-bg-color=2e3440
+line-uses-ring
+ring-color=3b4252
+ring-clear-color=88c0d0
+ring-ver-color=81a1c1
+ring-wrong-color=d08770
+separator-color=3b4252
+text-color=eceff4
+text-clear-color=3b4252
+text-ver-color=3b4252
+text-wrong-color=3b4252
