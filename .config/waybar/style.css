@@ -8,8 +8,7 @@
 }
 
 window#waybar {
-    background-color: rgba(43, 48, 59, 0.5);
-    border-bottom: 3px solid rgba(100, 114, 125, 0.5);
+    background-color: #000000;
     color: #ffffff;
     transition-property: background-color;
     transition-duration: .5s;
@@ -19,23 +18,6 @@ window#waybar.hidden {
     opacity: 0.2;
 }
 
-/*
-window#waybar.empty {
-    background-color: transparent;
-}
-window#waybar.solo {
-    background-color: #FFFFFF;
-}
-*/
-
-window#waybar.termite {
-    background-color: #3F3F3F;
-}
-
-window#waybar.chromium {
-    background-color: #000000;
-    border: none;
-}
 
 #workspaces button {
     padding: 0 5px;
@@ -52,16 +34,16 @@ window#waybar.chromium {
 }
 
 #workspaces button.focused {
-    background-color: #64727D;
+    background-color: #191a1b;
     box-shadow: inset 0 -3px #ffffff;
 }
 
 #workspaces button.urgent {
-    background-color: #eb4d4b;
+    background-color: #ef8b50;
 }
 
 #mode {
-    background-color: #64727D;
+    background-color: #d0bc00;
     border-bottom: 3px solid #ffffff;
 }
 
@@ -100,12 +82,12 @@ window#waybar.chromium {
 }
 
 #clock {
-    background-color: #64727D;
+    background-color: #191a1b;
 }
 
 #battery {
-    background-color: #ffffff;
-    color: #000000;
+    background-color: #191a1b;
+    color: #ffffff;
 }
 
 #battery.charging, #battery.plugged {
@@ -121,7 +103,7 @@ window#waybar.chromium {
 }
 
 #battery.critical:not(.charging) {
-    background-color: #f53c3c;
+    background-color: #ef8b50;
     color: #ffffff;
     animation-name: blink;
     animation-duration: 0.5s;
@@ -152,7 +134,7 @@ label:focus {
 }
 
 #network {
-    background-color: #2980b9;
+    background-color: #191a1b;
 }
 
 #network.disconnected {
