@@ -4,7 +4,7 @@ set $down j
 set $up k
 set $right l
 set $term foot
-set $menu wofi --show=drun --lines=5 --prompt=""
+set $menu wofi --allow-images --show=drun
 set $lock swaylock
 
 exec swayidle -w \
@@ -14,18 +14,16 @@ exec swayidle -w \
   before-sleep 'swaylock -f'
 
 # external hidpi monitor
-output DP-1 scale 1.5 
+output DP-1 scale 1.5
 
-font Iosevka SS08 Medium 10
-default_border pixel 1
-titlebar_border_thickness 1
-gaps outer 2
-gaps inner 2
+font Iosevka SS08 Medium 12
+default_border pixel 3
+default_floating_border pixel
+hide_edge_borders smart
+workspace_auto_back_and_forth yes
 
-client.focused          #88c0d0 #434c5e #eceff4 #8fbcbb   #88c0d0
-client.focused_inactive #88c0d0 #2e3440 #d8dee9 #4c566a   #4c566a
-client.unfocused        #88c0d0 #2e3440 #d8dee9 #4c566a   #4c566a
-client.urgent           #ebcb8b #ebcb8b #2e3440 #8fbcbb   #ebcb8b
+client.focused          #323232 #323232 #ffffff #ff8059   #00bcff
+client.unfocused        #1e1e1e #1e1e1e #a8a8a8 #323232   #323232
 
 input * {
     xkb_options "ctrl:nocaps"
