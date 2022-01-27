@@ -1,0 +1,3 @@
+[linux]
+arch_package_manager = "yay"
+yay_arguments = "--devel"
