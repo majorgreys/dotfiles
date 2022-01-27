@@ -109,4 +109,6 @@ bindswitch --reload --locked lid:on output $laptop disable
 bindswitch --reload --locked lid:off output $laptop enable
 exec_always ~/.config/sway/clamshell.sh
 
+output HDMI-A-1 scale 1.5
+
 include /etc/sway/config.d/*
