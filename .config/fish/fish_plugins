@@ -1,9 +1,8 @@
+jethrokuan/z
 jorgebucaran/fish-getopts
-edc/bass
-brgmnn/fish-docker-compose
-adambrenecki/virtualfish
-evanlucas/fish-kubectl-completions
-rafaelrinaldi/pure
 danhper/fish-ssh-agent
+edc/bass
 jethrokuan/fzf
-aluxian/fish-kube-prompt
+brgmnn/fish-docker-compose
+pure-fish/pure
+jorgebucaran/nvm.fish
