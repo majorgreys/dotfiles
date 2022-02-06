@@ -5,9 +5,9 @@ if test $HOME/.local/bin
    set -x fish_user_paths $HOME/.local/bin/ $fish_user_paths
 end
 
-if test /opt/asdf-vm
-   set -x fish_user_paths /opt/asdf-vm/bin/ $fish_user_paths
-   source /opt/asdf-vm/asdf.fish
+if set -q $ASDF_DIR
+   set -x fish_user_paths $ASDF_DIR/bin/ $fish_user_paths
+   source $ASDF_DIR/asdf.fish
 end
 
 if type -q yarn
