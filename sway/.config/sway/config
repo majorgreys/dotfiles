@@ -16,7 +16,7 @@ set $right l
 set $term foot
 set $uifont "Iosevka SS08 Medium 12"
 
-set $bemenu_args -i -l 20 -p "▶" --tb "$base0C" --tf "$base00" --fb "$base00" --ff "$base0C" --nb "$base00" --nf "$base07" --hb "$base0C" --hf "$base00"
+set $bemenu_args -i -b -l 10 -p "▶" --tb "$base0F" --tf "$base00" --fb "$base00" --ff "$base0F" --nb "$base00" --nf "$base07" --hb "$base0F" --hf "$base00" -fn "$uifont"
 set $menu j4-dmenu-desktop --dmenu='bemenu $bemenu_args' --no-generic --term='$term'
 set $lock swaylock
 
