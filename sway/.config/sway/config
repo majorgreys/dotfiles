@@ -14,9 +14,8 @@ set $down j
 set $up k
 set $right l
 set $term foot
-set $uifont "Iosevka SS08 Medium 12"
 
-set $bemenu_args -i -b -l 10 -p "▶" --tb "$base0F" --tf "$base00" --fb "$base00" --ff "$base0F" --nb "$base00" --nf "$base07" --hb "$base0F" --hf "$base00" -fn "$uifont"
+set $bemenu_args -i -b -l 10 -p "▶" --tb "$base0F" --tf "$base00" --fb "$base00" --ff "$base0F" --nb "$base00" --nf "$base07" --hb "$base0F" --hf "$base00" --fn "Iosevka SS08 Medium 12"
 set $menu j4-dmenu-desktop --dmenu='bemenu $bemenu_args' --no-generic --term='$term'
 set $lock swaylock
 
@@ -28,12 +27,12 @@ exec swayidle -w \
 
 exec wl-paste -t text --watch clipman store --no-persist
 
+output eDP-1 scale 1.75
 # external hidpi monitor
 output DP-1 scale 1.5
 # output Virtual-1 resolution 2560x1600 scale 1.75
 output Virtual-1 resolution 3840x2160 scale 1.75
 
-font $uifont
 default_border pixel 3
 default_floating_border pixel
 hide_edge_borders smart
@@ -122,7 +121,5 @@ set $laptop eDP-1
 bindswitch --reload --locked lid:on output $laptop disable
 bindswitch --reload --locked lid:off output $laptop enable
 exec_always ~/.config/sway/clamshell.sh
-
-output HDMI-A-1 scale 1.75
 
 include /etc/sway/config.d/*
