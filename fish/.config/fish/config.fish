@@ -1,7 +1,7 @@
 set fish_greeting
 
 if test $HOME/.local/bin
-   fish_add_path $HOME/.local/bin/
+    fish_add_path $HOME/.local/bin/
 end
 
 if type -q cargo
@@ -21,7 +21,15 @@ end
 
 # Set up fisherman
 if not test -f ~/.config/fish/functions/fisher.fish
-  echo "Installing fisherman for the first time"
-  curl -sLo ~/.config/fish/functions/fisher.fish --create-dirs git.io/fisher
-  fisher
+    echo "Installing fisherman for the first time"
+    curl -sLo ~/.config/fish/functions/fisher.fish --create-dirs git.io/fisher
+    fisher
+end
+
+# Needed for tramp
+if test $TERM = dumb
+    function fish_prompt
+        echo "\$ "
+    end
+    exec sh
 end
