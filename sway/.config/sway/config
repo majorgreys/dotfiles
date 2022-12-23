@@ -27,6 +27,9 @@ exec swayidle -w \
 
 exec wl-paste -t text --watch clipman store --no-persist
 
+exec --no-startup-id dunst
+exec --no-startup-id ssh-agent
+
 output eDP-1 scale 1.75
 # external hidpi monitor
 output DP-1 scale 1.5
