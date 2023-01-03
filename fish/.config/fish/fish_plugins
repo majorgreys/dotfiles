@@ -6,3 +6,4 @@ jethrokuan/fzf
 brgmnn/fish-docker-compose
 pure-fish/pure
 jorgebucaran/nvm.fish
+lilyball/nix-env.fish
