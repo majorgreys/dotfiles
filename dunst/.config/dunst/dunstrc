@@ -1,5 +1,5 @@
 [global]
-    font = Iosevka Etoile 12
+    font = Essential PragmataPro
     format = "%a\n<b>%s</b>\n%b\n%p"
     sort = yes
     indicate_hidden = yes

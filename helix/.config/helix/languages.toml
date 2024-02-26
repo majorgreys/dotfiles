@@ -1,0 +1,30 @@
+[language-server.ruff-lsp]
+command = "ruff-lsp"
+
+[language-server.ruff-lsp.config]
+documentFormatting = true 
+settings.run = "onSave"
+
+[[language]]
+name = "python"
+file-types = [
+  "py",
+  "pyi",
+  "pyx",
+]
+shebangs = ["python"]
+roots = [
+  "setup.py",
+  "setup.cfg",
+  "pyproject.toml",
+  "pyrightconfig.json",
+  "Poetry.lock",
+  "hatch.toml",
+]
+language-servers = [
+  { name = "ruff-lsp", only-features = [ "format", "diagnostics" ] },
+  { name = "pyright", except-features = [ "format" ] },
+]
+formatter = { command = "ruff", args = ["format", "--quiet", "-"] }
+auto-format = true
+indent = { tab-width = 4, unit = "    " }
