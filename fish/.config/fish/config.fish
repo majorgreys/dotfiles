@@ -19,6 +19,10 @@ if type -q exa
     abbr -a ls exa
 end
 
+if type -q helix
+    abbr -a hx helix
+end
+
 # Set up fisherman
 if not test -f ~/.config/fish/functions/fisher.fish
     echo "Installing fisherman for the first time"
