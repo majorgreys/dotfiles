@@ -1,9 +1,21 @@
+use-grammars = { only = [ "rust", "c", "cpp", "cue", "python", "cypherl", "go", "d2", "yaml", "json", "toml", "jsonnet" ] }
+
 [language-server.ruff-lsp]
 command = "ruff-lsp"
 
 [language-server.ruff-lsp.config]
 documentFormatting = true 
 settings.run = "onSave"
+
+[language-server.gopls.config]
+env = { GOPACKAGESDRIVER = './tools/go/gopackagesdriver.sh', GOPACKAGESDRIVER_BAZEL = 'bzl', BUILD_WORKSPACE_DIRECTORY = '${workspaceRoot}' }
+gofumpt     = true
+staticcheck = true
+# local = "github.com/my/mypkg"
+directoryFilters = ["-bazel-bin","-bazel-out","-bazel-testlogs","-bazel-mypkg","-bazel-dd-go"]
+usePlaceholders = true
+semanticTokens = true
+codelenses = {gc_details=false, generate=false, regenerate_cgo=false, tidy=false, upgrade_dependency=false, vendor=false}
 
 [[language]]
 name = "python"
@@ -28,3 +40,62 @@ language-servers = [
 formatter = { command = "ruff", args = ["format", "--quiet", "-"] }
 auto-format = true
 indent = { tab-width = 4, unit = "    " }
+
+[[language]]
+name = "cypherl"
+scope = "source.cypherl"
+injection-regex = "(cypher|cypherl)"
+file-types = [
+  "cypher",
+  "cypherl",
+]
+grammar = "cypherl"
+roots = []
+indent = { tab-width = 4, unit = "    " }
+
+[[grammar]]
+name = "cypherl"
+source = { git = "https://github.com/taekwombo/tree-sitter-cypher", rev = "b89aff530c1fe36b9c2fc0eff8cfa640cf4c6210" }
+
+[[language]]
+name = "d2"
+scope = "source.d2"
+injection-regex = "d2"
+file-types = [ "d2", ]
+grammar = "d2"
+roots = []
+indent = { tab-width = 4, unit = "    " }
+
+[[grammar]]
+name = "d2"
+source = { git = "https://github.com/pleshevskiy/tree-sitter-d2", rev = "02af3938f1d1187482ed91a5bcff84cc0fce45d9" }
+
+[[language]]
+name = "json"
+scope = "source.json"
+injection-regex = "json"
+file-types = [
+  "json",
+  "arb",
+  "ipynb",
+  "geojson",
+  "gltf",
+  "webmanifest",
+  { glob = "flake.lock" },
+  { glob = ".babelrc" },
+  { glob = ".bowerrc" },
+  { glob = ".jscrc" },
+  "js.map",
+  "ts.map",
+  "css.map",
+  { glob = ".jslintrc" },
+  "jsonld",
+  { glob = ".vuerc" },
+  { glob = "composer.lock" },
+  { glob = ".watchmanconfig" },
+  "avsc",
+  { glob = ".prettierrc" },
+]
+language-servers = [ "vscode-json-language-server" ]
+auto-format = true
+indent = { tab-width = 4, unit = "  " }
