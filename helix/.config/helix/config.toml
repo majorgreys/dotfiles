@@ -1,11 +1,10 @@
-theme = "doom_acario_dark"
+theme = "github_dark"
 
 [editor]
 line-number = "relative"
 mouse = false
 bufferline = "multiple"
 cursorline = true
-rulers = [120]
 true-color = true
 
 [editor.cursor-shape]
