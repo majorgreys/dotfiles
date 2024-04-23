@@ -1,7 +1,7 @@
 theme = "github_dark"
 
 [editor]
-line-number = "relative"
+line-number = "absolute"
 mouse = false
 bufferline = "multiple"
 cursorline = true
@@ -20,4 +20,4 @@ auto-signature-help = false
 display-messages = true
 
 [editor.statusline]
-left = ["mode", "spinner", "version-control", "file-name"]
+left = ["mode", "version-control", "file-name"]
