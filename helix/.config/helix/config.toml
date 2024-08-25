@@ -1,8 +1,8 @@
-theme = "github_dark"
+theme = "modus_operandi_tinted"
 
 [editor]
-line-number = "absolute"
-mouse = false
+line-number = "relative"
+mouse = true
 bufferline = "multiple"
 cursorline = true
 true-color = true
@@ -20,4 +20,14 @@ auto-signature-help = false
 display-messages = true
 
 [editor.statusline]
-left = ["mode", "version-control", "file-name"]
+left = ["mode", "spinner", "version-control", "file-name"]
+
+[editor.search]
+smart-case = false
+
+[keys.normal]
+"*" = ["move_char_right", "move_prev_word_start", "move_next_word_end", "search_selection",  "make_search_word_bounded", "search_next"]
+"#" = ["move_char_right", "move_prev_word_start", "move_next_word_end", "search_selection", "make_search_word_bounded", "search_prev"]
+
+[keys.normal.space]
+"." = "file_picker_in_current_buffer_directory"
