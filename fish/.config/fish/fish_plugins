@@ -7,3 +7,4 @@ brgmnn/fish-docker-compose
 pure-fish/pure
 jorgebucaran/nvm.fish
 lilyball/nix-env.fish
+reitzig/sdkman-for-fish@v2.1.0

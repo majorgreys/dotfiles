@@ -15,8 +15,8 @@ if type -q go
     set -x fish_user_paths $GOPATH/bin $fish_user_paths
 end
 
-if type -q exa
-    abbr -a ls exa
+if type -q eza
+    abbr -a ls eza
 end
 
 if type -q helix
@@ -37,3 +37,7 @@ if test $TERM = dumb
     end
     exec sh
 end
+
+# pyenv init - | source
+
+# direnv hook fish | source

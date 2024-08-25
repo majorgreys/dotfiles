@@ -1,4 +1,4 @@
-use-grammars = { only = [ "rust", "c", "cpp", "cue", "python", "cypherl", "go", "d2", "yaml", "json", "toml", "jsonnet" ] }
+use-grammars = { only = [ "rust", "c", "cpp", "cue", "python", "cypherl", "go", "d2", "yaml", "json", "toml", "jsonnet", "comment", "starlark", "java" ] }
 
 [language-server.ruff-lsp]
 command = "ruff-lsp"
@@ -8,7 +8,7 @@ documentFormatting = true
 settings.run = "onSave"
 
 [language-server.gopls.config]
-env = { GOPACKAGESDRIVER = './tools/go/gopackagesdriver.sh', GOPACKAGESDRIVER_BAZEL = 'bzl', BUILD_WORKSPACE_DIRECTORY = '${workspaceRoot}' }
+# env = { GOPACKAGESDRIVER = './tools/go/gopackagesdriver.sh', GOPACKAGESDRIVER_BAZEL = 'bzl', BUILD_WORKSPACE_DIRECTORY = '${workspaceRoot}' }
 gofumpt     = true
 staticcheck = true
 # local = "github.com/my/mypkg"
@@ -72,30 +72,14 @@ source = { git = "https://github.com/pleshevskiy/tree-sitter-d2", rev = "02af393
 
 [[language]]
 name = "json"
-scope = "source.json"
-injection-regex = "json"
-file-types = [
-  "json",
-  "arb",
-  "ipynb",
-  "geojson",
-  "gltf",
-  "webmanifest",
-  { glob = "flake.lock" },
-  { glob = ".babelrc" },
-  { glob = ".bowerrc" },
-  { glob = ".jscrc" },
-  "js.map",
-  "ts.map",
-  "css.map",
-  { glob = ".jslintrc" },
-  "jsonld",
-  { glob = ".vuerc" },
-  { glob = "composer.lock" },
-  { glob = ".watchmanconfig" },
-  "avsc",
-  { glob = ".prettierrc" },
-]
-language-servers = [ "vscode-json-language-server" ]
-auto-format = true
 indent = { tab-width = 4, unit = "  " }
+
+[language-server.starlark]
+command = "starlark"
+args = ["--bazel", "--lsp"]
+
+[[language]]
+name = "starlark"
+formatter = { command = "buildifier" }
+language-servers = ["starlark"]
+auto-format = true
