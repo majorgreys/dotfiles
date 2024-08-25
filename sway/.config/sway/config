@@ -17,7 +17,12 @@ set $term foot
 
 set $bemenu_args -i -b -l 10 -p "▶" --tb "$base0F" --tf "$base00" --fb "$base00" --ff "$base0F" --nb "$base00" --nf "$base07" --hb "$base0F" --hf "$base00" --fn "Essential PragmataPro 12"
 set $menu j4-dmenu-desktop --dmenu='bemenu $bemenu_args' --no-generic --term='$term'
+# set $menu tofi-run | xargs swaymsg exec --
+# set $drun tofi-drun | xargs swaymsg exec --
+# bindsym $mod+Shift+d exec $drun
 set $lock swaylock
+
+font Essential PragmataPro 12px
 
 exec swayidle -w \
   timeout 800 'swaylock -f' \
