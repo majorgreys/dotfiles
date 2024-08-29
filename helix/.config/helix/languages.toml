@@ -8,7 +8,6 @@ documentFormatting = true
 settings.run = "onSave"
 
 [language-server.gopls.config]
-# env = { GOPACKAGESDRIVER = './tools/go/gopackagesdriver.sh', GOPACKAGESDRIVER_BAZEL = 'bzl', BUILD_WORKSPACE_DIRECTORY = '${workspaceRoot}' }
 gofumpt     = true
 local = "goimports"
 directoryFilters = ["-bazel-bin","-bazel-out","-bazel-testlogs","-bazel-mypkg","-bazel-dd-go"]
