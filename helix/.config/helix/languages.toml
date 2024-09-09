@@ -10,11 +10,11 @@ settings.run = "onSave"
 [language-server.gopls.config]
 # env = { GOPACKAGESDRIVER = './tools/go/gopackagesdriver.sh', GOPACKAGESDRIVER_BAZEL = 'bzl', BUILD_WORKSPACE_DIRECTORY = '${workspaceRoot}' }
 gofumpt     = true
-staticcheck = true
-# local = "github.com/my/mypkg"
+local = "goimports"
 directoryFilters = ["-bazel-bin","-bazel-out","-bazel-testlogs","-bazel-mypkg","-bazel-dd-go"]
 usePlaceholders = true
 semanticTokens = true
+staticcheck = true
 codelenses = {gc_details=false, generate=false, regenerate_cgo=false, tidy=false, upgrade_dependency=false, vendor=false}
 
 [[language]]
