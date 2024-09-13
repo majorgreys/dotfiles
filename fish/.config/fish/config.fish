@@ -38,6 +38,4 @@ if test $TERM = dumb
     exec sh
 end
 
-# pyenv init - | source
-
-# direnv hook fish | source
+direnv hook fish | source
