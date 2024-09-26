@@ -7,10 +7,13 @@ command = "ruff-lsp"
 documentFormatting = true 
 settings.run = "onSave"
 
+[[language]]
+name = "go"
+formatter = { command = "goimports" }
+
 [language-server.gopls.config]
-gofumpt     = true
-local = "goimports"
-directoryFilters = ["-bazel-bin","-bazel-out","-bazel-testlogs","-bazel-mypkg","-bazel-dd-go"]
+gofumpt     = false
+directoryFilters = ["-bazel-bin","-bazel-out","-bazel-testlogs","-bazel-mypkg","-bazel-dd-go","-bazel-dd-source"]
 usePlaceholders = true
 semanticTokens = true
 staticcheck = true
@@ -82,3 +85,8 @@ name = "starlark"
 formatter = { command = "buildifier" }
 language-servers = ["starlark"]
 auto-format = true
+
+[[language]]
+name = "yaml"
+auto-format = true
+formatter = { command = "prettier", args = ["--parser", "yaml"] }
