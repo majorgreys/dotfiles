@@ -88,5 +88,6 @@ auto-format = true
 
 [[language]]
 name = "yaml"
-auto-format = true
-formatter = { command = "prettier", args = ["--parser", "yaml"] }
+auto-format = false
+indent = { tab-width = 2, unit = "  " }
+formatter = { command = "yamlfmt", args = ["-"] }

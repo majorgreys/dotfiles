@@ -8,3 +8,5 @@ reitzig/sdkman-for-fish@v2.1.0
 jorgebucaran/hydro
 patrickf1/fzf.fish
 jethrokuan/z
+jhillyerd/plugin-git
+catppuccin/fish
