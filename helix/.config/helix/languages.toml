@@ -1,4 +1,4 @@
-use-grammars = { only = [ "rust", "c", "cpp", "cue", "python", "cypherl", "go", "d2", "yaml", "json", "toml", "jsonnet", "comment", "starlark", "java" ] }
+use-grammars = { only = [ "rust", "c", "cpp", "cue", "python", "cypherl", "go", "d2", "yaml", "json", "toml", "jsonnet", "comment", "starlark", "java", "javascript" ] }
 
 [language-server.ruff-lsp]
 command = "ruff-lsp"
