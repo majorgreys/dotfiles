@@ -2,3 +2,4 @@
 ;;; $DOOMDIR/packages.el
 
 (package! catppuccin-theme)
+;;(package! meow)
