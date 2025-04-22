@@ -1,12 +1,12 @@
+jethrokuan/z
 jorgebucaran/fish-getopts
 danhper/fish-ssh-agent
 edc/bass
+jethrokuan/fzf
 brgmnn/fish-docker-compose
+pure-fish/pure
 jorgebucaran/nvm.fish
 lilyball/nix-env.fish
 reitzig/sdkman-for-fish@v2.1.0
-jorgebucaran/hydro
-patrickf1/fzf.fish
-jethrokuan/z
-jhillyerd/plugin-git
 catppuccin/fish
+jhillyerd/plugin-git
