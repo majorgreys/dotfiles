@@ -1,9 +1,10 @@
 use-grammars = { only = [ "rust", "c", "cpp", "cue", "python", "cypherl", "go", "d2", "yaml", "json", "toml", "jsonnet", "comment", "starlark", "java", "javascript" ] }
 
-[language-server.ruff-lsp]
-command = "ruff-lsp"
+[language-server.ruff]
+command = "ruff"
+arguments = ["server"]
 
-[language-server.ruff-lsp.config]
+[language-server.ruff.config]
 documentFormatting = true 
 settings.run = "onSave"
 
@@ -36,7 +37,7 @@ roots = [
   "hatch.toml",
 ]
 language-servers = [
-  { name = "ruff-lsp", only-features = [ "format", "diagnostics" ] },
+  { name = "ruff", only-features = [ "format", "diagnostics" ] },
   { name = "pyright", except-features = [ "format" ] },
 ]
 formatter = { command = "ruff", args = ["format", "--quiet", "-"] }
