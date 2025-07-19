@@ -2,7 +2,7 @@
     "height": 30, // Waybar height (to be removed for auto height)
     "modules-left": ["sway/workspaces", "sway/mode"],
     "modules-center": ["sway/window"],
-    "modules-right": ["network", "custom/waybar-mpris", "pulseaudio", "battery", "clock", "tray"],
+    "modules-right": ["network", "custom/waybar-mpris", "pulseaudio", "custom/tlp-mode", "custom/tlp-battery", "clock", "tray"],
     "sway/mode": {
         "format": "<span style=\"italic\">{}</span>"
     },
@@ -68,6 +68,18 @@
         "format-linked": "{ifname} (No IP) ",
         "format-disconnected": "⚠",
         "format-alt": "{ifname}: {ipaddr}/{cidr}"
+    },
+    "custom/tlp-mode": {
+        "exec": "tlp-stat -m 2>/dev/null || echo '?'",
+        "format": "⚡",
+        "tooltip-format": "TLP Mode: {}",
+        "interval": 60
+    },
+    "custom/tlp-battery": {
+        "exec": "cat /sys/class/power_supply/BAT0/capacity 2>/dev/null || echo '?'",
+        "format": "{}%",
+        "tooltip-format": "Battery: {}%",
+        "interval": 30
     }
 }
 

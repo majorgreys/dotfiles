@@ -40,7 +40,10 @@ output eDP-1 scale 1.75
 output HDMI-A-1 scale 1.75
 # external hidpi monitor
 output DP-1 scale 1.5
-output DP-3 scale 1.75
+output DP-3 {
+    scale 1.25
+    mode 2560x1440
+}
 output Virtual-1 resolution 3840x2160 scale 1.75
 
 default_border pixel 3
