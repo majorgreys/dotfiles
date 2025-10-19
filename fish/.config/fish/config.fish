@@ -1,8 +1,11 @@
 set fish_greeting
 
-if test $HOME/.local/bin
-    fish_add_path $HOME/.local/bin/
-end
+# PATH additions
+fish_add_path -g ~/.local/bin
+fish_add_path -g ~/.cargo/bin
+fish_add_path -g ~/.config/emacs/bin
+fish_add_path -g /opt/homebrew/bin
+fish_add_path -g /opt/homebrew/sbin
 
 if type -q go
     set -x GOROOT (go env GOROOT)
@@ -36,3 +39,5 @@ if test $TERM = dumb
 end
 
 direnv hook fish | source
+zoxide init fish | source
+starship init fish | source
