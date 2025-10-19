@@ -1,7 +1,24 @@
+## About This Repository
+
+This is a macOS-focused dotfiles repository for development environment setup.
+
+**Primary tools:**
+- Shell: Fish (with starship prompt)
+- Terminal: Ghostty
+- Editors: Doom Emacs, Neovim, Helix
+- Container runtime: Colima + Docker
+
+**Setup:**
+- Run `./setup.sh` for automated installation
+- Configs managed with GNU Stow
+- Archived Linux-specific configs in `archive/linux-configs` branch
+
 ## Ethical Guidelines
 
-- Do not attribute author to non-human
+- Do not attribute commits to non-human authors
 
 ## Development Practices
 
 - Use conventional commits
+- Test scripts before committing
+- Keep configs minimal and documented
