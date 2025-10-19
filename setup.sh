@@ -145,7 +145,7 @@ print_success "Go development tools installed"
 print_header "Setting up dotfiles with stow"
 
 # Stow configs for installed tools
-configs=("fish" "ghostty" "tmux" "vim" "helix")
+configs=("fish" "ghostty" "tmux" "vim" "helix" "doom" "starship")
 for config in "${configs[@]}"; do
     if [[ -d "$DOTFILES_DIR/$config" ]]; then
         print_warning "Stowing $config config..."
