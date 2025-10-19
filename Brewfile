@@ -10,8 +10,8 @@ brew "tmux"
 brew "starship"
 
 # Editors
-brew "emacs-plus@30", args: ["with-native-comp", "with-imagemagick", "with-poll"]
-brew "neovim"
+brew "emacs-plus@30"
+brew "vim"
 brew "helix"
 
 # Core Development Tools
