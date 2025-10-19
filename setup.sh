@@ -50,7 +50,8 @@ fi
 # ===================================
 print_header "Installing Brewfile packages"
 
-DOTFILES_DIR="$HOME/.dotfiles"
+# Detect dotfiles directory (script location)
+DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [[ -f "$DOTFILES_DIR/Brewfile" ]]; then
     print_warning "Running 'brew bundle install'..."
     cd "$DOTFILES_DIR" && brew bundle install
