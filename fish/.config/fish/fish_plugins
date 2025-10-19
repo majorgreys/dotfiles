@@ -8,5 +8,5 @@ pure-fish/pure
 jorgebucaran/nvm.fish
 lilyball/nix-env.fish
 reitzig/sdkman-for-fish@v2.1.0
-catppuccin/fish
 jhillyerd/plugin-git
+catppuccin/fish

@@ -7,5 +7,6 @@ fish/.config/fish/fish_read_history
 fish/.config/fish/generated_completions
 fish/.config/fish/completions/
 fish/.config/fish/functions
+fish/.config/fish/themes/
 helix/.config/helix/runtime/
 *.elc
