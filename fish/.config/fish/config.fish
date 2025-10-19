@@ -1,24 +1,9 @@
 set fish_greeting
 
-if test $HOME/.local/bin
-    fish_add_path $HOME/.local/bin/
-end
-
-if type -q go
-    set -x GOROOT (go env GOROOT)
-    set -x GOPATH (go env GOPATH)
-    set -x fish_user_paths $GOROOT/bin $fish_user_paths
-    set -x fish_user_paths $GOPATH/bin $fish_user_paths
-end
-
-if type -q eza
-    abbr -a ls eza
-    abbr -a ll eza -lagh --icons --group-directories-first
-end
-
-if type -q helix
-    abbr -a hx helix
-end
+# PATH additions
+fish_add_path -g ~/.local/bin
+fish_add_path -g ~/.cargo/bin
+fish_add_path -g /opt/homebrew/bin
 
 # Set up fisherman
 if not test -f ~/.config/fish/functions/fisher.fish
@@ -27,12 +12,6 @@ if not test -f ~/.config/fish/functions/fisher.fish
     fisher
 end
 
-# Needed for tramp
-if test $TERM = dumb
-    function fish_prompt
-        echo "\$ "
-    end
-    exec sh
-end
-
 direnv hook fish | source
+zoxide init fish | source
+starship init fish | source
