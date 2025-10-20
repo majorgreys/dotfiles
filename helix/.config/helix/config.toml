@@ -28,6 +28,10 @@ smart-case = false
 [keys.normal]
 "*" = ["move_char_right", "move_prev_word_start", "move_next_word_end", "search_selection",  "make_search_word_bounded", "search_next"]
 "#" = ["move_char_right", "move_prev_word_start", "move_next_word_end", "search_selection", "make_search_word_bounded", "search_prev"]
+# macOS copy current filepath and line number
+"A-y" = ":sh echo '%{filename}:%{line}' | pbcopy"
+# GitHub permalink
+"A-g" = ":sh ~/.local/bin/github-permalink '%{filename}' '%{line}'"
 
 [keys.normal.space]
 "." = "file_picker_in_current_buffer_directory"

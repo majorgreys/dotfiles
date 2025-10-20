@@ -38,6 +38,30 @@ if test $TERM = dumb
     exec sh
 end
 
+set -gx GITLAB_TOKEN (security find-generic-password -a $USER -s gitlab_token -w)
+
 direnv hook fish | source
 zoxide init fish | source
 starship init fish | source
+
+pyenv init - | source
+
+starship init fish | source
+set -gx VOLTA_HOME "$HOME/.volta"
+set -gx PATH "$VOLTA_HOME/bin" $PATH
+
+# Set Ghostty tab title (bypasses tmux to set outer terminal title)
+function set-tab-title
+    if set -q TMUX
+        # Inside tmux - use passthrough escape sequence
+        printf '\033Ptmux;\033\033]2;%s\033\033\007\033\\' "$argv"
+    else
+        # Direct to terminal
+        printf '\033]2;%s\007' "$argv"
+    end
+end
+
+# Source local configs (not synced to repo)
+if test -f ~/.config/fish/config.local.fish
+    source ~/.config/fish/config.local.fish
+end

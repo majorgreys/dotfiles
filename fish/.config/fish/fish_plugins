@@ -4,9 +4,8 @@ danhper/fish-ssh-agent
 edc/bass
 jethrokuan/fzf
 brgmnn/fish-docker-compose
-pure-fish/pure
 jorgebucaran/nvm.fish
-lilyball/nix-env.fish
-reitzig/sdkman-for-fish@v2.1.0
 jhillyerd/plugin-git
 catppuccin/fish
+budimanjojo/tmux.fish
+~/dev/worktrees/WT/experimental/users/tahir.butt/wt
