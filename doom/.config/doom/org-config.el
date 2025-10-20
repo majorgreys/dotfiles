@@ -99,10 +99,6 @@
           (:name "Someday"
            :tag "someday"))))
 
-;; Org-ql configuration for advanced queries
-(use-package! org-ql
-  :after org)
-
 ;; Consult-org-roam for enhanced search
 (use-package! consult-org-roam
   :after org-roam
@@ -186,12 +182,6 @@
         org-attach-dir-relative t                ; Use relative paths in links
         org-attach-preferred-new-method 'dir     ; Create directories for attachments
         org-attach-archive-delete 'query))       ; Ask before deleting on archive
-
-;; Citar for citation management
-(use-package! citar
-  :after org
-  :config
-  (setq citar-bibliography '("~/Documents/org/bibliography.bib")))
 
 ;; Org export with pandoc support
 (after! ox-pandoc
