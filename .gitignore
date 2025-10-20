@@ -12,3 +12,4 @@ helix/.config/helix/runtime/
 *.elc
 doom/.config/doom/*-local.el
 doom/.config/doom/packages-local.el
+doom/.config/doom/local.el
