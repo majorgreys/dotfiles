@@ -9,6 +9,7 @@
 (package! consult-org-roam)
 (package! org-super-agenda)
 (package! org-tidy)
+(package! org-roam-skill :recipe (:type git :host github :repo "majorgreys/org-roam-skill"))
 
 ;; Load local packages (not synced to repo)
 (load! "packages-local" nil t)
