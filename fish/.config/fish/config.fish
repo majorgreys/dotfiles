@@ -44,12 +44,6 @@ direnv hook fish | source
 zoxide init fish | source
 starship init fish | source
 
-pyenv init - | source
-
-starship init fish | source
-set -gx VOLTA_HOME "$HOME/.volta"
-set -gx PATH "$VOLTA_HOME/bin" $PATH
-
 # Set Ghostty tab title (bypasses tmux to set outer terminal title)
 function set-tab-title
     if set -q TMUX
