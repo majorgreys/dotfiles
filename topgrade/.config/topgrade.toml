@@ -1,3 +1,7 @@
+# Local configuration (not synced):
+# Create ~/.config/topgrade.d/local.toml for machine-specific settings
+# Files in topgrade.d/ are automatically included before this file
+
 [linux]
 arch_package_manager = "yay"
 yay_arguments = "--devel"
