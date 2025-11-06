@@ -11,13 +11,10 @@
 
 ;; Org-agenda configuration
 (after! org-agenda
-  (setq org-agenda-files '("~/Documents/org/daily/"
-                           "~/Documents/org/roam/"
-                           "~/Documents/org/projects/"
-                           ;; "~/Documents/org/jira/"
-                           ;; "~/Documents/org/jira/AOE.org"
-                           ;; "~/Documents/org/jira/INPLAT.org"
-                           "~/Documents/org/todo.org")
+  ;; Primary task source - todo.org contains canonical task state
+  ;; Daily/roam/weekly notes provide context but are not agenda sources
+  ;; Use org-roam-find (SPC n r f) to search for narrative context
+  (setq org-agenda-files '("~/Documents/org/todo.org")
         org-agenda-start-day nil
         org-agenda-start-on-weekday nil
         org-agenda-skip-deadline-if-done t
@@ -30,6 +27,20 @@
         org-priority-highest ?A
         org-priority-lowest ?C
         org-priority-default ?B)
+
+  ;; Prettify priority and status markers with Nerd Font icons
+  (add-hook 'org-mode-hook
+            (lambda ()
+              ;; Priority/Status markers - replace text with Nerd Font icons
+              (push '("PRIORITY:" . " ") prettify-symbols-alist)  ; U+F071 warning triangle
+              (push '("CRITICAL:" . " ") prettify-symbols-alist)  ; U+F06A exclamation circle
+
+              ;; Optional: Uncomment to replace Unicode emojis with Nerd Font equivalents
+              (push '("✅" . " ") prettify-symbols-alist)  ; U+F058 check-circle
+              (push '("🔄" . " ") prettify-symbols-alist)  ; U+F021 sync
+              (push '("⏸️" . " ") prettify-symbols-alist)  ; U+F04C pause
+
+              (prettify-symbols-mode 1)))
 
   ;; Custom org-babel blocks
   (add-to-list 'org-structure-template-alist '("slack" . "src slack"))
