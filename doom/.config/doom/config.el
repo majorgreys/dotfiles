@@ -12,7 +12,7 @@
       doom-font (font-spec :family "PragmataPro Mono Liga" :size 16)
       doom-unicode-font (font-spec :family "PragmataPro Mono Liga" :size 16)
       ;; doom-variable-pitch-font (font-spec :family "Iosevka Aile" :size 16)
-      doom-big-font (font-spec :family "PragmataPro Mono Liga" :size 24)
+      doom-big-font (font-spec :family "PragmataPro Mono" :size 24)
       display-line-numbers-type t)
 
 ;; Load configuration modules
@@ -48,7 +48,7 @@
       ;; Git auto-commit toggle
       :desc "Toggle git auto-commit" "t g" #'git-auto-commit-mode
       ;; Org-save function
-      :desc "Save org-roam note" "o s" #'thb/org-save
+      :desc "Save org-roam note" "o S" #'thb/org-save
       ;; Transcript processing
       :desc "Process transcript with Claude" "o t" #'thb/process-transcript-file
       :desc "Process current file as transcript" "o T" #'thb/process-current-file-as-transcript)
