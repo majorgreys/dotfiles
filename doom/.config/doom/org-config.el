@@ -25,7 +25,8 @@
   ;; Line spacing for better org-modern box rendering
   ;; org-modern calculates box borders from line-spacing
   ;; Recommended: 0.1-0.3 for proper vertical centering
-  (setq-default line-spacing 0.15)
+  ;; Phase 4: Using minimum recommended value for tighter boxes
+  (setq-default line-spacing 0.1)
 
   (setq org-todo-keywords
         '((sequence "ICEBOX(I) BACKLOG(b)" "TO-DO(T)" "TODO(t)" "IN-PROGRESS(i)" "PAUSED(p)" "BLOCKED(B)" "STALE(s)" "|" "DONE(d)" "CANCELLED(c)" "WON'T-DO(w)"))
@@ -168,12 +169,11 @@
         org-modern-table-vertical 1
         org-modern-table-horizontal 0.2
         org-modern-list '((42 . "◦") (43 . "•") (45 . "–"))
-        ;; Phase 3b: smaller border with smaller text
-        org-modern-label-border 2  ; Reduced to 2px for tighter spacing
+        ;; Phase 4: Let org-modern calculate border automatically from line-spacing
         org-modern-keyword nil     ; Keep keywords disabled for now
         org-modern-todo t))        ; Re-enable TODO box styling
 
-;; Phase 3b: Smaller text with normal width
+;; Phase 4: Smaller text with normal width, tighter line-spacing
 (custom-set-faces!
   '(org-modern-label :height 0.85 :width normal :weight regular))
 
