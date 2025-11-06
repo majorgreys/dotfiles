@@ -168,10 +168,14 @@
         org-modern-table-vertical 1
         org-modern-table-horizontal 0.2
         org-modern-list '((42 . "◦") (43 . "•") (45 . "–"))
-        ;; Phase 2: explicit border for proper top/bottom padding
-        org-modern-label-border 3  ; 3px border for vertical centering
+        ;; Phase 3: tuning label face and border
+        org-modern-label-border 4  ; Increased to 4px for better spacing
         org-modern-keyword nil     ; Keep keywords disabled for now
         org-modern-todo t))        ; Re-enable TODO box styling
+
+;; Phase 3: Customize org-modern-label face for PragmataPro
+(custom-set-faces!
+  '(org-modern-label :height 0.9 :width normal :weight regular))
 
 ;; Org-tidy to hide property drawers and show visual indicators
 (use-package! org-tidy
