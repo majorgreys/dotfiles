@@ -168,9 +168,10 @@
         org-modern-table-vertical 1
         org-modern-table-horizontal 0.2
         org-modern-list '((42 . "◦") (43 . "•") (45 . "–"))
-        ;; Re-enabled with line-spacing fix (Phase 1)
-        org-modern-keyword nil  ; Keep keywords disabled for now
-        org-modern-todo t))     ; Re-enable TODO box styling
+        ;; Phase 2: explicit border for proper top/bottom padding
+        org-modern-label-border 3  ; 3px border for vertical centering
+        org-modern-keyword nil     ; Keep keywords disabled for now
+        org-modern-todo t))        ; Re-enable TODO box styling
 
 ;; Org-tidy to hide property drawers and show visual indicators
 (use-package! org-tidy
