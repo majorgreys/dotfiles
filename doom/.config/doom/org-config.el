@@ -163,12 +163,10 @@
         org-modern-table-vertical 1
         org-modern-table-horizontal 0.2
         org-modern-list '((42 . "◦") (43 . "•") (45 . "–"))
-        org-modern-todo-faces
-        '(("TODO" :inverse-video t :inherit org-todo)
-          ("IN-PROGRESS" :inverse-video t :inherit org-todo)
-          ("WAITING" :inverse-video t :inherit org-todo)
-          ("DONE" :inverse-video t :inherit org-done)
-          ("CANCELLED" :inverse-video t :inherit org-done))))
+        ;; Disable TODO keyword styling - use standard org-mode faces instead
+        ;; This fixes alignment issues with emacs-mac@29
+        org-modern-keyword nil
+        org-modern-todo nil))
 
 ;; Org-tidy to hide property drawers and show visual indicators
 (use-package! org-tidy
