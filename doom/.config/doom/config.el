@@ -47,8 +47,6 @@
       :desc "Start Claude Code IDE" "C s" #'claude-code-ide
       ;; Git auto-commit toggle
       :desc "Toggle git auto-commit" "t g" #'git-auto-commit-mode
-      ;; Org-save function
-      :desc "Save org-roam note" "o S" #'thb/org-save
       ;; Transcript processing
       :desc "Process transcript with Claude" "o t" #'thb/process-transcript-file
       :desc "Process current file as transcript" "o T" #'thb/process-current-file-as-transcript)
