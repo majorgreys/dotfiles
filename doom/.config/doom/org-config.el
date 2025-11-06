@@ -22,6 +22,11 @@
 
 ;; Org TODO keywords and priorities
 (after! org
+  ;; Line spacing for better org-modern box rendering
+  ;; org-modern calculates box borders from line-spacing
+  ;; Recommended: 0.1-0.3 for proper vertical centering
+  (setq-default line-spacing 0.15)
+
   (setq org-todo-keywords
         '((sequence "ICEBOX(I) BACKLOG(b)" "TO-DO(T)" "TODO(t)" "IN-PROGRESS(i)" "PAUSED(p)" "BLOCKED(B)" "STALE(s)" "|" "DONE(d)" "CANCELLED(c)" "WON'T-DO(w)"))
         org-priority-highest ?A
@@ -163,10 +168,9 @@
         org-modern-table-vertical 1
         org-modern-table-horizontal 0.2
         org-modern-list '((42 . "◦") (43 . "•") (45 . "–"))
-        ;; Disable TODO keyword styling - use standard org-mode faces instead
-        ;; This fixes alignment issues with emacs-mac@29
-        org-modern-keyword nil
-        org-modern-todo nil))
+        ;; Re-enabled with line-spacing fix (Phase 1)
+        org-modern-keyword nil  ; Keep keywords disabled for now
+        org-modern-todo t))     ; Re-enable TODO box styling
 
 ;; Org-tidy to hide property drawers and show visual indicators
 (use-package! org-tidy
