@@ -74,7 +74,11 @@
   ;; Org-specific auto-save (recommended approach)
   (add-hook 'org-mode-hook #'auto-save-mode)
   (setq auto-save-visited-interval 10            ; Auto-save every 10 seconds
-        auto-save-visited-mode t))
+        auto-save-visited-mode t)
+
+  ;; Enable org-depend for task dependency management
+  ;; Provides :BLOCKER: property to establish blocking relationships between tasks
+  (require 'org-depend))
 
 ;; Org-capture templates
 (after! org
