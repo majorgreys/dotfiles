@@ -93,32 +93,51 @@
            "** TODO %? :research:\n"))))
 
 ;; Org-super-agenda configuration
+;; Aligned with Daily Planning Protocol v3.0 (Eisenhower Matrix)
 (use-package! org-super-agenda
   :after org-agenda
   :config
   (org-super-agenda-mode 1)
   (setq org-super-agenda-groups
-        '((:name "Today"
-           :time-grid t
-           :scheduled today
-           :deadline today)
-          (:name "Overdue"
-           :deadline past
-           :scheduled past)
-          (:name "High Priority"
+        '(;; P0: Urgent + Important (Oncall, production issues, security)
+          (:name "🚨 P0 - URGENT & IMPORTANT"
+           :tag "oncall"
            :priority "A")
-          (:name "In Progress"
-           :todo "IN-PROGRESS")
-          (:name "Waiting"
-           :todo "WAITING")
-          (:name "Projects"
-           :tag "project")
-          (:name "Work"
-           :tag "work")
-          (:name "Low Priority"
-           :priority "C")
-          (:name "Someday"
-           :tag "someday"))))
+
+          ;; P1: Important, Not Urgent (IN-PROGRESS scheduled today/overdue, high completion %)
+          (:name "🎯 P1 - IMPORTANT (Focus Work)"
+           :and (:todo "IN-PROGRESS"
+                 :scheduled today))
+          (:name "🎯 P1 - IMPORTANT (Overdue)"
+           :and (:todo "IN-PROGRESS"
+                 :scheduled past))
+
+          ;; P2: Committed (TODO items scheduled today with clear next actions)
+          (:name "📋 P2 - COMMITTED"
+           :and (:todo "TODO"
+                 :scheduled today))
+
+          ;; Deadlines approaching (within 3 days)
+          (:name "⏰ Deadlines Approaching"
+           :deadline future
+           :deadline today)
+
+          ;; DEFERRED/PAUSED items
+          (:name "⏸️ DEFERRED"
+           :todo ("PAUSED" "BLOCKED" "STALE"))
+
+          ;; P3: Nice-to-have (Carry-over work, code reviews)
+          (:name "📌 P3 - Nice-to-have"
+           :and (:scheduled past
+                 :not (:todo "IN-PROGRESS")))
+
+          ;; Future scheduled items
+          (:name "📅 Future"
+           :scheduled future)
+
+          ;; Everything else
+          (:name "📦 Other"
+           :anything t))))
 
 ;; Consult-org-roam for enhanced search
 (use-package! consult-org-roam
