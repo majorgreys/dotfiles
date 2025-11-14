@@ -104,6 +104,10 @@
            :tag "oncall"
            :priority "A")
 
+          ;; BLOCKED items (can be any priority - show them prominently)
+          (:name "🚧 BLOCKED (Waiting on Dependencies)"
+           :todo "BLOCKED")
+
           ;; P1: Important, Not Urgent (IN-PROGRESS scheduled today/overdue, high completion %)
           (:name "🎯 P1 - IMPORTANT (Focus Work)"
            :and (:todo "IN-PROGRESS"
@@ -122,9 +126,9 @@
            :deadline future
            :deadline today)
 
-          ;; DEFERRED/PAUSED items
+          ;; DEFERRED/PAUSED items (truly deferred work)
           (:name "⏸️ DEFERRED"
-           :todo ("PAUSED" "BLOCKED" "STALE"))
+           :todo ("PAUSED" "STALE"))
 
           ;; P3: Nice-to-have (Carry-over work, code reviews)
           (:name "📌 P3 - Nice-to-have"
