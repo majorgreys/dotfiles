@@ -18,7 +18,19 @@
         org-agenda-start-day nil
         org-agenda-start-on-weekday nil
         org-agenda-skip-deadline-if-done t
-        org-agenda-skip-scheduled-if-done t))
+        org-agenda-skip-scheduled-if-done t)
+
+  ;; Auto-save todo.org after any agenda edit operation
+  ;; This ensures changes made in agenda view are immediately persisted
+  (advice-add 'org-agenda-todo :after #'org-save-all-org-buffers)
+  (advice-add 'org-agenda-priority :after #'org-save-all-org-buffers)
+  (advice-add 'org-agenda-schedule :after #'org-save-all-org-buffers)
+  (advice-add 'org-agenda-deadline :after #'org-save-all-org-buffers)
+  (advice-add 'org-agenda-set-tags :after #'org-save-all-org-buffers)
+  (advice-add 'org-agenda-archive-default :after #'org-save-all-org-buffers)
+  (advice-add 'org-agenda-kill :after #'org-save-all-org-buffers)
+  (advice-add 'org-agenda-refile :after #'org-save-all-org-buffers)
+  (advice-add 'org-agenda-bulk-action :after #'org-save-all-org-buffers))
 
 ;; Org TODO keywords and priorities
 (after! org
