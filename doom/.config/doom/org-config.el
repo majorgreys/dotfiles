@@ -166,7 +166,7 @@ Returns absolute path for mmdc to write file to."
              ;; Inject default graph attributes after opening brace
              (body-with-defaults
               (replace-regexp-in-string
-               "^\\(digraph [^{]*{\\)"
+               "\\(digraph[^{]*{\\)"
                (concat "\\1\n  dpi=200;\n"
                        "  rankdir=LR;\n"
                        "  node [fontname=\"PragmataPro Mono\", fontsize=11, margin=\"0.3,0.15\"];\n"
