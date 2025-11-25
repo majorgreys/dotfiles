@@ -152,8 +152,8 @@ Returns absolute path for mmdc to write file to."
                             "  edge [fontsize=9];")))
       ;; Find the opening brace and inject after it
       (replace-regexp-in-string
-       "{" (concat "{ " defaults)
-       body nil t 1)))
+       "{" (concat "{" defaults)
+       body)))
 
   ;; Hook into org-babel to inject defaults before execution
   (defadvice! thb/org-babel-execute:dot--with-defaults (orig-fn body params)
