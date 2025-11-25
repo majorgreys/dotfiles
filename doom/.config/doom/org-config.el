@@ -64,6 +64,121 @@
   (add-to-list 'org-structure-template-alist '("slack" . "src slack"))
   (add-to-list 'org-structure-template-alist '("quote" . "quote"))
 
+  ;; Enable mermaid diagram support via ob-mermaid
+  (require 'ob-mermaid)
+  (add-to-list 'org-babel-load-languages '(mermaid . t))
+  (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
+  (setq ob-mermaid-cli-path "mmdc"
+        ob-mermaid-output-file-format "png"
+        org-babel-default-header-args:mermaid
+        '((:results . "file")
+          (:mermaid-config-file . "~/Documents/org/config/mermaid-config.json")
+          (:cmdline . "--theme default --scale 2")))
+
+  ;; Auto-generate mermaid filenames with timestamp
+  (defun thb/org-babel-mermaid-filename ()
+    "Generate timestamped mermaid filename in diagrams/YYYYMM/ directory.
+Returns absolute path for mmdc to write file to."
+    (let* ((date-dir (format-time-string "%Y%m"))
+           (timestamp (format-time-string "%s")))
+      (expand-file-name
+       (format "diagrams/%s/%s-diagram.png" date-dir timestamp)
+       org-directory)))
+
+  ;; Hook into mermaid execution to auto-generate :file
+  (advice-add 'org-babel-execute:mermaid :around
+    (lambda (orig-fn body params)
+      "Execute mermaid block, auto-generating :file if not specified."
+      (let* ((auto-file (thb/org-babel-mermaid-filename))
+             ;; Build params: add :file if missing, ensure :results file
+             (file (or (cdr (assoc :file params)) auto-file))
+             (params (if (assoc :file params)
+                        params
+                      (cons (cons :file file) params)))
+             (file-dir (file-name-directory file)))
+        ;; Ensure output directory exists
+        (unless (file-exists-p file-dir)
+          (make-directory file-dir t))
+        ;; Call original - it will return nil for :results file to work
+        (funcall orig-fn body params))))
+
+  ;; Display generated images with larger default width
+  (setq org-image-actual-width 900)
+
+  ;; Auto-display inline images after code block execution
+  (defun thb/mermaid-insert-results ()
+    "Insert file link in RESULTS block if it's for a mermaid block."
+    (save-excursion
+      ;; Get current src block info
+      (let ((element (org-element-at-point)))
+        (when (and element (eq (org-element-type element) 'src-block))
+          (let ((lang (org-element-property :language element)))
+            (when (string-equal lang "mermaid")
+              ;; This is a mermaid block - find the RESULTS block
+              (let ((block-end (org-element-property :end element)))
+                (goto-char block-end)
+                ;; Look for #+RESULTS:
+                (when (re-search-forward "^#\\+RESULTS:" (+ block-end 500) t)
+                  (let ((result-start (match-end 0)))
+                    ;; Check if result is empty (only whitespace until next heading or block)
+                    (forward-line 1)
+                    (let ((next-content (point)))
+                      (if (looking-at "^\\(#\\|$\\|\\*\\)")
+                          ;; RESULTS is empty - find the most recent mermaid file
+                          (let ((latest-file
+                                 (car (last (directory-files
+                                            (expand-file-name "diagrams/202511" org-directory)
+                                            t "\\.png$" nil)))))
+                            (when latest-file
+                              (let ((rel-file (file-relative-name latest-file (file-name-directory (buffer-file-name)))))
+                                (goto-char result-start)
+                                (insert "\n[[file:" rel-file "]]")))))))))))))))
+
+  (add-hook 'org-babel-after-execute-hook #'thb/mermaid-insert-results)
+  (add-hook 'org-babel-after-execute-hook #'org-display-inline-images)
+
+  ;; Graphviz (dot) diagram support with auto-defaults
+  (require 'ob-dot)
+  (add-to-list 'org-babel-load-languages '(dot . t))
+  (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
+  (setq org-babel-default-header-args:dot '((:results . "file")))
+
+  ;; Auto-generate dot filenames with timestamp
+  (defun thb/org-babel-dot-filename ()
+    "Generate timestamped dot filename in diagrams/YYYYMM/ directory."
+    (let* ((date-dir (format-time-string "%Y%m"))
+           (timestamp (format-time-string "%s")))
+      (expand-file-name
+       (format "diagrams/%s/%s-diagram.png" date-dir timestamp)
+       org-directory)))
+
+  ;; Inject default graphviz styling and auto-generate :file
+  (advice-add 'org-babel-execute:dot :around
+    (lambda (orig-fn body params)
+      "Execute dot block with default styling and auto-generated filename."
+      (let* ((auto-file (thb/org-babel-dot-filename))
+             ;; Add :file if missing
+             (file (or (cdr (assoc :file params)) auto-file))
+             (params (if (assoc :file params)
+                        params
+                      (cons (cons :file file) params)))
+             (file-dir (file-name-directory file))
+             ;; Inject default graph attributes after opening brace
+             (body-with-defaults
+              (replace-regexp-in-string
+               "^\\(digraph [^{]*{\\)"
+               (concat "\\1\n  dpi=200;\n"
+                       "  rankdir=LR;\n"
+                       "  node [fontname=\"PragmataPro Mono\", fontsize=11, margin=\"0.3,0.15\"];\n"
+                       "  edge [fontsize=9];")
+               body
+               nil nil 1)))
+        ;; Ensure output directory exists
+        (unless (file-exists-p file-dir)
+          (make-directory file-dir t))
+        ;; Call original with defaults injected
+        (funcall orig-fn body-with-defaults params))))
+
   ;; TODO timestamp tracking
   (setq org-log-done 'time                              ; Timestamp when marking DONE
         org-log-into-drawer t                           ; Store in LOGBOOK drawer
