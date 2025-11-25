@@ -163,22 +163,33 @@ Returns absolute path for mmdc to write file to."
        "{" (concat "{" defaults)
        body)))
 
-  ;; Execute dot blocks with auto-filename and styling defaults
-  (defadvice! thb/org-babel-execute:dot--auto-file (orig-fn body params)
+  ;; Pre-process dot blocks before execution: add :file if missing
+  (defun thb/dot-add-file-param ()
+    "Add :file parameter to dot blocks that don't have one."
+    (let ((element (org-element-at-point)))
+      (when (and element (eq (org-element-type element) 'src-block))
+        (when (string-equal (org-element-property :language element) "dot")
+          ;; Check if block already has :file
+          (let ((params (org-element-property :parameters element)))
+            (unless (string-match ":file" params)
+              ;; Block doesn't have :file - add it
+              (let ((file-name (thb/org-babel-dot-filename))
+                    (file-dir (file-name-directory (thb/org-babel-dot-filename))))
+                ;; Create directory
+                (unless (file-exists-p file-dir)
+                  (make-directory file-dir t))
+                ;; Add :file to the header-args
+                (save-excursion
+                  (goto-char (org-element-property :begin element))
+                  (search-forward "#+begin_src dot")
+                  (insert (format " :file %s" file-name))))))))))
+
+  (add-hook 'org-babel-before-execute-src-block-hook #'thb/dot-add-file-param)
+
+  ;; Execute dot blocks with styling defaults injected
+  (defadvice! thb/org-babel-execute:dot--inject-defaults (orig-fn body params)
     :around #'org-babel-execute:dot
-    "Execute dot block, auto-generating :file if not specified and injecting default styling."
-    (let* ((auto-file (thb/org-babel-dot-filename))
-           ;; Add :file if missing
-           (file (or (cdr (assoc :file params)) auto-file))
-           (params (if (assoc :file params)
-                      params
-                    (cons (cons :file file) params)))
-           (file-dir (file-name-directory file)))
-      ;; Ensure output directory exists
-      (unless (file-exists-p file-dir)
-        (make-directory file-dir t))
-      ;; Call original with styling injected
-      (funcall orig-fn (thb/org-babel-dot-inject-defaults body params) params)))
+    (funcall orig-fn (thb/org-babel-dot-inject-defaults body params) params))
 
   ;; TODO timestamp tracking
   (setq org-log-done 'time                              ; Timestamp when marking DONE
