@@ -102,8 +102,8 @@ Returns absolute path for mmdc to write file to."
         ;; Call original - it will return nil for :results file to work
         (funcall orig-fn body params))))
 
-  ;; Display generated images with larger default width
-  (setq org-image-actual-width 900)
+  ;; Display inline images at reasonable pixel width (scaled to fit window)
+  (setq org-image-actual-width 1600)
 
   ;; Auto-display inline images after code block execution
   (defun thb/mermaid-insert-results ()
@@ -414,5 +414,94 @@ Returns absolute path for mmdc to write file to."
                        (string-prefix-p (expand-file-name org-directory)
                                         (buffer-file-name)))
               (git-auto-commit-mode 1))))
+
+;; org-db-v3 server process management
+;; Automatically start and manage the org-db-v3 FastAPI backend server
+(defvar org-db-v3-server-process nil
+  "Process object for the org-db-v3 server.")
+
+(defun org-db-v3-start-server ()
+  "Start the org-db-v3 FastAPI server if not already running."
+  (interactive)
+  (let ((repo-path (expand-file-name "~/.config/emacs/.local/straight/repos/org-db-v3/python"))
+        (default-directory (expand-file-name "~/.config/emacs/.local/straight/repos/org-db-v3/python")))
+    (unless (and org-db-v3-server-process
+                 (process-live-p org-db-v3-server-process))
+      (setq org-db-v3-server-process
+            (make-process
+             :name "org-db-v3-server"
+             :buffer "*org-db-v3-server*"
+             :command `("uv" "run" "uvicorn" "org_db_server.main:app"
+                       "--host" "127.0.0.1" "--port" "8765")
+             :noquery t
+             :stderr "*org-db-v3-server*"))
+      (message "Starting org-db-v3 server... (this may take a few seconds on first run)"))))
+
+(defun org-db-v3-stop-server ()
+  "Stop the org-db-v3 FastAPI server."
+  (interactive)
+  (when (and org-db-v3-server-process
+             (process-live-p org-db-v3-server-process))
+    (delete-process org-db-v3-server-process)
+    (setq org-db-v3-server-process nil)
+    (message "org-db-v3 server stopped")))
+
+;; Start server automatically when org-db-v3 is first loaded
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (when (locate-library "org-db-v3")
+              (run-at-time 2 nil #'org-db-v3-start-server))))
+
+;; Clean up server on Emacs exit
+(add-hook 'kill-emacs-hook #'org-db-v3-stop-server)
+
+;; org-db-v3 configuration
+;; Semantic search indexing for org files
+(use-package! org-db-v3
+  :commands (org-db-v3-semantic-search org-db-v3-index-all org-db-v3-build-db)
+  :config
+  ;; Index all org files in org directory
+  (setq org-db-v3-root-dir org-directory
+        org-db-v3-db-file (expand-file-name ".org-db-v3.db" org-directory)
+
+        ;; FastAPI backend configuration
+        ;; The backend runs locally and handles embeddings, indexing, and vector search
+        org-db-v3-server-port 8765
+        org-db-v3-server-host "127.0.0.1"
+
+        ;; Indexing options
+        org-db-v3-index-html t           ; Index HTML files
+        org-db-v3-index-markdown t       ; Index markdown files
+        org-db-v3-index-pdfs nil         ; Don't index PDFs (slower)
+        org-db-v3-max-file-size 10485760 ; 10MB max file size
+
+        ;; Search options
+        org-db-v3-semantic-similarity-threshold 0.5  ; Relevance threshold
+        org-db-v3-semantic-search-limit 20)          ; Return top 20 results
+
+  ;; Enable org-db-v3 keybindings
+  (map! :map org-mode-map
+        :leader
+        (:prefix "s"  ; search prefix
+          :desc "Semantic search org-db" "d" #'org-db-v3-semantic-search)))
+
+;; sync-docs configuration for publishing to Confluence
+(after! sync-docs
+  ;; Confluence API credentials
+  ;; Set CONFLUENCE_HOST, CONFLUENCE_USER, CONFLUENCE_TOKEN env vars before use
+  ;; Example: export CONFLUENCE_HOST=https://datadoghq.atlassian.net
+  ;;          export CONFLUENCE_USER=your-email@company.com
+  ;;          export CONFLUENCE_TOKEN=your-api-token
+
+  ;; Default space and parent page (can be overridden per document)
+  (setq sync-docs-host (or (getenv "CONFLUENCE_HOST") "https://datadoghq.atlassian.net")
+        sync-docs-user (or (getenv "CONFLUENCE_USER") "")
+        sync-docs-token (or (getenv "CONFLUENCE_TOKEN") "")))
+
+;; Keybinding for publishing current org buffer to Confluence
+(after! org
+  (map! :map org-mode-map
+        :leader
+        :desc "Sync doc to Confluence" "p" #'sync-docs-publish-org-buffer))
 
 (provide 'org-config)
