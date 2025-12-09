@@ -499,6 +499,6 @@ Returns absolute path for mmdc to write file to."
 (after! org
   (map! :map org-mode-map
         :leader
-        :desc "Sync doc to Confluence" "p" #'sync-docs-publish-org-buffer))
+        :desc "Sync doc to Confluence" "p" #'sync-docs))
 
 (provide 'org-config)
