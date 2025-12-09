@@ -487,16 +487,10 @@ Returns absolute path for mmdc to write file to."
 
 ;; sync-docs configuration for publishing to Confluence
 (after! sync-docs
-  ;; Confluence API credentials
-  ;; Set CONFLUENCE_HOST, CONFLUENCE_USER, CONFLUENCE_TOKEN env vars before use
-  ;; Example: export CONFLUENCE_HOST=https://datadoghq.atlassian.net
-  ;;          export CONFLUENCE_USER=your-email@company.com
-  ;;          export CONFLUENCE_TOKEN=your-api-token
-
-  ;; Default space and parent page (can be overridden per document)
-  (setq sync-docs-host (or (getenv "CONFLUENCE_HOST") "https://datadoghq.atlassian.net")
-        sync-docs-user (or (getenv "CONFLUENCE_USER") "")
-        sync-docs-token (or (getenv "CONFLUENCE_TOKEN") "")))
+  ;; Reuse existing Atlassian API token (works for both JIRA and Confluence)
+  (setq sync-docs-host "https://datadoghq.atlassian.net"
+        sync-docs-user (getenv "JIRA_EMAIL")
+        sync-docs-token (getenv "JIRA_API_TOKEN")))
 
 ;; Keybinding for publishing current org buffer to Confluence
 (after! org
