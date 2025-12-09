@@ -490,7 +490,10 @@ Returns absolute path for mmdc to write file to."
   ;; Reuse existing Atlassian API token (works for both JIRA and Confluence)
   (setq sync-docs-host "https://datadoghq.atlassian.net"
         sync-docs-user (getenv "JIRA_EMAIL")
-        sync-docs-token (getenv "JIRA_API_TOKEN")))
+        sync-docs-token (getenv "JIRA_API_TOKEN")
+        ;; Publish to personal space and specific folder
+        sync-docs-space-id "~972692212"
+        sync-docs-default-parent-id "5310382491"))
 
 ;; Keybinding for publishing current org buffer to Confluence
 (after! org
