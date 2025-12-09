@@ -495,10 +495,4 @@ Returns absolute path for mmdc to write file to."
         sync-docs-space-id "~972692212"
         sync-docs-default-parent-id "5310382491"))
 
-;; Keybinding for publishing current org buffer to Confluence
-(after! (org sync-docs)
-  (map! :map org-mode-map
-        :leader
-        :desc "Sync doc to Confluence" "p" #'sync-docs))
-
 (provide 'org-config)
