@@ -1,0 +1,25 @@
+#+TITLE: Document Title
+#+AUTHOR: Your Name
+#+DATE: <2025-12-13 Fri>
+
+* Introduction
+
+This is a basic org-mode document template. Replace this content with your own.
+
+* Main Content
+
+** Section 1
+
+Your content here.
+
+** Section 2
+
+More content here.
+
+* Conclusion
+
+Final thoughts and summary.
+
+* Notes
+
+Additional notes and references.

@@ -1,0 +1,59 @@
+#+TITLE: Meeting Notes
+#+DATE: <2025-12-13 Fri>
+#+FILETAGS: :meetings:
+
+* Meeting: [Meeting Topic] <2025-12-13 Fri 10:00-11:00>
+:PROPERTIES:
+:CREATED: [2025-12-13 Fri 10:00]
+:ATTENDEES: Person 1, Person 2, Person 3
+:LOCATION: Conference Room / Zoom
+:END:
+
+** Agenda
+
+1. Topic 1
+2. Topic 2
+3. Topic 3
+4. Action items
+
+** Discussion Notes
+
+*** Topic 1: [Topic Name]
+
+Discussion points and notes.
+
+*** Topic 2: [Topic Name]
+
+Discussion points and notes.
+
+*** Topic 3: [Topic Name]
+
+Discussion points and notes.
+
+** Decisions Made
+
+- Decision 1
+- Decision 2
+
+** Action Items
+
+*** TODO [#A] Action item 1
+DEADLINE: <2025-12-20 Fri>
+:PROPERTIES:
+:ASSIGNED_TO: Person Name
+:END:
+
+*** TODO Action item 2
+SCHEDULED: <2025-12-15 Mon>
+:PROPERTIES:
+:ASSIGNED_TO: Person Name
+:EFFORT: 2:00
+:END:
+
+** Next Meeting
+
+SCHEDULED: <2025-12-20 Fri 10:00-11:00>
+
+Tentative agenda:
+- Review action items
+- Discuss next steps

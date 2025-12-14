@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:orgmode.org)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
