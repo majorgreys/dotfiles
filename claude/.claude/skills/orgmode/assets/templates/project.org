@@ -1,0 +1,67 @@
+#+TITLE: Project Name
+#+AUTHOR: Project Team
+#+DATE: <2025-12-13 Fri>
+#+FILETAGS: :projects:
+
+* PROJECT Project Name
+:PROPERTIES:
+:CUSTOM_ID: project-name
+:CATEGORY: projects
+:START_DATE: <2025-12-13 Fri>
+:END:
+SCHEDULED: <2025-12-13 Fri>
+DEADLINE: <2026-01-31 Sat>
+
+** Overview
+
+Brief project description and goals.
+
+** Objectives
+
+- [ ] Objective 1
+- [ ] Objective 2
+- [ ] Objective 3
+
+** Timeline
+
+*** TODO [#A] Phase 1: Planning
+SCHEDULED: <2025-12-13 Fri>
+DEADLINE: <2025-12-31 Wed>
+:PROPERTIES:
+:EFFORT: 20:00
+:END:
+
+**** TODO Define requirements
+**** TODO Create project plan
+**** TODO Assign resources
+
+*** TODO Phase 2: Execution
+SCHEDULED: <2026-01-01 Thu>
+DEADLINE: <2026-01-31 Sat>
+
+**** TODO Complete deliverable 1
+**** TODO Complete deliverable 2
+
+** Team
+
+| Name         | Role           | Contact          |
+|--------------+----------------+------------------|
+| Team Member  | Project Lead   | email@example.com |
+
+** Resources
+
+- [[file:docs/requirements.org][Requirements]]
+- [[file:docs/plan.org][Project Plan]]
+
+** Meeting Schedule
+
+*** TODO Weekly status meeting
+SCHEDULED: <2025-12-16 Mon 14:00 +1w>
+:PROPERTIES:
+:EFFORT: 1:00
+:LOCATION: Conference Room
+:END:
+
+** Notes
+
+Project notes and decisions go here.
