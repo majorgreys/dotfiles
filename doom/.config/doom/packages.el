@@ -8,8 +8,8 @@
 (package! consult-org-roam)
 (package! org-super-agenda)
 (package! org-tidy)
+(package! org-confluence-publish :recipe (:type git :repo "git@github.com:majorgreys/org-confluence-publish.git"))
 (package! ob-mermaid)
-(package! sync-docs :recipe (:type git :host github :repo "laertida/sync-docs.el"))
 
 (package! plz)
 ;; Semantic search and indexing
