@@ -51,4 +51,8 @@
       :desc "Process transcript with Claude" "o t" #'thb/process-transcript-file
       :desc "Process current file as transcript" "o T" #'thb/process-current-file-as-transcript)
 
+;; Image mode configuration
+(add-hook 'image-mode-hook
+  (lambda () (define-key image-mode-map (kbd "f") 'image-transform-fit-to-window)))
+
 (provide 'config)

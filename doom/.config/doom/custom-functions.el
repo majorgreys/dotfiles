@@ -12,44 +12,53 @@
   "Remove ANSI color codes from text for clean org-babel output."
   (replace-regexp-in-string "\033\\[[0-9;]*[a-zA-Z]" "" text))
 
-;; Org-save function for creating org-roam notes via Claude Code slash commands
-(defun thb/org-save (title &optional tags)
-  "Create a new org-roam note with TITLE and optional TAGS using org-roam.
-This function is designed to be called from Claude Code slash commands.
-TITLE is required, TAGS is optional and should be a space-separated string."
-  (interactive "sTitle: \nsOptional tags (space-separated): ")
-  (let* ((timestamp (format-time-string "%Y%m%d%H%M"))
-         (filename (format "%s.org" timestamp))
-         (filepath (expand-file-name filename org-roam-directory))
-         (raw-tags (if (and tags (not (string-empty-p tags)))
-                       (split-string (concat "claude " tags) " ")
-                     '("claude")))
-         (tag-list (concat ":" (mapconcat 'identity raw-tags ":") ":"))
-         (node-id (org-id-new)))
+;; Attach files and insert links in References section
+(defun thb/org-attach-file-to-references (path)
+  "Attach file from PATH and insert link in the References section.
 
-    ;; Create the node using org-roam-node-create and add to database
-    (let ((node (org-roam-node-create :title title
-                                      :file filepath
-                                      :id node-id
-                                      :tags raw-tags)))
+Creates or appends to a '* References' section at the end of the file with
+a link to the attached file. Works with local files and URLs.
 
-      ;; Create the file with org-roam structure matching capture templates
-      (with-temp-file filepath
-        (insert (format ":PROPERTIES:\n:ID:       %s\n:END:\n#+title: %s\n#+filetags: %s\n#+date: %s\n#+created: %s\n\n"
-                       node-id title tag-list
-                       (format-time-string "%Y-%m-%d")
-                       (format-time-string "[%Y-%m-%d %a %H:%M]"))))
+Supports:
+- Local file paths: /path/to/file.pdf
+- URLs: https://example.com/file.pdf
+- Base64 data URIs for images"
+  (interactive "fFile to attach: ")
 
-      ;; Add to org-roam database
-      (org-roam-db-sync)
+  (unless (eq major-mode 'org-mode)
+    (user-error "Not in an org buffer"))
 
-      ;; Open the file and position cursor at the end
-      (find-file filepath)
-      (goto-char (point-max))
+  (require 'org-download)
 
-      ;; Return the filename for confirmation
-      (message "Created org-roam note: %s" filename)
-      filename)))
+  (let ((original-point (point)))
+    (condition-case-unless-debug e
+        (let* ((raw-uri (url-unhex-string path))
+               (new-path (expand-file-name (org-download--fullname raw-uri)))
+               (_ (if (string-match-p (concat "^" (regexp-opt '("http" "https" "nfs" "ftp" "file")) ":/") path)
+                      (url-copy-file raw-uri new-path)
+                    (copy-file path new-path)))
+               (rel-path (file-relative-name new-path (file-name-directory (buffer-file-name))))
+               (file-name (file-name-nondirectory new-path)))
+
+          ;; Navigate to end of file and find/create References section
+          (goto-char (point-max))
+
+          ;; Try to find existing "* References" section
+          (if (re-search-backward "^\\* References" nil t)
+              (end-of-line)
+            ;; Create new section if it doesn't exist
+            (goto-char (point-max))
+            (unless (bolp) (newline))
+            (insert "\n* References")
+            (end-of-line))
+
+          ;; Append the link
+          (newline)
+          (insert (format "- [[file:%s][%s]]" rel-path file-name)))
+
+      (error
+       (goto-char original-point)
+       (user-error "Failed to attach file: %s" (error-message-string e))))))
 
 ;; Org-save-transcript function for processing Slack conversations
 (defun thb/org-save-transcript (title tags summary content thread-url)

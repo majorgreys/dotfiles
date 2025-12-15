@@ -288,6 +288,12 @@ Returns absolute path for mmdc to write file to."
   :config
   (setq consult-org-roam-grep-func #'consult-ripgrep))
 
+;; Org-roam configuration - load at startup for emacsclient compatibility
+(use-package! org-roam
+  :demand t  ; Load at startup to ensure org-roam-skill is available via emacsclient
+  :config
+  (org-roam-db-autosync-mode))
+
 ;; Org-roam node sorting
 (after! org-roam
   (setq org-roam-node-default-sort 'file-atime)  ; Sort by access time
@@ -485,14 +491,34 @@ Returns absolute path for mmdc to write file to."
         (:prefix "s"  ; search prefix
           :desc "Semantic search org-db" "d" #'org-db-v3-semantic-search)))
 
-;; sync-docs configuration for publishing to Confluence
-(after! sync-docs
-  ;; Reuse existing Atlassian API token (works for both JIRA and Confluence)
-  (setq sync-docs-host "https://datadoghq.atlassian.net"
-        sync-docs-user (getenv "JIRA_EMAIL")
-        sync-docs-token (getenv "JIRA_API_TOKEN")
-        ;; Publish to personal space and specific folder
-        sync-docs-space-id "~972692212"
-        sync-docs-default-parent-id "5310382491"))
+;; org-roam-skill configuration for Claude MCP integration
+;; Load org-roam-skill at startup to make it available via emacsclient
+(use-package! org-roam-skill
+  :after org-roam
+  :demand t  ; Load immediately after org-roam, don't defer
+  :config
+  (require 'org-roam-skill))
+
+;; org-confluence-publish configuration
+;; One-way publishing of org files to Confluence Cloud
+(use-package! org-confluence-publish
+  :after org
+  :commands (org-confluence-publish-buffer org-confluence-publish-open-page)
+  :config
+  ;; Confluence Cloud connection settings
+  ;; Reuse existing JIRA_EMAIL and JIRA_API_TOKEN environment variables
+  (setq org-confluence-publish-base-url "https://datadoghq.atlassian.net"
+        org-confluence-publish-email (getenv "JIRA_EMAIL")
+        org-confluence-publish-api-token (getenv "JIRA_API_TOKEN")
+        org-confluence-publish-space-key "~972692212"  ; Personal space
+        org-confluence-publish-parent-id "5915312686")  ; DRAFTS page
+
+  ;; Keybindings under SPC m e c (org-mode export confluence)
+  (map! :map org-mode-map
+        :localleader
+        (:prefix ("e" . "export")
+          (:prefix ("c" . "confluence")
+            :desc "Publish to Confluence" "c" #'org-confluence-publish-buffer
+            :desc "Open in browser" "o" #'org-confluence-publish-open-page))))
 
 (provide 'org-config)
