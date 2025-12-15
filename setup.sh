@@ -68,19 +68,32 @@ elif [[ -d "/usr/local/opt/emacs-plus@30/Emacs.app" ]]; then
     ln -sf /usr/local/opt/emacs-plus@30/Emacs.app /Applications/Emacs.app
 fi
 
-# Patch Emacs LaunchAgent for Ghostty TERMINFO
+# Setup Emacs LaunchAgent
 EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
-if [[ -f "$EMACS_PLIST" ]] && [[ -d "/Applications/Ghostty.app" ]]; then
-    print_warning "Patching Emacs LaunchAgent for Ghostty TERMINFO..."
-    if ! /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:TERMINFO" "$EMACS_PLIST" &>/dev/null; then
-        # Add EnvironmentVariables dict if it doesn't exist
-        /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" "$EMACS_PLIST" 2>/dev/null || true
-        # Add TERMINFO entry
-        /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:TERMINFO string /Applications/Ghostty.app/Contents/Resources/terminfo" "$EMACS_PLIST"
-        print_success "Added TERMINFO to Emacs LaunchAgent"
-    else
-        print_success "TERMINFO already configured in Emacs LaunchAgent"
-    fi
+EMACS_BIN="/opt/homebrew/bin/emacs"
+mkdir -p "$HOME/Library/LaunchAgents"
+
+if [[ ! -f "$EMACS_PLIST" ]] || ! /usr/libexec/PlistBuddy -c "Print :ProgramArguments" "$EMACS_PLIST" &>/dev/null; then
+    print_warning "Creating Emacs LaunchAgent..."
+
+    # Create plist with required keys
+    /usr/libexec/PlistBuddy -c "Add :Label string org.gnu.emacs.daemon" "$EMACS_PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :ProgramArguments array" "$EMACS_PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :ProgramArguments:0 string $EMACS_BIN" "$EMACS_PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :ProgramArguments:1 string --daemon" "$EMACS_PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :RunAtLoad bool true" "$EMACS_PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :StandardErrorPath string /tmp/emacs-daemon.err" "$EMACS_PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :StandardOutPath string /tmp/emacs-daemon.log" "$EMACS_PLIST" 2>/dev/null || true
+
+    print_success "Emacs LaunchAgent created"
+fi
+
+# Add Ghostty TERMINFO if Ghostty is installed
+if [[ -d "/Applications/Ghostty.app" ]]; then
+    print_warning "Configuring Ghostty TERMINFO..."
+    /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" "$EMACS_PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:TERMINFO /Applications/Ghostty.app/Contents/Resources/terminfo" "$EMACS_PLIST"
+    print_success "Ghostty TERMINFO configured"
 fi
 
 # ===================================
@@ -210,17 +223,21 @@ else
 fi
 
 # ===================================
-# 8. Restart Brew Services
+# 8. Load/Restart Emacs LaunchAgent
 # ===================================
-print_header "Restarting Brew Services"
-if brew services list | grep -q "emacs-plus@30.*started"; then
-    print_warning "Restarting Emacs service to pick up changes..."
-    brew services restart emacs-plus@30
-    print_success "Emacs service restarted"
-elif [[ -f "$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist" ]]; then
-    print_warning "Starting Emacs service..."
-    brew services start emacs-plus@30
-    print_success "Emacs service started"
+print_header "Loading Emacs LaunchAgent"
+EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
+if [[ -f "$EMACS_PLIST" ]]; then
+    if launchctl list org.gnu.emacs.daemon &>/dev/null; then
+        print_warning "Reloading Emacs daemon..."
+        launchctl unload "$EMACS_PLIST"
+        launchctl load "$EMACS_PLIST"
+        print_success "Emacs daemon reloaded"
+    else
+        print_warning "Starting Emacs daemon..."
+        launchctl load "$EMACS_PLIST"
+        print_success "Emacs daemon started"
+    fi
 fi
 
 # ===================================
