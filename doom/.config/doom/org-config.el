@@ -491,14 +491,6 @@ Returns absolute path for mmdc to write file to."
         (:prefix "s"  ; search prefix
           :desc "Semantic search org-db" "d" #'org-db-v3-semantic-search)))
 
-;; org-roam-skill configuration for Claude MCP integration
-;; Load org-roam-skill at startup to make it available via emacsclient
-(use-package! org-roam-skill
-  :after org-roam
-  :demand t  ; Load immediately after org-roam, don't defer
-  :config
-  (require 'org-roam-skill))
-
 ;; org-confluence-publish configuration
 ;; One-way publishing of org files to Confluence Cloud
 (use-package! org-confluence-publish
