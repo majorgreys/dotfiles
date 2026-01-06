@@ -2,6 +2,6 @@ font-family = PragmataPro Mono Liga
 font-size = 16
 window-padding-x = 5
 window-padding-y = 5
-theme = Catppuccin Macchiato
+theme = light:modus-operandi,dark:modus-vivendi
 command = /opt/homebrew/bin/fish
 shell-integration-features = ssh-terminfo,ssh-env

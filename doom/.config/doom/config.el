@@ -7,13 +7,25 @@
 
 (setq user-mail-address "tahir@tahirbutt.com"
       user-full-name    "Tahir H. Butt"
-      doom-theme 'catppuccin
-      catppuccin-flavor 'macchiato
+      doom-theme 'modus-operandi
       doom-font (font-spec :family "PragmataPro Mono Liga" :size 16)
       doom-unicode-font (font-spec :family "PragmataPro Mono Liga" :size 16)
       ;; doom-variable-pitch-font (font-spec :family "Iosevka Aile" :size 16)
       doom-big-font (font-spec :family "PragmataPro Mono" :size 24)
       display-line-numbers-type t)
+
+;; Toggle between modus light and dark themes
+(defun thb/toggle-modus-theme ()
+  "Toggle between modus-operandi (light) and modus-vivendi (dark)."
+  (interactive)
+  (if (eq doom-theme 'modus-operandi)
+      (progn
+        (setq doom-theme 'modus-vivendi)
+        (load-theme 'modus-vivendi t)
+        (message "Dark theme"))
+    (setq doom-theme 'modus-operandi)
+    (load-theme 'modus-operandi t)
+    (message "Light theme")))
 
 ;; Load configuration modules
 (load! "org-config")
@@ -26,7 +38,6 @@
 
 ;; Custom keybindings
 (map! :leader
-      :desc "Org-roam find file" "n r f" #'org-roam-node-find
       :desc "Org-roam insert link" "n r i" #'org-roam-node-insert
       :desc "Org-roam capture" "n r c" #'org-roam-capture
       :desc "Org-roam dailies capture today" "n r d c" #'(lambda () (interactive) (org-roam-dailies-capture-today nil "d"))
@@ -47,6 +58,8 @@
       :desc "Start Claude Code IDE" "C s" #'claude-code-ide
       ;; Git auto-commit toggle
       :desc "Toggle git auto-commit" "t g" #'git-auto-commit-mode
+      ;; Theme toggle
+      :desc "Toggle light/dark theme" "t t" #'thb/toggle-modus-theme
       ;; Transcript processing
       :desc "Process transcript with Claude" "o t" #'thb/process-transcript-file
       :desc "Process current file as transcript" "o T" #'thb/process-current-file-as-transcript)
