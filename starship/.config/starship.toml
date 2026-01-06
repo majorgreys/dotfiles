@@ -28,7 +28,7 @@ $cmd_duration\
 $line_break\
 $character"""
 
-palette = 'catppuccin_macchiato'
+palette = 'modus_vivendi'
 
 [os]
 disabled = false
@@ -276,3 +276,31 @@ surface0 = "#363a4f"
 base = "#24273a"
 mantle = "#1e2030"
 crust = "#181926"
+
+[palettes.modus_vivendi]
+rosewater = "#feacd0"
+flamingo = "#ff7f9f"
+pink = "#feacd0"
+mauve = "#b6a0ff"
+red = "#ff5f59"
+maroon = "#ff7f9f"
+peach = "#dfaf7a"
+yellow = "#d0bc00"
+green = "#44bc44"
+teal = "#00d3d0"
+sky = "#6ae4b9"
+sapphire = "#00bcff"
+blue = "#2fafff"
+lavender = "#b6a0ff"
+text = "#ffffff"
+subtext1 = "#989898"
+subtext0 = "#989898"
+overlay2 = "#535353"
+overlay1 = "#535353"
+overlay0 = "#535353"
+surface2 = "#535353"
+surface1 = "#1e1e1e"
+surface0 = "#1e1e1e"
+base = "#000000"
+mantle = "#1e1e1e"
+crust = "#1e1e1e"
