@@ -41,24 +41,10 @@
   (setq-default line-spacing 0.1)
 
   (setq org-todo-keywords
-        '((sequence "ICEBOX(I) BACKLOG(b)" "TO-DO(T)" "TODO(t)" "IN-PROGRESS(i)" "PAUSED(p)" "BLOCKED(B)" "STALE(s)" "|" "DONE(d)" "CANCELLED(c)" "WON'T-DO(w)"))
+        '((sequence "ICEBOX(I) BACKLOG(b)" "TO-DO(T)" "TODO(t)" "IN-PROGRESS(i)" "PAUSED(p)" "BLOCKED(B)" "|" "DONE(d)" "CANCELLED(c)"))
         org-priority-highest ?A
         org-priority-lowest ?C
         org-priority-default ?B)
-
-  ;; Prettify priority and status markers with Nerd Font icons
-  (add-hook 'org-mode-hook
-            (lambda ()
-              ;; Priority/Status markers - replace text with Nerd Font icons
-              (push '("PRIORITY:" . " ") prettify-symbols-alist)  ; U+F071 warning triangle
-              (push '("CRITICAL:" . " ") prettify-symbols-alist)  ; U+F06A exclamation circle
-
-              ;; Optional: Uncomment to replace Unicode emojis with Nerd Font equivalents
-              (push '("✅" . " ") prettify-symbols-alist)  ; U+F058 check-circle
-              (push '("🔄" . " ") prettify-symbols-alist)  ; U+F021 sync
-              (push '("⏸️" . " ") prettify-symbols-alist)  ; U+F04C pause
-
-              (prettify-symbols-mode 1)))
 
   ;; Custom org-babel blocks
   (add-to-list 'org-structure-template-alist '("slack" . "src slack"))
@@ -87,20 +73,20 @@ Returns absolute path for mmdc to write file to."
 
   ;; Hook into mermaid execution to auto-generate :file
   (advice-add 'org-babel-execute:mermaid :around
-    (lambda (orig-fn body params)
-      "Execute mermaid block, auto-generating :file if not specified."
-      (let* ((auto-file (thb/org-babel-mermaid-filename))
-             ;; Build params: add :file if missing, ensure :results file
-             (file (or (cdr (assoc :file params)) auto-file))
-             (params (if (assoc :file params)
-                        params
-                      (cons (cons :file file) params)))
-             (file-dir (file-name-directory file)))
-        ;; Ensure output directory exists
-        (unless (file-exists-p file-dir)
-          (make-directory file-dir t))
-        ;; Call original - it will return nil for :results file to work
-        (funcall orig-fn body params))))
+              (lambda (orig-fn body params)
+                "Execute mermaid block, auto-generating :file if not specified."
+                (let* ((auto-file (thb/org-babel-mermaid-filename))
+                       ;; Build params: add :file if missing, ensure :results file
+                       (file (or (cdr (assoc :file params)) auto-file))
+                       (params (if (assoc :file params)
+                                   params
+                                 (cons (cons :file file) params)))
+                       (file-dir (file-name-directory file)))
+                  ;; Ensure output directory exists
+                  (unless (file-exists-p file-dir)
+                    (make-directory file-dir t))
+                  ;; Call original - it will return nil for :results file to work
+                  (funcall orig-fn body params))))
 
   ;; Display inline images at reasonable pixel width (scaled to fit window)
   (setq org-image-actual-width 1600)
@@ -127,8 +113,8 @@ Returns absolute path for mmdc to write file to."
                           ;; RESULTS is empty - find the most recent mermaid file
                           (let ((latest-file
                                  (car (last (directory-files
-                                            (expand-file-name "diagrams/202511" org-directory)
-                                            t "\\.png$" nil)))))
+                                             (expand-file-name "diagrams/202511" org-directory)
+                                             t "\\.png$" nil)))))
                             (when latest-file
                               (let ((rel-file (file-relative-name latest-file (file-name-directory (buffer-file-name)))))
                                 (goto-char result-start)
@@ -191,6 +177,13 @@ Returns absolute path for mmdc to write file to."
     :around #'org-babel-execute:dot
     (funcall orig-fn (thb/org-babel-dot-inject-defaults body params) params))
 
+  ;; Python babel blocks - use uv run for PEP 723 inline dependency support
+  ;; The dash tells uv to read script from stdin (not launch interpreter)
+  ;; This enables automatic dependency resolution from # /// script blocks
+  (setq org-babel-python-command "uv run -"
+        org-babel-default-header-args:python
+        '((:results . "output")))
+
   ;; Bash/shell babel blocks - disable colors by default
   ;; This prevents ANSI color escape codes in output (e.g., from ddr commands)
   (setq org-babel-default-header-args:bash
@@ -233,10 +226,16 @@ Returns absolute path for mmdc to write file to."
   (setq org-capture-templates
         '(("t" "Todo" entry (file+headline "~/Documents/org/todo.org" "Inbox")
            "** TODO %?\nSCHEDULED: %t\n")
-          ("i" "Interrupt" entry (file+headline "~/Documents/org/todo.org" "Inbox")
-           "** TODO %?:interrupt:\nSCHEDULED: %t\n")
-          ("p" "Project Task" entry (file+headline "~/Documents/org/todo.org" "Projects")
-           "*** TODO %?\nSCHEDULED: %t\n")
+          ("i" "Interrupt" entry (file+olp "~/Documents/org/todo.org" "Areas" "Interrupt")
+           "*** TODO %? :interrupt:\nSCHEDULED: %t\n")
+          ("e" "Enablement" entry (file+olp "~/Documents/org/todo.org" "Areas" "Enablement")
+           "*** TODO %? :enablement:\nSCHEDULED: %t\n")
+          ("c" "Compliance" entry (file+olp "~/Documents/org/todo.org" "Areas" "Compliance")
+           "*** TODO %? :compliance:\nSCHEDULED: %t\n")
+          ("l" "Leadership" entry (file+olp "~/Documents/org/todo.org" "Areas" "Leadership")
+           "*** TODO %? :leadership:\nSCHEDULED: %t\n")
+          ("p" "Personal" entry (file+olp "~/Documents/org/todo.org" "Areas" "Personal")
+           "*** TODO %? :personal:\nSCHEDULED: %t\n")
           ("r" "Research" entry (file+headline "~/Documents/org/todo.org" "Inbox")
            "** TODO %? :research:\n"))))
 
@@ -253,33 +252,33 @@ Returns absolute path for mmdc to write file to."
           (:discard (:todo ("PROJ" "BACKLOG" "CANCELLED")))
 
           ;; P0: Urgent + Important (Oncall, production issues, security)
-          (:name "🚨 URGENT & IMPORTANT"
+          (:name "Urgent"
            :tag "oncall"
            :priority "A")
 
           ;; BLOCKED items need attention to unblock
-          (:name "🚧 BLOCKED"
+          (:name "Blocked"
            :todo "BLOCKED")
 
           ;; Currently active work
-          (:name "⚡ IN PROGRESS"
+          (:name "In progress"
            :todo "IN-PROGRESS"
            :order 1)
 
           ;; Overdue items that need rescheduling or completion
-          (:name "⚠️ OVERDUE"
+          (:name "Overdue"
            :and (:scheduled past
-                 :todo ("TODO" "PAUSED" "STALE"))
+                 :todo ("TODO" "PAUSED"))
            :order 2)
 
           ;; Today's scheduled work
-          (:name "📋 TODAY"
+          (:name "Today"
            :and (:scheduled today
                  :todo "TODO")
            :order 3)
 
           ;; Deadlines within next 3 days
-          (:name "⏰ DEADLINES"
+          (:name "Deadlines"
            :deadline past
            :deadline today
            :deadline future
@@ -287,56 +286,56 @@ Returns absolute path for mmdc to write file to."
 
           ;; Hide future items and deferred work from focus view
           (:discard (:scheduled future))
-          (:discard (:todo ("PAUSED" "STALE")))
+          (:discard (:todo "PAUSED"))
 
           ;; Catch remaining actionable items
-          (:name "📌 OTHER TASKS"
+          (:name "Other"
            :todo "TODO"
            :order 5)))
 
   (setq thb/org-super-agenda-groups-full
         '(;; P0: Urgent + Important (Oncall, production issues, security)
-          (:name "🚨 P0 - URGENT & IMPORTANT"
+          (:name "Urgent"
            :tag "oncall"
            :priority "A")
 
           ;; BLOCKED items (can be any priority - show them prominently)
-          (:name "🚧 BLOCKED (Waiting on Dependencies)"
+          (:name "Blocked"
            :todo "BLOCKED")
 
           ;; P1: Important, Not Urgent (IN-PROGRESS scheduled today/overdue, high completion %)
-          (:name "🎯 P1 - IMPORTANT (Focus Work)"
+          (:name "In progress (today)"
            :and (:todo "IN-PROGRESS"
                  :scheduled today))
-          (:name "🎯 P1 - IMPORTANT (Overdue)"
+          (:name "In progress (overdue)"
            :and (:todo "IN-PROGRESS"
                  :scheduled past))
 
           ;; P2: Committed (TODO items scheduled today with clear next actions)
-          (:name "📋 P2 - COMMITTED"
+          (:name "Today"
            :and (:todo "TODO"
                  :scheduled today))
 
           ;; Deadlines approaching (within 3 days)
-          (:name "⏰ Deadlines Approaching"
+          (:name "Deadlines"
            :deadline future
            :deadline today)
 
           ;; DEFERRED/PAUSED items (truly deferred work)
-          (:name "⏸️ DEFERRED"
-           :todo ("PAUSED" "STALE"))
+          (:name "Paused"
+           :todo "PAUSED")
 
           ;; P3: Nice-to-have (Carry-over work, code reviews)
-          (:name "📌 P3 - Nice-to-have"
+          (:name "Overdue"
            :and (:scheduled past
                  :not (:todo "IN-PROGRESS")))
 
           ;; Future scheduled items
-          (:name "📅 Future"
+          (:name "Future"
            :scheduled future)
 
           ;; Everything else
-          (:name "📦 Other"
+          (:name "Other"
            :anything t)))
 
   ;; Set default to focus view
@@ -350,7 +349,7 @@ Returns absolute path for mmdc to write file to."
                     ((org-agenda-span 1)
                      (org-agenda-start-day nil)
                      (org-super-agenda-groups thb/org-super-agenda-groups-focus)
-                     (org-agenda-overriding-header "🎯 TODAY'S FOCUS\n"))))
+                     (org-agenda-overriding-header "Today\n"))))
            ((org-agenda-compact-blocks t)
             (org-agenda-skip-deadline-prewarning-if-scheduled t)
             (org-agenda-skip-scheduled-if-deadline-is-shown t)))
@@ -360,18 +359,18 @@ Returns absolute path for mmdc to write file to."
                     ((org-agenda-span 7)
                      (org-agenda-start-day nil)
                      (org-super-agenda-groups thb/org-super-agenda-groups-full)
-                     (org-agenda-overriding-header "📅 FULL AGENDA\n"))))
+                     (org-agenda-overriding-header "Agenda\n"))))
            ((org-agenda-compact-blocks t)))
 
           ("b" "Blocked Items"
            ((todo "BLOCKED"
-                  ((org-agenda-overriding-header "🚧 BLOCKED ITEMS\n")
+                  ((org-agenda-overriding-header "Blocked\n")
                    (org-agenda-sorting-strategy '(priority-down category-keep)))))
            ((org-agenda-compact-blocks t)))
 
           ("p" "Projects Overview"
            ((tags "PROJ"
-                  ((org-agenda-overriding-header "📊 ACTIVE PROJECTS\n")
+                  ((org-agenda-overriding-header "Projects\n")
                    (org-super-agenda-groups
                     '((:auto-property "PROJ_LOCATION")
                       (:discard (:todo "DONE"))
@@ -380,7 +379,7 @@ Returns absolute path for mmdc to write file to."
 
           ("i" "In Progress"
            ((todo "IN-PROGRESS"
-                  ((org-agenda-overriding-header "⚡ IN PROGRESS\n")
+                  ((org-agenda-overriding-header "In Progress\n")
                    (org-agenda-sorting-strategy '(priority-down scheduled-up)))))
            ((org-agenda-compact-blocks t)))
 
@@ -389,7 +388,7 @@ Returns absolute path for mmdc to write file to."
                     ((org-agenda-span 'week)
                      (org-agenda-start-on-weekday 1)
                      (org-super-agenda-groups thb/org-super-agenda-groups-full)
-                     (org-agenda-overriding-header "📆 WEEKLY REVIEW\n"))))
+                     (org-agenda-overriding-header "Weekly\n"))))
            ((org-agenda-compact-blocks t))))))
 
 ;; Toggle between focus and full agenda views
@@ -399,9 +398,9 @@ Returns absolute path for mmdc to write file to."
   (if (equal org-super-agenda-groups thb/org-super-agenda-groups-focus)
       (progn
         (setq org-super-agenda-groups thb/org-super-agenda-groups-full)
-        (message "Switched to FULL agenda view"))
+        (message "Full view"))
     (setq org-super-agenda-groups thb/org-super-agenda-groups-focus)
-    (message "Switched to FOCUS agenda view"))
+    (message "Focus view"))
   (when (bound-and-true-p org-agenda-buffer-name)
     (org-agenda-redo-all)))
 
@@ -422,20 +421,46 @@ Returns absolute path for mmdc to write file to."
   :config
   (org-roam-db-autosync-mode))
 
-;; Org-roam node sorting
+;; Org-roam node sorting and display
 (after! org-roam
-  (setq org-roam-node-default-sort 'file-atime)  ; Sort by access time
+  (setq org-roam-node-default-sort 'file-mtime  ; Sort by modified time
+        ;; Show tags in main completion UI
+        org-roam-node-display-template (concat "${title:*} " (propertize "${tags:10}" 'face 'org-tag))
+        ;; Show modified time as annotation
+        org-roam-node-annotation-function
+        (lambda (node)
+          (marginalia--time (org-roam-node-file-mtime node)))))
 
-  ;; Disable Vertico sorting for org-roam-node-find to preserve org-roam's sorting
-  (defun my/org-roam-node-find ()
-    "Find org-roam node with proper sorting."
-    (interactive)
-    (let ((vertico-sort-function nil))
-      (org-roam-node-find)))
+;; Configure Vertico to preserve org-roam's sorting and enable grid mode
+(after! vertico
+  (setq vertico-multiform-commands
+        '((org-roam-node-find
+           (vertico-sort-function . nil)
+           vertico-grid-mode)))
 
-  ;; Override default binding
-  (map! :leader
-        :desc "Find node (sorted)" "n r f" #'my/org-roam-node-find))
+  ;; Grid configuration - show more notes at once
+  (setq vertico-grid-separator "  "
+        vertico-grid-lookahead 50))
+
+;; Embark actions for org-roam nodes (Doom already configures embark)
+(after! embark
+  (defvar-keymap embark-org-roam-node-map
+    :doc "Actions for org-roam nodes"
+    :parent embark-general-map
+    "o" #'org-roam-node-open
+    "i" #'org-roam-node-insert
+    "r" #'org-roam-buffer-toggle
+    "f" #'org-roam-node-find)
+
+  (add-to-list 'embark-keymap-alist '(org-roam-node . embark-org-roam-node-map))
+
+  ;; Make embark recognize org-roam-node candidates
+  (defun embark-org-roam-node-target ()
+    "Target org-roam nodes in completion."
+    (when-let ((node (get-text-property 0 'node (minibuffer-contents-no-properties))))
+      `(org-roam-node ,(org-roam-node-title node) . ,node)))
+
+  (add-to-list 'embark-target-finders 'embark-org-roam-node-target))
 
 ;; Org-roam capture templates
 (after! org-roam
@@ -566,7 +591,7 @@ Returns absolute path for mmdc to write file to."
              :name "org-db-v3-server"
              :buffer "*org-db-v3-server*"
              :command `("uv" "run" "uvicorn" "org_db_server.main:app"
-                       "--host" "127.0.0.1" "--port" "8765")
+                        "--host" "127.0.0.1" "--port" "8765")
              :noquery t
              :stderr "*org-db-v3-server*"))
       (message "Starting org-db-v3 server... (this may take a few seconds on first run)"))))
@@ -617,15 +642,7 @@ Returns absolute path for mmdc to write file to."
   (map! :map org-mode-map
         :leader
         (:prefix "s"  ; search prefix
-          :desc "Semantic search org-db" "d" #'org-db-v3-semantic-search)))
-
-;; org-roam-skill configuration for Claude MCP integration
-;; Load org-roam-skill at startup to make it available via emacsclient
-(use-package! org-roam-skill
-  :after org-roam
-  :demand t  ; Load immediately after org-roam, don't defer
-  :config
-  (require 'org-roam-skill))
+         :desc "Semantic search org-db" "d" #'org-db-v3-semantic-search)))
 
 ;; org-confluence-publish configuration
 ;; One-way publishing of org files to Confluence Cloud
@@ -645,8 +662,8 @@ Returns absolute path for mmdc to write file to."
   (map! :map org-mode-map
         :localleader
         (:prefix ("e" . "export")
-          (:prefix ("c" . "confluence")
-            :desc "Publish to Confluence" "c" #'org-confluence-publish-buffer
-            :desc "Open in browser" "o" #'org-confluence-publish-open-page))))
+                 (:prefix ("c" . "confluence")
+                  :desc "Publish to Confluence" "c" #'org-confluence-publish-buffer
+                  :desc "Open in browser" "o" #'org-confluence-publish-open-page))))
 
 (provide 'org-config)
