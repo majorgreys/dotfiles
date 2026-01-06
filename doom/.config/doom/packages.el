@@ -2,6 +2,7 @@
 ;;; $DOOMDIR/packages.el
 
 (package! catppuccin-theme)
+(package! modus-themes)
 (package! git-auto-commit-mode)
 
 ;; Personal org-mode packages

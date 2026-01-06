@@ -191,6 +191,15 @@ Returns absolute path for mmdc to write file to."
     :around #'org-babel-execute:dot
     (funcall orig-fn (thb/org-babel-dot-inject-defaults body params) params))
 
+  ;; Bash/shell babel blocks - disable colors by default
+  ;; This prevents ANSI color escape codes in output (e.g., from ddr commands)
+  (setq org-babel-default-header-args:bash
+        '((:results . "output")
+          (:prologue . "export DDR_DISABLE_COLORS=true")))
+  (setq org-babel-default-header-args:sh
+        '((:results . "output")
+          (:prologue . "export DDR_DISABLE_COLORS=true")))
+
   ;; TODO timestamp tracking
   (setq org-log-done 'time                              ; Timestamp when marking DONE
         org-log-into-drawer t                           ; Store in LOGBOOK drawer
@@ -237,7 +246,55 @@ Returns absolute path for mmdc to write file to."
   :after org-agenda
   :config
   (org-super-agenda-mode 1)
-  (setq org-super-agenda-groups
+
+  ;; Define preset group configurations for different views
+  (setq thb/org-super-agenda-groups-focus
+        '(;; Hide PROJ headings and BACKLOG items in focus view
+          (:discard (:todo ("PROJ" "BACKLOG" "CANCELLED")))
+
+          ;; P0: Urgent + Important (Oncall, production issues, security)
+          (:name "🚨 URGENT & IMPORTANT"
+           :tag "oncall"
+           :priority "A")
+
+          ;; BLOCKED items need attention to unblock
+          (:name "🚧 BLOCKED"
+           :todo "BLOCKED")
+
+          ;; Currently active work
+          (:name "⚡ IN PROGRESS"
+           :todo "IN-PROGRESS"
+           :order 1)
+
+          ;; Overdue items that need rescheduling or completion
+          (:name "⚠️ OVERDUE"
+           :and (:scheduled past
+                 :todo ("TODO" "PAUSED" "STALE"))
+           :order 2)
+
+          ;; Today's scheduled work
+          (:name "📋 TODAY"
+           :and (:scheduled today
+                 :todo "TODO")
+           :order 3)
+
+          ;; Deadlines within next 3 days
+          (:name "⏰ DEADLINES"
+           :deadline past
+           :deadline today
+           :deadline future
+           :order 4)
+
+          ;; Hide future items and deferred work from focus view
+          (:discard (:scheduled future))
+          (:discard (:todo ("PAUSED" "STALE")))
+
+          ;; Catch remaining actionable items
+          (:name "📌 OTHER TASKS"
+           :todo "TODO"
+           :order 5)))
+
+  (setq thb/org-super-agenda-groups-full
         '(;; P0: Urgent + Important (Oncall, production issues, security)
           (:name "🚨 P0 - URGENT & IMPORTANT"
            :tag "oncall"
@@ -280,7 +337,78 @@ Returns absolute path for mmdc to write file to."
 
           ;; Everything else
           (:name "📦 Other"
-           :anything t))))
+           :anything t)))
+
+  ;; Set default to focus view
+  (setq org-super-agenda-groups thb/org-super-agenda-groups-focus))
+
+;; Custom agenda commands for different views
+(after! org-agenda
+  (setq org-agenda-custom-commands
+        '(("f" "Today's Focus"
+           ((agenda ""
+                    ((org-agenda-span 1)
+                     (org-agenda-start-day nil)
+                     (org-super-agenda-groups thb/org-super-agenda-groups-focus)
+                     (org-agenda-overriding-header "🎯 TODAY'S FOCUS\n"))))
+           ((org-agenda-compact-blocks t)
+            (org-agenda-skip-deadline-prewarning-if-scheduled t)
+            (org-agenda-skip-scheduled-if-deadline-is-shown t)))
+
+          ("a" "Full Agenda"
+           ((agenda ""
+                    ((org-agenda-span 7)
+                     (org-agenda-start-day nil)
+                     (org-super-agenda-groups thb/org-super-agenda-groups-full)
+                     (org-agenda-overriding-header "📅 FULL AGENDA\n"))))
+           ((org-agenda-compact-blocks t)))
+
+          ("b" "Blocked Items"
+           ((todo "BLOCKED"
+                  ((org-agenda-overriding-header "🚧 BLOCKED ITEMS\n")
+                   (org-agenda-sorting-strategy '(priority-down category-keep)))))
+           ((org-agenda-compact-blocks t)))
+
+          ("p" "Projects Overview"
+           ((tags "PROJ"
+                  ((org-agenda-overriding-header "📊 ACTIVE PROJECTS\n")
+                   (org-super-agenda-groups
+                    '((:auto-property "PROJ_LOCATION")
+                      (:discard (:todo "DONE"))
+                      (:discard (:todo "CANCELLED")))))))
+           ((org-agenda-compact-blocks t)))
+
+          ("i" "In Progress"
+           ((todo "IN-PROGRESS"
+                  ((org-agenda-overriding-header "⚡ IN PROGRESS\n")
+                   (org-agenda-sorting-strategy '(priority-down scheduled-up)))))
+           ((org-agenda-compact-blocks t)))
+
+          ("w" "Weekly Review"
+           ((agenda ""
+                    ((org-agenda-span 'week)
+                     (org-agenda-start-on-weekday 1)
+                     (org-super-agenda-groups thb/org-super-agenda-groups-full)
+                     (org-agenda-overriding-header "📆 WEEKLY REVIEW\n"))))
+           ((org-agenda-compact-blocks t))))))
+
+;; Toggle between focus and full agenda views
+(defun thb/org-agenda-toggle-view ()
+  "Toggle between focus and full agenda views."
+  (interactive)
+  (if (equal org-super-agenda-groups thb/org-super-agenda-groups-focus)
+      (progn
+        (setq org-super-agenda-groups thb/org-super-agenda-groups-full)
+        (message "Switched to FULL agenda view"))
+    (setq org-super-agenda-groups thb/org-super-agenda-groups-focus)
+    (message "Switched to FOCUS agenda view"))
+  (when (bound-and-true-p org-agenda-buffer-name)
+    (org-agenda-redo-all)))
+
+;; Keybinding for toggle (accessible from agenda view)
+(after! org-agenda
+  (map! :map org-agenda-mode-map
+        "v" #'thb/org-agenda-toggle-view))
 
 ;; Consult-org-roam for enhanced search
 (use-package! consult-org-roam
