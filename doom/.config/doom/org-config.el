@@ -4,17 +4,17 @@
 ;; Org-mode and Org-roam configuration
 ;;
 
-;; Set org directories
-(setq org-directory "~/Documents/org/"
-      org-roam-directory "~/Documents/org/roam/"
-      org-roam-dailies-directory "~/Documents/org/daily/")
+;; Set org directories (can be overridden in local.el which loads first)
+(setq org-directory (if (boundp 'org-directory) org-directory "~/Documents/org/"))
+(setq org-roam-directory (expand-file-name "roam/" org-directory))
+(setq org-roam-dailies-directory (expand-file-name "daily/" org-directory))
 
 ;; Org-agenda configuration
 (after! org-agenda
   ;; Primary task source - todo.org contains canonical task state
   ;; Daily/roam/weekly notes provide context but are not agenda sources
   ;; Use org-roam-find (SPC n r f) to search for narrative context
-  (setq org-agenda-files '("~/Documents/org/todo.org")
+  (setq org-agenda-files (list (expand-file-name "todo.org" org-directory))
         org-agenda-start-day nil
         org-agenda-start-on-weekday nil
         org-agenda-skip-deadline-if-done t
