@@ -27,14 +27,14 @@
     (load-theme 'modus-operandi t)
     (message "Light theme")))
 
+;; Load local configs first (machine-specific settings, not synced to repo)
+(load! "local" nil t)
+
 ;; Load configuration modules
 (load! "org-config")
 (load! "dev-config")
 (load! "performance-config")
 (load! "custom-functions")
-
-;; Load local configs (not synced to repo)
-(load! "local" nil t)
 
 ;; Custom keybindings
 (map! :leader
