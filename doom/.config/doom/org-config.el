@@ -563,26 +563,26 @@ Returns absolute path for mmdc to write file to."
               (regexp-quote (expand-file-name "~/Documents/org"))))
 
 ;; Git auto-commit configuration for org files
-(use-package! git-auto-commit-mode
-  :config
-  ;; Set commit message format
-  (setq gac-automatically-push-p nil  ; Don't auto-push to remote
-        gac-automatically-add-new-files-p t  ; Auto-add new files
-        gac-debounce-interval 10)  ; Wait 10 seconds before committing
+;; (use-package! git-auto-commit-mode
+;;   :config
+;;   ;; Set commit message format
+;;   (setq gac-automatically-push-p nil  ; Don't auto-push to remote
+;;         gac-automatically-add-new-files-p t  ; Auto-add new files
+;;         gac-debounce-interval 10)  ; Wait 10 seconds before committing
 
-  ;; Custom commit message function - fix the lambda
-  (setq gac-default-message
-        (lambda (_)
-          (let ((filename (file-name-nondirectory (buffer-file-name))))
-            (format "Update %s" filename)))))
+;; Custom commit message function - fix the lambda
+;; (setq gac-default-message
+;;       (lambda (_)
+;;         (let ((filename (file-name-nondirectory (buffer-file-name))))
+;;           (format "Update %s" filename)))))
 
-;; Enable git-auto-commit-mode for org files in org directory
-(add-hook 'org-mode-hook
-          (lambda ()
-            (when (and (buffer-file-name)
-                       (string-prefix-p (expand-file-name org-directory)
-                                        (buffer-file-name)))
-              (git-auto-commit-mode 1))))
+;; ;; Enable git-auto-commit-mode for org files in org directory
+;; (add-hook 'org-mode-hook
+;;           (lambda ()
+;;             (when (and (buffer-file-name)
+;;                        (string-prefix-p (expand-file-name org-directory)
+;;                                         (buffer-file-name)))
+;;               (git-auto-commit-mode 1))))
 
 ;; org-db-v3 server process management
 ;; Automatically start and manage the org-db-v3 FastAPI backend server
