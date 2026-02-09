@@ -22,15 +22,16 @@
 
   ;; Auto-save todo.org after any agenda edit operation
   ;; This ensures changes made in agenda view are immediately persisted
-  (advice-add 'org-agenda-todo :after #'org-save-all-org-buffers)
-  (advice-add 'org-agenda-priority :after #'org-save-all-org-buffers)
-  (advice-add 'org-agenda-schedule :after #'org-save-all-org-buffers)
-  (advice-add 'org-agenda-deadline :after #'org-save-all-org-buffers)
-  (advice-add 'org-agenda-set-tags :after #'org-save-all-org-buffers)
-  (advice-add 'org-agenda-archive-default :after #'org-save-all-org-buffers)
-  (advice-add 'org-agenda-kill :after #'org-save-all-org-buffers)
-  (advice-add 'org-agenda-refile :after #'org-save-all-org-buffers)
-  (advice-add 'org-agenda-bulk-action :after #'org-save-all-org-buffers))
+  ;; Note: Must use lambda to ignore arguments passed by :after advice
+  (advice-add 'org-agenda-todo :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-priority :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-schedule :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-deadline :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-set-tags :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-archive-default :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-kill :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-refile :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-bulk-action :after (lambda (&rest _) (org-save-all-org-buffers))))
 
 ;; Org TODO keywords and priorities
 (after! org
