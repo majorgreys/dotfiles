@@ -11,6 +11,7 @@
 (package! org-tidy)
 (package! org-confluence-publish :recipe (:type git :repo "git@github.com:majorgreys/org-confluence-publish.git"))
 (package! ob-mermaid)
+(package! ob-d2)
 
 (package! plz)
 ;; Semantic search and indexing

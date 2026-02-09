@@ -178,6 +178,15 @@ Returns absolute path for mmdc to write file to."
     :around #'org-babel-execute:dot
     (funcall orig-fn (thb/org-babel-dot-inject-defaults body params) params))
 
+  ;; D2 diagram support via ob-d2
+  (require 'ob-d2)
+  (add-to-list 'org-babel-load-languages '(d2 . t))
+  (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
+  (setq org-babel-default-header-args:d2
+        '((:results . "file")
+          (:exports . "results")
+          (:cmdline . "--scale 2 --elk-nodeNodeBetweenLayers 30 --elk-padding \"[top=30,left=30,bottom=30,right=30]\"")))
+
   ;; Python babel blocks - use uv run for PEP 723 inline dependency support
   ;; The dash tells uv to read script from stdin (not launch interpreter)
   ;; This enables automatic dependency resolution from # /// script blocks
