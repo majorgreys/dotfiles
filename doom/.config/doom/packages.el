@@ -3,6 +3,7 @@
 
 (package! catppuccin-theme)
 (package! modus-themes)
+(package! nano-theme :recipe (:type git :host github :repo "rougier/nano-theme"))
 (package! git-auto-commit-mode)
 
 ;; Personal org-mode packages
@@ -12,6 +13,10 @@
 (package! org-confluence-publish :recipe (:type git :repo "git@github.com:majorgreys/org-confluence-publish.git"))
 (package! ob-mermaid)
 (package! ob-d2)
+
+(package! shell-maker)
+(package! acp)
+(package! agent-shell)
 
 (package! plz)
 ;; Semantic search and indexing
