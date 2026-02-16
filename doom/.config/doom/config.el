@@ -56,6 +56,9 @@
       ;; Claude Code IDE keybindings
       :desc "Claude Code IDE menu" "C m" #'claude-code-ide-menu
       :desc "Start Claude Code IDE" "C s" #'claude-code-ide
+      ;; Agent Shell keybindings
+      :desc "Agent Shell" "C a" #'agent-shell
+      :desc "Agent Shell (Claude Code)" "C c" #'agent-shell-anthropic-start-claude-code
       ;; Git auto-commit toggle
       :desc "Toggle git auto-commit" "t g" #'git-auto-commit-mode
       ;; Theme toggle
