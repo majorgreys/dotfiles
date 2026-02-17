@@ -1,5 +1,6 @@
 fish/.config/fish/fishd.*
 fish/.config/fish/conf.d/
+!fish/.config/fish/conf.d/thbemacs.fish
 fish/.config/fish/fish_history
 fish/.config/fish/fish_variables
 fish/.config/fish/*.local.fish
@@ -13,3 +14,17 @@ helix/.config/helix/runtime/
 doom/.config/doom/*-local.el
 doom/.config/doom/packages-local.el
 doom/.config/doom/local.el
+
+# thbemacs generated files
+thbemacs/.config/thbemacs/elpa/
+thbemacs/.config/thbemacs/eln-cache/
+thbemacs/.config/thbemacs/custom.el
+thbemacs/.config/thbemacs/local.el
+thbemacs/.config/thbemacs/org-roam.db
+thbemacs/.config/thbemacs/.org-id-locations
+thbemacs/.config/thbemacs/auto-save-list/
+thbemacs/.config/thbemacs/history
+thbemacs/.config/thbemacs/places.eld
+thbemacs/.config/thbemacs/recentf.eld
+thbemacs/.config/thbemacs/url/
+thbemacs/.config/thbemacs/transient/
