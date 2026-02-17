@@ -218,7 +218,7 @@ Then use the org-save-transcript command to create the org-roam note." tags-list
       (user-error "Transcript file does not exist: %s" file-path))
 
     ;; Start Claude Code with the transcript processing request
-    (let ((default-directory "~/Documents/org/"))
+    (let ((default-directory org-directory))
       (async-shell-command
        (format "claude '%s'" claude-prompt)
        "*Claude Transcript Processing*"))
