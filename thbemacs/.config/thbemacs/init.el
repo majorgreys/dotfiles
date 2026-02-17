@@ -390,10 +390,14 @@
   ;; --- SPC q: Quit ---
   (thb/leader
     "q"  '(:ignore t :which-key "quit")
-    "qq" '(save-buffers-kill-emacs :which-key "quit")
-    "qQ" '(kill-emacs :which-key "quit without saving")
-    "qr" '((lambda () (interactive) (load-file (expand-file-name "init.el" user-emacs-directory)) (message "init.el reloaded")) :which-key "reload init.el")
-    "qR" '(thb/restart-emacs-restore :which-key "restart"))
+    "qq" '(save-buffers-kill-terminal :which-key "close frame")
+    "qQ" '(save-buffers-kill-emacs :which-key "kill daemon")
+    "qr" '((lambda () (interactive)
+              (package-refresh-contents)
+              (load-file (expand-file-name "init.el" user-emacs-directory))
+              (message "init.el reloaded"))
+           :which-key "reload init.el")
+    "qR" '(thb/restart-emacs-restore :which-key "restart daemon"))
 
   ;; --- SPC p: Project ---
   (thb/leader
@@ -761,7 +765,20 @@
 
 
 ;;; ============================================================
-;;; Section 10: Version Control + Local Overrides
+;;; Section 10: Markdown
+;;; ============================================================
+
+(use-package markdown-mode
+  :mode (("\\.md\\'" . markdown-mode)
+         ("\\.markdown\\'" . markdown-mode))
+  :config
+  (setq markdown-fontify-code-blocks-natively t
+        markdown-command "multimarkdown")
+  (add-hook 'markdown-mode-hook #'visual-line-mode))
+
+
+;;; ============================================================
+;;; Section 11: Version Control + Local Overrides
 ;;; ============================================================
 
 ;; Magit — the definitive Git interface for Emacs.
@@ -804,12 +821,15 @@
 
 ;; --- Restart with Session Restore ---
 (defun thb/restart-emacs-restore ()
-  "Save current session and restart Emacs, restoring open buffers."
+  "Save current session and restart Emacs, restoring open buffers.
+In daemon mode, restarts as a daemon."
   (interactive)
   (let ((dir (expand-file-name "restart/" user-emacs-directory)))
     (make-directory dir t)
     (desktop-save dir t)
-    (restart-emacs)))
+    (if (daemonp)
+        (restart-emacs (format "--daemon=%s" (daemonp)))
+      (restart-emacs))))
 
 ;; Restore session after restart (runs once, then cleans up)
 (add-hook 'emacs-startup-hook
