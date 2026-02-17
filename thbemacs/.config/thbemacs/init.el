@@ -392,7 +392,8 @@
     "q"  '(:ignore t :which-key "quit")
     "qq" '(save-buffers-kill-emacs :which-key "quit")
     "qQ" '(kill-emacs :which-key "quit without saving")
-    "qr" '(thb/restart-emacs-restore :which-key "restart"))
+    "qr" '((lambda () (interactive) (load-file (expand-file-name "init.el" user-emacs-directory)) (message "init.el reloaded")) :which-key "reload init.el")
+    "qR" '(thb/restart-emacs-restore :which-key "restart"))
 
   ;; --- SPC p: Project ---
   (thb/leader
@@ -446,7 +447,8 @@
 (use-package orderless
   :config
   (setq completion-styles '(orderless basic)
-        completion-category-overrides '((file (styles basic partial-completion)))))
+        completion-category-overrides '((file (styles basic partial-completion))
+                                        (org-roam-node (display-sort-function . identity)))))
 
 ;; Marginalia — rich annotations in the minibuffer (file sizes, docstrings).
 (use-package marginalia
@@ -532,7 +534,22 @@
   (advice-add 'org-agenda-schedule :after (lambda (&rest _) (org-save-all-org-buffers)))
   (advice-add 'org-agenda-deadline :after (lambda (&rest _) (org-save-all-org-buffers)))
   (advice-add 'org-agenda-set-tags :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-refile :after (lambda (&rest _) (org-save-all-org-buffers))))
+  (advice-add 'org-agenda-refile :after (lambda (&rest _) (org-save-all-org-buffers)))
+
+  ;; --- Link navigation ---
+  (defun thb/org-open-link-other-window ()
+    "Open org link at point in another window."
+    (interactive)
+    (let ((org-link-frame-setup
+           (cl-acons 'file #'find-file-other-window org-link-frame-setup)))
+      (org-open-at-point)))
+
+  (thb/leader
+    :keymaps 'org-mode-map
+    "m"  '(:ignore t :which-key "org")
+    "ml" '(:ignore t :which-key "links")
+    "mlo" '(org-open-at-point :which-key "open link")
+    "mls" '(thb/org-open-link-other-window :which-key "open in split")))
 
 ;; ----- Commented-out: Full Capture Templates -----
 ;; Uncomment these and replace the basic templates above as you learn.
@@ -646,16 +663,22 @@
   (setq org-roam-directory (expand-file-name "roam/" org-directory)
         org-roam-node-default-sort 'file-mtime
         org-roam-node-display-template
-        (concat "${title:*} "
-                (propertize "${tags:10}" 'face 'org-tag)
-                " "
-                (propertize "${modified:16}" 'face 'font-lock-comment-face)))
+        (concat (propertize "${modified:22}" 'face 'font-lock-comment-face)
+                " ${title:*} "
+                (propertize "${orgtags}" 'face 'org-tag)))
 
   (cl-defmethod org-roam-node-modified ((node org-roam-node))
-    "Return file modification time as YYYY-MM-DD HH:MM."
+    "Return file modification time as org inactive timestamp."
     (let ((mtime (org-roam-node-file-mtime node)))
       (if mtime
-          (format-time-string "%Y-%m-%d %H:%M" mtime)
+          (format-time-string "[%Y-%m-%d %a %H:%M]" mtime)
+        "")))
+
+  (cl-defmethod org-roam-node-orgtags ((node org-roam-node))
+    "Return tags formatted as org filetags (:tag1:tag2:)."
+    (let ((tags (org-roam-node-tags node)))
+      (if tags
+          (concat ":" (string-join tags ":") ":")
         "")))
 
   ;; Capture templates — timestamped default + named slug
@@ -712,12 +735,18 @@
  '(org-block-end-line ((t (:background "#e8e3df" :extend t :foreground "#7c6f64")))))
 
 ;; Org-appear — hide markup until cursor enters (~code~, *bold*, etc.)
+;; Manual trigger: only expand links/emphasis in evil insert mode.
 (use-package org-appear
   :hook (org-mode . org-appear-mode)
   :config
   (setq org-appear-autoemphasis t
         org-appear-autolinks t
-        org-appear-autosubmarkers t))
+        org-appear-autosubmarkers t
+        org-appear-trigger 'manual)
+  (add-hook 'org-mode-hook
+            (lambda ()
+              (add-hook 'evil-insert-state-entry-hook #'org-appear-manual-start nil t)
+              (add-hook 'evil-insert-state-exit-hook #'org-appear-manual-stop nil t))))
 
 ;; Required for org-appear to work
 (setq org-hide-emphasis-markers t)
