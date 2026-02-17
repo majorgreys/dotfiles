@@ -54,8 +54,7 @@
 (when (eq system-type 'darwin)
   (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t))
   (add-to-list 'default-frame-alist '(ns-appearance . light))
-  (add-to-list 'default-frame-alist '(width . 180))
-  (add-to-list 'default-frame-alist '(height . 55)))
+  (add-to-list 'default-frame-alist '(fullscreen . maximized)))
 
 ;;; Skip Site Init
 ;; Avoid loading site-wide startup files (e.g., /etc/emacs/site-start.el).
