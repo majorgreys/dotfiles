@@ -1,0 +1,21 @@
+;;; local.el --- Machine-specific overrides -*- lexical-binding: t; -*-
+
+;; Copy this file to local.el and customize for your machine.
+;; local.el is loaded at the end of init.el and is not tracked in git.
+
+;; --- Override Paths ---
+;; Uncomment and adjust if your org files live somewhere else:
+;; (setq org-directory "~/Documents/org/")
+;; (setq org-roam-directory (expand-file-name "roam/" org-directory))
+;; (setq org-agenda-files (list (expand-file-name "todo.org" org-directory)))
+
+;; --- Additional Agenda Files ---
+;; (add-to-list 'org-agenda-files "~/work/tasks.org")
+
+;; --- Font Override ---
+;; (set-face-attribute 'default nil :height 140)
+
+;; --- Theme Override ---
+;; (load-theme 'modus-vivendi t)  ; dark theme by default
+
+;;; local.el.example ends here
