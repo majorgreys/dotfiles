@@ -310,7 +310,7 @@
   (thb/leader
     "f"  '(:ignore t :which-key "files")
     "ff" '(find-file :which-key "find file")
-    "fr" '(recentf-open-files :which-key "recent files")
+    "fr" '(consult-recent-file :which-key "recent files")
     "fs" '(save-buffer :which-key "save")
     "fS" '(write-file :which-key "save as")
     "fy" '((lambda () (interactive)
@@ -392,7 +392,7 @@
     "q"  '(:ignore t :which-key "quit")
     "qq" '(save-buffers-kill-emacs :which-key "quit")
     "qQ" '(kill-emacs :which-key "quit without saving")
-    "qr" '(restart-emacs :which-key "restart"))
+    "qr" '(thb/restart-emacs-restore :which-key "restart"))
 
   ;; --- SPC p: Project ---
   (thb/leader
@@ -646,7 +646,17 @@
   (setq org-roam-directory (expand-file-name "roam/" org-directory)
         org-roam-node-default-sort 'file-mtime
         org-roam-node-display-template
-        (concat "${title:*} " (propertize "${tags:10}" 'face 'org-tag)))
+        (concat "${title:*} "
+                (propertize "${tags:10}" 'face 'org-tag)
+                " "
+                (propertize "${modified:16}" 'face 'font-lock-comment-face)))
+
+  (cl-defmethod org-roam-node-modified ((node org-roam-node))
+    "Return file modification time as YYYY-MM-DD HH:MM."
+    (let ((mtime (org-roam-node-file-mtime node)))
+      (if mtime
+          (format-time-string "%Y-%m-%d %H:%M" mtime)
+        "")))
 
   ;; Capture templates — timestamped default + named slug
   (setq org-roam-capture-templates
@@ -762,6 +772,26 @@
          (magit-post-refresh . diff-hl-magit-post-refresh))
   :config
   (setq diff-hl-draw-borders nil))
+
+;; --- Restart with Session Restore ---
+(defun thb/restart-emacs-restore ()
+  "Save current session and restart Emacs, restoring open buffers."
+  (interactive)
+  (let ((dir (expand-file-name "restart/" user-emacs-directory)))
+    (make-directory dir t)
+    (desktop-save dir t)
+    (restart-emacs)))
+
+;; Restore session after restart (runs once, then cleans up)
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (let ((dir (expand-file-name "restart/" user-emacs-directory))
+                  (file "restart/.emacs.desktop"))
+              (when (file-exists-p (expand-file-name file user-emacs-directory))
+                (desktop-read dir)
+                (delete-file (expand-file-name ".emacs.desktop" dir))
+                (let ((lock (expand-file-name ".emacs.desktop.lock" dir)))
+                  (when (file-exists-p lock) (delete-file lock)))))))
 
 ;; --- Local Overrides ---
 ;; Load machine-specific settings from local.el (not tracked in git).
