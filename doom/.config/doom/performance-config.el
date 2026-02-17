@@ -28,7 +28,7 @@
           (untracked . hide)
           (unpushed . hide)
           (unpulled . hide))
-        ;; Reduce status sections for better performance
+        ;; Reduce status sections for better performance (no untracked, no stashes)
         magit-status-sections-hook
         '(magit-insert-status-headers
           magit-insert-merge-log
@@ -38,30 +38,24 @@
           magit-insert-bisect-output
           magit-insert-bisect-rest
           magit-insert-bisect-log
-          magit-insert-untracked-files
           magit-insert-unstaged-changes
           magit-insert-staged-changes))
 
-  ;; Process I/O optimization - increase from Doom's 64KB default
+  ;; Process I/O optimization
   (setq read-process-output-max (* 4 1024 1024)  ; 4MB for faster git operations
-        ;; GC tuning specifically for Magit operations
-        magit-refresh-verbose nil                 ; Reduce refresh verbosity
-        magit-diff-highlight-trailing nil)       ; Disable trailing whitespace highlighting
+        magit-refresh-verbose nil
+        magit-diff-highlight-trailing nil)
 
-  ;; Remove expensive status sections for better performance
-  (remove-hook 'magit-status-sections-hook #'magit-insert-untracked-files)
-  (remove-hook 'magit-status-sections-hook #'magit-insert-stashes)
-
-  ;; Repository scanning limits
+  ;; Repository scanning (local.el appends ~/dd via after! magit)
   (when (boundp 'magit-repository-directories)
-    (setq magit-repository-directories '(("~/Documents" . 0) ; No scanning of docs
-                                         ("~/.config" . 1))))) ; Shallow config scan
+    (setq magit-repository-directories
+          (append magit-repository-directories
+                  '(("~/Documents" . 0)
+                    ("~/.config" . 1))))))
 
 ;; General Emacs performance optimizations (beyond Doom's defaults)
-(setq ;; Optimize completion systems
- company-idle-delay 0.2                     ; Slight delay before company completion
- ;; File handling optimizations
- auto-save-default nil                      ; Disable auto-save files (Doom may override)
+(setq ;; File handling optimizations
+ auto-save-default nil                      ; Disable globally (org-config re-enables for org)
  make-backup-files nil                      ; Disable backup files
  create-lockfiles nil                       ; Disable lock files
  ;; Display optimizations
@@ -76,8 +70,8 @@
 
 ;; Enhanced LSP performance (complementing existing config)
 (after! lsp-mode
-  (setq lsp-idle-delay 0.5                      ; Increase delay before LSP actions
-        lsp-completion-provider :none           ; Use company/corfu instead of LSP
+  (setq lsp-idle-delay 0.5                      ; Authoritative value (not set in dev-config)
+        lsp-completion-provider :none           ; Use corfu instead of LSP
         lsp-eldoc-enable-hover nil              ; Disable hover eldoc (use lsp-ui if needed)
         lsp-signature-auto-activate nil         ; Disable automatic signature help
         lsp-lens-enable nil                     ; Disable code lens globally
@@ -111,8 +105,8 @@
       (lsp-mode -1))                            ; Disable LSP
     (when (and (boundp 'flycheck-mode) flycheck-mode)
       (flycheck-mode -1))                       ; Disable flycheck
-    (when (and (boundp 'company-mode) company-mode)
-      (company-mode -1))                        ; Disable company
+    (when (and (boundp 'corfu-mode) corfu-mode)
+      (corfu-mode -1))                          ; Disable corfu
     (message "Large file detected - disabled expensive modes for performance")))
 
 (add-hook 'find-file-hook #'thb/disable-expensive-modes-for-large-files)

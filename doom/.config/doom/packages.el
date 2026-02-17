@@ -1,10 +1,8 @@
 ;; -*- no-byte-compile: t; -*-
 ;;; $DOOMDIR/packages.el
 
-(package! catppuccin-theme)
 (package! modus-themes)
 (package! nano-theme :recipe (:type git :host github :repo "rougier/nano-theme"))
-(package! git-auto-commit-mode)
 
 ;; Personal org-mode packages
 (package! consult-org-roam)
@@ -18,8 +16,8 @@
 (package! acp)
 (package! agent-shell)
 
+;; Semantic search and indexing (plz is a dependency of org-db-v3)
 (package! plz)
-;; Semantic search and indexing
 (package! org-db-v3 :recipe (:type git :host github :repo "jkitchin/org-db-v3" :files ("elisp/*.el" "python/*")))
 
 ;; Load local packages (not synced to repo)
