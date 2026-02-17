@@ -145,11 +145,15 @@
                eshell-mode-hook))
   (add-hook mode (lambda () (display-line-numbers-mode -1))))
 
-;; Smooth scrolling (Emacs 29+)
-(pixel-scroll-precision-mode 1)
-(setq scroll-margin 3
-      scroll-conservatively 101
-      scroll-preserve-screen-position t)
+;; Smooth scrolling — ultra-scroll replaces pixel-scroll-precision-mode
+;; with much smoother trackpad/mouse wheel behavior on macOS.
+(use-package ultra-scroll
+  :init
+  (setq scroll-conservatively 101
+        scroll-margin 0
+        scroll-preserve-screen-position t)
+  :config
+  (ultra-scroll-mode 1))
 
 ;; --- Shell / Subprocess ---
 (setq shell-file-name "/bin/bash")        ; predictable shell for subprocesses
@@ -162,6 +166,9 @@
       inhibit-compacting-font-caches t           ; keep font caches in memory
       bidi-display-reordering 'left-to-right     ; skip bidi processing
       bidi-paragraph-direction 'left-to-right
+      fast-but-imprecise-scrolling t             ; skip fontification during fast scroll
+      redisplay-skip-fontification-on-input t    ; don't fontify while typing/scrolling
+      jit-lock-defer-time 0                      ; defer font-lock to idle time
       echo-keystrokes 0.1                        ; show keystrokes faster
       eldoc-idle-delay 0.1
       split-width-threshold 160                  ; prefer horizontal splits
@@ -229,7 +236,9 @@
      ">-" ">=" ">=>" ">>" ">>-" ">>=" ">>>" "?." "?:" "?=" "??" "[|"
      "\\\\" "]#" "^=" "__" "_|_" "www" "{|" "|-" "|=" "|>" "|]" "||"
      "||=" "||>" "|}" "~-" "~=" "~>" "~~" "~~>"))
-  (global-ligature-mode 1))
+  ;; Only enable in prog-mode (global adds rendering cost during scroll)
+  (dolist (mode '(prog-mode-hook))
+    (add-hook mode #'ligature-mode)))
 
 ;; Line spacing for org-modern box rendering (0.1 = minimum recommended)
 (setq-default line-spacing 0.1)
@@ -303,7 +312,12 @@
     "ff" '(find-file :which-key "find file")
     "fr" '(recentf-open-files :which-key "recent files")
     "fs" '(save-buffer :which-key "save")
-    "fS" '(write-file :which-key "save as"))
+    "fS" '(write-file :which-key "save as")
+    "fy" '((lambda () (interactive)
+             (when-let* ((path (buffer-file-name)))
+               (kill-new path)
+               (message "Copied: %s" path)))
+           :which-key "yank file path"))
 
   ;; --- SPC b: Buffers ---
   (thb/leader
@@ -666,12 +680,37 @@
         org-modern-table-vertical 1
         org-modern-table-horizontal 0.2
         org-modern-list '((42 . "◦") (43 . "•") (45 . "–"))
-        org-modern-keyword nil
+        org-modern-keyword t
+        org-modern-block-fringe t
         org-modern-todo t))
 
 ;; Label face — slightly smaller for cleaner TODO boxes
 (custom-set-faces
  '(org-modern-label ((t (:height 0.85 :width normal :weight regular)))))
+
+;; Heading sizes — visual hierarchy like Doom
+(custom-set-faces
+ '(org-level-1 ((t (:height 1.3 :weight bold))))
+ '(org-level-2 ((t (:height 1.15 :weight bold))))
+ '(org-level-3 ((t (:height 1.05 :weight semi-bold))))
+ '(org-document-title ((t (:height 1.4 :weight bold)))))
+
+;; Source block background — subtle tint to distinguish code from prose
+(custom-set-faces
+ '(org-block ((t (:background "#f2ede9" :extend t))))
+ '(org-block-begin-line ((t (:background "#e8e3df" :extend t :foreground "#7c6f64"))))
+ '(org-block-end-line ((t (:background "#e8e3df" :extend t :foreground "#7c6f64")))))
+
+;; Org-appear — hide markup until cursor enters (~code~, *bold*, etc.)
+(use-package org-appear
+  :hook (org-mode . org-appear-mode)
+  :config
+  (setq org-appear-autoemphasis t
+        org-appear-autolinks t
+        org-appear-autosubmarkers t))
+
+;; Required for org-appear to work
+(setq org-hide-emphasis-markers t)
 
 ;; Org-tidy — hide property drawers, show inline indicator instead.
 (use-package org-tidy
