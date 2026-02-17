@@ -6,11 +6,10 @@
 
 ;; Go LSP configuration
 (after! lsp-mode
-  ;; Performance optimizations
+  ;; Performance basics (lsp-idle-delay set in performance-config.el)
   (setq lsp-use-plists nil
         lsp-log-io nil
         lsp-keep-workspace-alive nil
-        lsp-idle-delay 0.1
         lsp-response-timeout 10
         lsp-print-performance nil)
 

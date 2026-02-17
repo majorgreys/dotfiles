@@ -4,8 +4,8 @@
 ;; Org-mode and Org-roam configuration
 ;;
 
-;; Set org directories (can be overridden in local.el which loads first)
-(setq org-directory (if (boundp 'org-directory) org-directory "~/Documents/org/"))
+;; ~/org is a symlink to ~/Documents/org
+(setq org-directory "~/org/")
 (setq org-roam-directory (expand-file-name "roam/" org-directory))
 (setq org-roam-dailies-directory (expand-file-name "daily/" org-directory))
 
@@ -35,10 +35,7 @@
 
 ;; Org TODO keywords and priorities
 (after! org
-  ;; Line spacing for better org-modern box rendering
-  ;; org-modern calculates box borders from line-spacing
-  ;; Recommended: 0.1-0.3 for proper vertical centering
-  ;; Phase 4: Using minimum recommended value for tighter boxes
+  ;; Line spacing for org-modern box rendering (calculates borders from this)
   (setq-default line-spacing 0.1)
 
   (setq org-todo-keywords
@@ -59,7 +56,7 @@
         ob-mermaid-output-file-format "png"
         org-babel-default-header-args:mermaid
         '((:results . "file")
-          (:mermaid-config-file . "~/Documents/org/config/mermaid-config.json")
+          (:mermaid-config-file . "~/org/config/mermaid-config.json")
           (:cmdline . "--theme default --scale 2")))
 
   ;; Auto-generate mermaid filenames with timestamp
@@ -216,15 +213,9 @@ Returns absolute path for mmdc to write file to."
   (advice-add 'org-cycle :before-while
               (lambda (&rest _) (not (org-at-heading-p))))
 
-  ;; Auto-save configuration for org-mode
-  (add-hook 'org-mode-hook 'auto-save-mode)
-  (setq auto-save-interval 20                    ; Save every 20 characters
-        auto-save-timeout 10                     ; Save after 10 seconds of idle time
-        auto-save-default t)
-
-  ;; Org-specific auto-save (recommended approach)
+  ;; Auto-save for org-mode (auto-save-visited-mode writes to real file, not #file#)
   (add-hook 'org-mode-hook #'auto-save-mode)
-  (setq auto-save-visited-interval 10            ; Auto-save every 10 seconds
+  (setq auto-save-visited-interval 10
         auto-save-visited-mode t)
 
   ;; Enable org-depend for task dependency management
@@ -233,21 +224,22 @@ Returns absolute path for mmdc to write file to."
 
 ;; Org-capture templates
 (after! org
-  (setq org-capture-templates
-        '(("t" "Todo" entry (file+headline "~/Documents/org/todo.org" "Inbox")
-           "** TODO %?\nSCHEDULED: %t\n")
-          ("i" "Interrupt" entry (file+olp "~/Documents/org/todo.org" "Areas" "Interrupt")
-           "*** TODO %? :interrupt:\nSCHEDULED: %t\n")
-          ("e" "Enablement" entry (file+olp "~/Documents/org/todo.org" "Areas" "Enablement")
-           "*** TODO %? :enablement:\nSCHEDULED: %t\n")
-          ("c" "Compliance" entry (file+olp "~/Documents/org/todo.org" "Areas" "Compliance")
-           "*** TODO %? :compliance:\nSCHEDULED: %t\n")
-          ("l" "Leadership" entry (file+olp "~/Documents/org/todo.org" "Areas" "Leadership")
-           "*** TODO %? :leadership:\nSCHEDULED: %t\n")
-          ("p" "Personal" entry (file+olp "~/Documents/org/todo.org" "Areas" "Personal")
-           "*** TODO %? :personal:\nSCHEDULED: %t\n")
-          ("r" "Research" entry (file+headline "~/Documents/org/todo.org" "Inbox")
-           "** TODO %? :research:\n"))))
+  (let ((todo (expand-file-name "todo.org" org-directory)))
+    (setq org-capture-templates
+          `(("t" "Todo" entry (file+headline ,todo "Inbox")
+             "** TODO %?\nSCHEDULED: %t\n")
+            ("i" "Interrupt" entry (file+olp ,todo "Areas" "Interrupt")
+             "*** TODO %? :interrupt:\nSCHEDULED: %t\n")
+            ("e" "Enablement" entry (file+olp ,todo "Areas" "Enablement")
+             "*** TODO %? :enablement:\nSCHEDULED: %t\n")
+            ("c" "Compliance" entry (file+olp ,todo "Areas" "Compliance")
+             "*** TODO %? :compliance:\nSCHEDULED: %t\n")
+            ("l" "Leadership" entry (file+olp ,todo "Areas" "Leadership")
+             "*** TODO %? :leadership:\nSCHEDULED: %t\n")
+            ("p" "Personal" entry (file+olp ,todo "Areas" "Personal")
+             "*** TODO %? :personal:\nSCHEDULED: %t\n")
+            ("r" "Research" entry (file+headline ,todo "Inbox")
+             "** TODO %? :research:\n")))))
 
 ;; Org-super-agenda configuration
 ;; Aligned with Daily Planning Protocol v3.0 (Eisenhower Matrix)
@@ -504,11 +496,10 @@ Returns absolute path for mmdc to write file to."
         org-modern-table-vertical 1
         org-modern-table-horizontal 0.2
         org-modern-list '((42 . "◦") (43 . "•") (45 . "–"))
-        ;; Phase 4: Let org-modern calculate border automatically from line-spacing
-        org-modern-keyword nil     ; Keep keywords disabled for now
-        org-modern-todo t))        ; Re-enable TODO box styling
+        org-modern-keyword nil
+        org-modern-todo t))
 
-;; Phase 4: Smaller text with normal width, tighter line-spacing
+;; Org-modern label face
 (custom-set-faces!
   '(org-modern-label :height 0.85 :width normal :weight regular))
 
@@ -528,7 +519,7 @@ Returns absolute path for mmdc to write file to."
         org-attach-id-to-path-function-list
         '(org-attach-id-ts-folder-format          ; Date-based folder format
           org-attach-id-uuid-folder-format)       ; Fallback to UUID format
-        org-attach-directory "~/Documents/org/attachments/"
+        org-attach-directory (expand-file-name "attachments/" org-directory)
         org-attach-method 'cp                    ; Copy files (safer than move)
         org-attach-store-link-p 'attached        ; Store link after attaching files
         org-attach-use-inheritance t             ; Inherit attachment settings
@@ -560,29 +551,7 @@ Returns absolute path for mmdc to write file to."
 (setq vc-ignore-dir-regexp
       (format "\\(%s\\)\\|\\(%s\\)"
               vc-ignore-dir-regexp
-              (regexp-quote (expand-file-name "~/Documents/org"))))
-
-;; Git auto-commit configuration for org files
-;; (use-package! git-auto-commit-mode
-;;   :config
-;;   ;; Set commit message format
-;;   (setq gac-automatically-push-p nil  ; Don't auto-push to remote
-;;         gac-automatically-add-new-files-p t  ; Auto-add new files
-;;         gac-debounce-interval 10)  ; Wait 10 seconds before committing
-
-;; Custom commit message function - fix the lambda
-;; (setq gac-default-message
-;;       (lambda (_)
-;;         (let ((filename (file-name-nondirectory (buffer-file-name))))
-;;           (format "Update %s" filename)))))
-
-;; ;; Enable git-auto-commit-mode for org files in org directory
-;; (add-hook 'org-mode-hook
-;;           (lambda ()
-;;             (when (and (buffer-file-name)
-;;                        (string-prefix-p (expand-file-name org-directory)
-;;                                         (buffer-file-name)))
-;;               (git-auto-commit-mode 1))))
+              (regexp-quote (expand-file-name org-directory))))
 
 ;; org-db-v3 server process management
 ;; Automatically start and manage the org-db-v3 FastAPI backend server
