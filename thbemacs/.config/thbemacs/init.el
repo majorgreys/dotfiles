@@ -140,6 +140,7 @@
 
 ;; Disable line numbers for prose and special buffers
 (dolist (mode '(org-mode-hook
+               org-agenda-mode-hook
                special-mode-hook
                term-mode-hook
                eshell-mode-hook))
@@ -243,16 +244,53 @@
 ;; Line spacing for org-modern box rendering (0.1 = minimum recommended)
 (setq-default line-spacing 0.1)
 
-;; Modeline — nano-modeline for a clean, minimal status bar.
-(use-package nano-modeline
-  :init
-  (setq nano-modeline-position 'nano-modeline-footer)
+;; Modeline — mood-line for a clean, lightweight status bar.
+(use-package mood-line
   :config
-  (nano-modeline-text-mode t)
-  (add-hook 'prog-mode-hook #'nano-modeline-prog-mode)
-  (add-hook 'org-mode-hook #'nano-modeline-org-mode)
-  (add-hook 'org-agenda-finalize-hook #'nano-modeline-org-agenda-mode)
-  (add-hook 'magit-mode-hook #'nano-modeline-magit-mode))
+  (setq mood-line-glyph-alist
+        (append '((:vc-added . ?+))          ; U+1F7A4 not in PragmataPro — use +
+                mood-line-glyphs-unicode))
+
+  ;; Custom segment: show "!!" when file on disk is newer than buffer
+  (defun thb/mood-line-segment-stale ()
+    "Show indicator when visited file has changed on disk."
+    (when (and (buffer-file-name)
+               (not (verify-visited-file-modtime (current-buffer)))
+               (file-exists-p (buffer-file-name)))
+      (propertize " !!" 'face 'warning)))
+
+  ;; Set format BEFORE enabling mode
+  (setq mood-line-format
+        (mood-line-defformat
+         :left  (((mood-line-segment-buffer-status) . " ")
+                 ((thb/mood-line-segment-stale) . " ")
+                 ((mood-line-segment-buffer-name) . " ")
+                 ((mood-line-segment-vc) . " "))
+         :right (((mood-line-segment-cursor-position) . " ")
+                 ((mood-line-segment-major-mode) . " "))))
+
+  (mood-line-mode 1))
+
+;; Zen mode — writeroom-mode for distraction-free writing (like Doom's +zen).
+;; Centers text column, scales text up, hides visual noise. Per-buffer only.
+(use-package writeroom-mode
+  :commands writeroom-mode
+  :config
+  (setq writeroom-global-effects nil          ; no global side effects
+        writeroom-maximize-window nil          ; don't delete other windows
+        writeroom-width 80                     ; column width
+        writeroom-mode-line t                  ; keep modeline visible
+        writeroom-bottom-divider-width 0)
+
+  (defvar thb/zen-text-scale 2
+    "Text-scaling level when zen mode is active.")
+
+  (add-hook 'writeroom-mode-hook
+            (lambda ()
+              (text-scale-set (if writeroom-mode thb/zen-text-scale 0))
+              (visual-fill-column-adjust)))
+
+  (advice-add #'text-scale-adjust :after #'visual-fill-column-adjust))
 
 ;; Theme — modus-operandi (light) / modus-vivendi (dark)
 ;; These are built-in since Emacs 28, high-contrast and WCAG-compliant.
@@ -292,6 +330,8 @@
 ;; Evil-collection — vim bindings for magit, dired, org-agenda, etc.
 (use-package evil-collection
   :after evil
+  :init
+  (setq evil-collection-setup-minibuffer t)  ; enable j/k in minibuffer (normal state)
   :config
   (evil-collection-init))
 
@@ -327,7 +367,8 @@
     "bi" '(ibuffer :which-key "ibuffer")
     "bk" '(kill-current-buffer :which-key "kill buffer")
     "bn" '(next-buffer :which-key "next buffer")
-    "bp" '(previous-buffer :which-key "prev buffer"))
+    "bp" '(previous-buffer :which-key "prev buffer")
+    "br" '(revert-buffer-quick :which-key "revert buffer"))
 
   ;; --- SPC s: Search ---
   (thb/leader
@@ -351,7 +392,8 @@
   (thb/leader
     "o"  '(:ignore t :which-key "open")
     "oa" '(org-agenda :which-key "agenda")
-    "oc" '(org-capture :which-key "capture"))
+    "oc" '(org-capture :which-key "capture")
+    "oA" '(thb/org-agenda-toggle-view :which-key "toggle agenda view"))
 
   ;; --- SPC g: Git ---
   (thb/leader
@@ -366,7 +408,8 @@
     "tt" '(thb/toggle-theme :which-key "theme")
     "tl" '(display-line-numbers-mode :which-key "line numbers")
     "tw" '(whitespace-mode :which-key "whitespace")
-    "tz" '(delete-other-windows :which-key "zen (one window)"))
+    "tz" '(writeroom-mode :which-key "zen mode")
+    "ti" '(org-toggle-inline-images :which-key "inline images"))
 
   ;; --- SPC h: Help ---
   (thb/leader
@@ -415,9 +458,9 @@
     "cb" '(eval-buffer :which-key "eval buffer")
     "cr" '(eval-region :which-key "eval region"))
 
-  ;; --- SPC SPC: M-x ---
+  ;; --- SPC SPC: project find file (matches Doom) ---
   (thb/leader
-    "SPC" '(execute-extended-command :which-key "M-x")
+    "SPC" '(project-find-file :which-key "find file in project")
     ":"   '(execute-extended-command :which-key "M-x")
     ";"   '(eval-expression :which-key "eval expression")
     "/"   '(consult-ripgrep :which-key "search project")
@@ -445,7 +488,11 @@
   :init (vertico-mode 1)
   :config
   (setq vertico-cycle t
-        vertico-count 15))
+        vertico-count 15)
+  ;; C-j/C-k to navigate candidates in insert state (Doom convention).
+  ;; In normal state (ESC), j/k work via evil-collection-vertico.
+  (define-key vertico-map (kbd "C-j") #'vertico-next)
+  (define-key vertico-map (kbd "C-k") #'vertico-previous))
 
 ;; Orderless — flexible matching (space-separated components, regex, flex).
 (use-package orderless
@@ -473,6 +520,69 @@
 ;; Embark-consult — integration between embark and consult.
 (use-package embark-consult
   :after (embark consult))
+
+
+;;; ============================================================
+;;; Section 6b: Workspaces (Tabspaces)
+;;; ============================================================
+
+;; Tabspaces — workspace-like buffer isolation using built-in tab-bar + project.el.
+;; Each tab gets its own filtered buffer list so SPC , only shows relevant buffers.
+(use-package tabspaces
+  :after (consult general)
+  :config
+  (setq tabspaces-use-filtered-buffers-as-default t  ; buffer isolation per tab
+        tabspaces-default-tab "main"                 ; name for the initial tab
+        tabspaces-include-buffers '("*scratch*" "*Messages*"))
+
+  ;; Show tab bar with the name of the active buffer in each tab
+  (setq tab-bar-show t                               ; always show tab bar
+        tab-bar-close-button-show nil                 ; no close button
+        tab-bar-new-button-show nil                   ; no new button
+        tab-bar-format '(tab-bar-format-tabs tab-bar-separator))
+
+  ;; Tab name shows the current buffer name (built-in default).
+  ;; tabspaces renames tabs to the project name on creation.
+  (setq tab-bar-tab-name-function #'tab-bar-tab-name-current-with-count)
+
+  ;; Integrate with consult: SPC , shows only tab-local buffers
+  (with-eval-after-load 'consult
+    (consult-customize consult--source-buffer
+                       :narrow ?b
+                       :hidden t)
+    (defvar consult--source-tabspaces
+      `(:name "Tab Buffers"
+        :narrow ?B
+        :category buffer
+        :face consult-buffer
+        :history buffer-name-history
+        :action ,#'consult--buffer-action
+        :items ,(lambda () (consult--buffer-query
+                            :predicate #'tabspaces--local-buffer-p
+                            :sort 'visibility
+                            :as #'buffer-name)))
+      "Buffer source for tab-local buffers in `consult-buffer'.")
+    (add-to-list 'consult-buffer-sources 'consult--source-tabspaces))
+
+  ;; SPC TAB: workspace bindings (matches Doom conventions)
+  (thb/leader
+    "TAB"   '(:ignore t :which-key "workspaces")
+    "TAB n" '(tabspaces-switch-or-create-workspace :which-key "new/switch")
+    "TAB p" '(tabspaces-open-or-create-project-and-workspace :which-key "open project")
+    "TAB d" '(tabspaces-kill-buffers-close-workspace :which-key "close")
+    "TAB r" '(tabspaces-rename-existing-tab :which-key "rename")
+    "TAB c" '(tabspaces-clear-buffers :which-key "clear buffers")
+    "TAB b" '(tabspaces-switch-to-buffer :which-key "switch buffer (tab)")
+    "TAB B" '(tabspaces-switch-buffer-and-tab :which-key "switch buffer+tab")
+    "TAB TAB" '(tab-bar-switch-to-tab :which-key "switch tab")
+    "TAB 1" '((lambda () (interactive) (tab-bar-select-tab 1)) :which-key "tab 1")
+    "TAB 2" '((lambda () (interactive) (tab-bar-select-tab 2)) :which-key "tab 2")
+    "TAB 3" '((lambda () (interactive) (tab-bar-select-tab 3)) :which-key "tab 3")
+    "TAB 4" '((lambda () (interactive) (tab-bar-select-tab 4)) :which-key "tab 4")
+    "TAB 5" '((lambda () (interactive) (tab-bar-select-tab 5)) :which-key "tab 5")
+    "TAB `" '(tab-bar-switch-to-recent-tab :which-key "last tab"))
+
+  (tabspaces-mode 1))
 
 
 ;;; ============================================================
@@ -526,11 +636,50 @@
           ("r" "Research" entry (file+headline "todo.org" "Inbox")
            "** TODO %? :research:\n")))
 
+  ;; --- Attachments ---
+  ;; Matches Doom config: timestamp-based folders under ~/org/attachments/
+  (setq org-id-method 'ts
+        org-attach-id-to-path-function-list
+        '(org-attach-id-ts-folder-format
+          org-attach-id-uuid-folder-format)
+        org-attach-directory (expand-file-name "attachments/" org-directory)
+        org-attach-method 'cp
+        org-attach-store-link-p 'attached
+        org-attach-use-inheritance t
+        org-attach-dir-relative t
+        org-attach-preferred-new-method 'dir
+        org-attach-archive-delete 'query)
+
+  ;; --- Archiving ---
+  ;; Default fallback: archive to ./archive/<filename> under a datetree.
+  ;; Per-heading :ARCHIVE: properties in todo.org override this (e.g.
+  ;; archive/enablement.org, archive/interrupt.org, etc.)
+  (setq org-archive-location "archive/%s::")
+
+  (defun thb/org-archive-done-tasks ()
+    "Archive all DONE and CANCELLED tasks in the current buffer."
+    (interactive)
+    (org-map-entries
+     (lambda ()
+       (org-archive-subtree)
+       (setq org-map-continue-from (outline-previous-heading)))
+     "/DONE|CANCELLED" 'file)
+    (org-save-all-org-buffers)
+    (message "Archived all done/cancelled tasks"))
+
   ;; --- Agenda ---
   (setq org-agenda-start-day nil
         org-agenda-start-on-weekday nil
         org-agenda-skip-deadline-if-done t
-        org-agenda-skip-scheduled-if-done t)
+        org-agenda-skip-scheduled-if-done t
+        org-agenda-tags-column 0)             ; tags inline after text (avoids overflow with org-modern boxes)
+
+  ;; Show agenda in a top 1/3 window
+  (add-to-list 'display-buffer-alist
+               '("\\*Org Agenda\\*"
+                 (display-buffer-in-direction)
+                 (direction . top)
+                 (window-height . 0.33)))
 
   ;; Auto-save after agenda edits
   (advice-add 'org-agenda-todo :after (lambda (&rest _) (org-save-all-org-buffers)))
@@ -539,6 +688,14 @@
   (advice-add 'org-agenda-deadline :after (lambda (&rest _) (org-save-all-org-buffers)))
   (advice-add 'org-agenda-set-tags :after (lambda (&rest _) (org-save-all-org-buffers)))
   (advice-add 'org-agenda-refile :after (lambda (&rest _) (org-save-all-org-buffers)))
+  (advice-add 'org-agenda-archive-default :after (lambda (&rest _) (org-save-all-org-buffers)))
+
+  ;; --- Agenda keybindings ---
+  ;; TAB = preview entry (stay in agenda), RET = go to entry
+  (with-eval-after-load 'org-agenda
+    (evil-define-key 'motion org-agenda-mode-map
+      (kbd "TAB") #'org-agenda-show-and-scroll-up
+      (kbd "RET") #'org-agenda-goto))
 
   ;; --- Link navigation ---
   (defun thb/org-open-link-other-window ()
@@ -551,9 +708,64 @@
   (thb/leader
     :keymaps 'org-mode-map
     "m"  '(:ignore t :which-key "org")
-    "ml" '(:ignore t :which-key "links")
+    "mt" '(org-todo :which-key "todo state")
+    "mT" '(org-todo-list :which-key "todo list")
+    "mq" '(org-set-tags-command :which-key "set tags")
+    "mo" '(org-set-property :which-key "set property")
+    "me" '(org-export-dispatch :which-key "export")
+    "mx" '(org-toggle-checkbox :which-key "toggle checkbox")
+    "m." '(consult-org-heading :which-key "goto heading")
+
+    ;; --- SPC m d: date/deadline ---
+    "md"  '(:ignore t :which-key "date/deadline")
+    "mdd" '(org-deadline :which-key "deadline")
+    "mds" '(org-schedule :which-key "schedule")
+    "mdt" '(org-time-stamp :which-key "timestamp")
+    "mdT" '(org-time-stamp-inactive :which-key "inactive timestamp")
+
+    ;; --- SPC m c: clock ---
+    "mc"  '(:ignore t :which-key "clock")
+    "mci" '(org-clock-in :which-key "clock in")
+    "mco" '(org-clock-out :which-key "clock out")
+    "mcc" '(org-clock-cancel :which-key "cancel")
+    "mcg" '(org-clock-goto :which-key "goto")
+    "mcr" '(org-clock-report :which-key "report")
+    "mcR" '(org-resolve-clocks :which-key "resolve")
+    "mcE" '(org-set-effort :which-key "set effort")
+
+    ;; --- SPC m s: tree/subtree ---
+    "ms"  '(:ignore t :which-key "subtree")
+    "msj" '(org-move-subtree-down :which-key "move down")
+    "msk" '(org-move-subtree-up :which-key "move up")
+    "msh" '(org-promote-subtree :which-key "promote")
+    "msl" '(org-demote-subtree :which-key "demote")
+    "msn" '(org-narrow-to-subtree :which-key "narrow")
+    "msN" '(widen :which-key "widen")
+    "mss" '(org-sparse-tree :which-key "sparse tree")
+    "msS" '(org-sort :which-key "sort")
+    "msd" '(org-cut-subtree :which-key "cut subtree")
+    "msb" '(org-tree-to-indirect-buffer :which-key "indirect buffer")
+    "msa" '(org-toggle-archive-tag :which-key "toggle archive tag")
+    "msA" '(org-archive-subtree-default :which-key "archive subtree")
+    "msD" '(thb/org-archive-done-tasks :which-key "archive all done")
+
+    ;; --- SPC m l: links ---
+    "ml"  '(:ignore t :which-key "links")
     "mlo" '(org-open-at-point :which-key "open link")
-    "mls" '(thb/org-open-link-other-window :which-key "open in split")))
+    "mls" '(thb/org-open-link-other-window :which-key "open in split")
+    "mll" '(org-insert-link :which-key "insert link")
+    "mln" '(org-store-link :which-key "store link")
+    "mlt" '(org-toggle-link-display :which-key "toggle display")
+
+    ;; --- SPC m r: refile ---
+    "mr"  '(:ignore t :which-key "refile")
+    "mrr" '(org-refile :which-key "refile")
+
+    ;; --- SPC m p: priority ---
+    "mp"  '(:ignore t :which-key "priority")
+    "mpp" '(org-priority :which-key "set priority")
+    "mpu" '(org-priority-up :which-key "priority up")
+    "mpd" '(org-priority-down :which-key "priority down")))
 
 ;; ----- Commented-out: Full Capture Templates -----
 ;; Uncomment these and replace the basic templates above as you learn.
@@ -574,87 +786,80 @@
 ;;         ("r" "Research" entry (file+headline "todo.org" "Inbox")
 ;;          "** TODO %? :research:\n")))
 
-;; ----- Commented-out: Org-Super-Agenda -----
-;; Install and enable when ready for advanced agenda views.
-;;
-;; (use-package org-super-agenda
-;;   :after org-agenda
-;;   :config
-;;   (org-super-agenda-mode 1)
-;;
-;;   (setq thb/org-super-agenda-groups-focus
-;;         '((:discard (:todo ("PROJ" "BACKLOG" "CANCELLED")))
-;;           (:name "Urgent" :tag "oncall" :priority "A")
-;;           (:name "Blocked" :todo "BLOCKED")
-;;           (:name "In progress" :todo "IN-PROGRESS" :order 1)
-;;           (:name "Overdue" :and (:scheduled past :todo ("TODO" "PAUSED")) :order 2)
-;;           (:name "Today" :and (:scheduled today :todo "TODO") :order 3)
-;;           (:name "Deadlines" :deadline past :deadline today :deadline future :order 4)
-;;           (:discard (:scheduled future))
-;;           (:discard (:todo "PAUSED"))
-;;           (:name "Other" :todo "TODO" :order 5)))
-;;
-;;   (setq thb/org-super-agenda-groups-full
-;;         '((:name "Urgent" :tag "oncall" :priority "A")
-;;           (:name "Blocked" :todo "BLOCKED")
-;;           (:name "In progress (today)" :and (:todo "IN-PROGRESS" :scheduled today))
-;;           (:name "In progress (overdue)" :and (:todo "IN-PROGRESS" :scheduled past))
-;;           (:name "Today" :and (:todo "TODO" :scheduled today))
-;;           (:name "Deadlines" :deadline future :deadline today)
-;;           (:name "Paused" :todo "PAUSED")
-;;           (:name "Overdue" :and (:scheduled past :not (:todo "IN-PROGRESS")))
-;;           (:name "Future" :scheduled future)
-;;           (:name "Other" :anything t)))
-;;
-;;   (setq org-super-agenda-groups thb/org-super-agenda-groups-focus))
+;; Org-super-agenda — group agenda items into meaningful sections.
+(use-package org-super-agenda
+  :after org-agenda
+  :config
+  (org-super-agenda-mode 1)
 
-;; ----- Commented-out: Custom Agenda Commands -----
-;;
-;; (setq org-agenda-custom-commands
-;;       '(("f" "Today's Focus"
-;;          ((agenda ""
-;;                   ((org-agenda-span 1)
-;;                    (org-agenda-start-day nil)
-;;                    (org-super-agenda-groups thb/org-super-agenda-groups-focus)
-;;                    (org-agenda-overriding-header "Today\n"))))
-;;          ((org-agenda-compact-blocks t)))
-;;         ("a" "Full Agenda"
-;;          ((agenda ""
-;;                   ((org-agenda-span 7)
-;;                    (org-agenda-start-day nil)
-;;                    (org-super-agenda-groups thb/org-super-agenda-groups-full)
-;;                    (org-agenda-overriding-header "Agenda\n"))))
-;;          ((org-agenda-compact-blocks t)))
-;;         ("b" "Blocked Items"
-;;          ((todo "BLOCKED"
-;;                 ((org-agenda-overriding-header "Blocked\n"))))
-;;          ((org-agenda-compact-blocks t)))
-;;         ("i" "In Progress"
-;;          ((todo "IN-PROGRESS"
-;;                 ((org-agenda-overriding-header "In Progress\n")
-;;                  (org-agenda-sorting-strategy '(priority-down scheduled-up)))))
-;;          ((org-agenda-compact-blocks t)))
-;;         ("w" "Weekly Review"
-;;          ((agenda ""
-;;                   ((org-agenda-span 'week)
-;;                    (org-agenda-start-on-weekday 1)
-;;                    (org-super-agenda-groups thb/org-super-agenda-groups-full)
-;;                    (org-agenda-overriding-header "Weekly\n"))))
-;;          ((org-agenda-compact-blocks t)))))
+  ;; Focus view: today's actionable work only
+  (setq thb/org-super-agenda-groups-focus
+        '((:discard (:todo ("PROJ" "BACKLOG" "CANCELLED")))
+          (:name "Urgent" :tag "oncall" :priority "A")
+          (:name "Blocked" :todo "BLOCKED")
+          (:name "In progress" :todo "IN-PROGRESS" :order 1)
+          (:name "Overdue" :and (:scheduled past :todo ("TODO" "PAUSED")) :order 2)
+          (:name "Today" :and (:scheduled today :todo "TODO") :order 3)
+          (:name "Deadlines" :deadline past :deadline today :deadline future :order 4)
+          (:discard (:scheduled future))
+          (:discard (:todo "PAUSED"))
+          (:name "Other" :todo "TODO" :order 5)))
 
-;; ----- Commented-out: Agenda View Toggle -----
-;;
-;; (defun thb/org-agenda-toggle-view ()
-;;   "Toggle between focus and full agenda views."
-;;   (interactive)
-;;   (if (equal org-super-agenda-groups thb/org-super-agenda-groups-focus)
-;;       (progn
-;;         (setq org-super-agenda-groups thb/org-super-agenda-groups-full)
-;;         (message "Full view"))
-;;     (setq org-super-agenda-groups thb/org-super-agenda-groups-focus)
-;;     (message "Focus view"))
-;;   (when (bound-and-true-p org-agenda-buffer-name)
-;;     (org-agenda-redo-all)))
+  ;; Full view: everything grouped by status
+  (setq thb/org-super-agenda-groups-full
+        '((:name "Urgent" :tag "oncall" :priority "A")
+          (:name "Blocked" :todo "BLOCKED")
+          (:name "In progress" :todo "IN-PROGRESS")
+          (:name "Today" :and (:todo "TODO" :scheduled today))
+          (:name "Deadlines" :deadline future :deadline today)
+          (:name "Paused" :todo "PAUSED")
+          (:name "Overdue" :scheduled past)
+          (:name "Future" :scheduled future)
+          (:name "Other" :anything t)))
+
+  (setq org-super-agenda-groups thb/org-super-agenda-groups-focus)
+
+  ;; Custom agenda commands: f=focus, a=full week, w=weekly review
+  (setq org-agenda-custom-commands
+        '(("f" "Today's Focus"
+           ((agenda ""
+                    ((org-agenda-span 1)
+                     (org-agenda-start-day nil)
+                     (org-super-agenda-groups thb/org-super-agenda-groups-focus)
+                     (org-agenda-overriding-header "Today\n"))))
+           ((org-agenda-compact-blocks t)))
+          ("a" "Full Agenda"
+           ((agenda ""
+                    ((org-agenda-span 7)
+                     (org-agenda-start-day nil)
+                     (org-super-agenda-groups thb/org-super-agenda-groups-full)
+                     (org-agenda-overriding-header "Agenda\n"))))
+           ((org-agenda-compact-blocks t)))
+          ("w" "Weekly Review"
+           ((agenda ""
+                    ((org-agenda-span 'week)
+                     (org-agenda-start-on-weekday 1)
+                     (org-super-agenda-groups thb/org-super-agenda-groups-full)
+                     (org-agenda-overriding-header "Weekly\n"))))
+           ((org-agenda-compact-blocks t)))
+          ("b" "Backlog"
+           ((todo "BACKLOG"
+                  ((org-agenda-overriding-header "Backlog\n")
+                   (org-agenda-sorting-strategy '(category-keep priority-down)))))
+           ((org-agenda-compact-blocks t)))
+          ("B" "Blocked"
+           ((todo "BLOCKED"
+                  ((org-agenda-overriding-header "Blocked\n")
+                   (org-agenda-sorting-strategy '(priority-down category-keep)))))
+           ((org-agenda-compact-blocks t)))))
+
+  ;; Toggle focus/full by switching between custom agenda commands
+  (defun thb/org-agenda-toggle-view ()
+    "Toggle between focus and full agenda views."
+    (interactive)
+    (if (equal org-super-agenda-groups thb/org-super-agenda-groups-focus)
+        (org-agenda nil "a")
+      (org-agenda nil "f"))))
 
 
 ;;; ============================================================
@@ -711,7 +916,8 @@
 
 ;; Visual improvements for org-mode: pretty headings, lists, tables, TODOs.
 (use-package org-modern
-  :hook (org-mode . org-modern-mode)
+  :hook ((org-mode . org-modern-mode)
+         (org-agenda-finalize . org-modern-agenda))
   :config
   (setq org-modern-star 'replace
         org-modern-table-vertical 1
