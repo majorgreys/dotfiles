@@ -909,6 +909,10 @@
   :config
   (setq consult-org-roam-grep-func #'consult-ripgrep))
 
+;; Org-download — drag-and-drop / URL file downloads into org buffers.
+;; Required by org-roam-skill's attach-file-to-references function.
+(use-package org-download :defer t)
+
 
 ;;; ============================================================
 ;;; Section 9: Org-Modern
