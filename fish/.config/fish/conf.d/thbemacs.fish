@@ -4,7 +4,11 @@
 
 function ev --description "Start thbemacs daemon and connect"
     if not emacsclient --socket-name=vanilla --eval '(daemonp)' >/dev/null 2>&1
-        /Applications/Emacs.app/Contents/MacOS/Emacs --init-directory ~/.config/thbemacs/ --daemon=vanilla
+        /Applications/Emacs.app/Contents/MacOS/Emacs --init-directory ~/.config/thbemacs/ --daemon=vanilla &
+        echo "Starting thbemacs daemon..."
+        while not emacsclient --socket-name=vanilla --eval '(daemonp)' >/dev/null 2>&1
+            sleep 0.5
+        end
     end
     emacsclient --socket-name=vanilla --create-frame $argv
 end
