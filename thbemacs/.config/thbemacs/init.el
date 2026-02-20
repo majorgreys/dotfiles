@@ -143,7 +143,8 @@
                org-agenda-mode-hook
                special-mode-hook
                term-mode-hook
-               eshell-mode-hook))
+               eshell-mode-hook
+               agent-shell-mode-hook))
   (add-hook mode (lambda () (display-line-numbers-mode -1))))
 
 ;; Smooth scrolling — ultra-scroll replaces pixel-scroll-precision-mode
@@ -984,8 +985,33 @@
 (use-package agent-shell
   :commands (agent-shell agent-shell-anthropic-start-claude-code)
   :config
-  (setq agent-shell-anthropic-claude-environment
+  (setq agent-shell-anthropic-claude-command nil
+        agent-shell-anthropic-claude-acp-command '("claude-agent-acp")
+        agent-shell-anthropic-claude-environment
         (agent-shell-make-environment-variables :inherit-env t)))
+
+
+;;; ============================================================
+;;; Go
+;;; ============================================================
+
+(use-package go-mode
+  :mode "\\.go\\'"
+  :hook (go-mode . eglot-ensure)
+  :config
+  (setq go-test-args "-tags dynamic")
+  (with-eval-after-load 'eglot
+    (add-to-list 'eglot-server-programs
+                 '(go-mode . ("dd-gopls")))
+    (setq-default eglot-workspace-configuration
+                  '(:gopls (:buildFlags ["-tags=dynamic"]
+                            :local "github.com/DataDog"
+                            :directoryFilters ["-bazel-bin"
+                                               "-bazel-out"
+                                               "-bazel-testlogs"
+                                               "-bazel-dd-go"
+                                               "-bazel-dd-source"]))))
+  (setenv "GOPLS_DISABLE_MODULE_LOADS" "1"))
 
 
 ;;; ============================================================
