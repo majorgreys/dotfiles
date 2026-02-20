@@ -1,22 +1,7 @@
-# thbemacs — vanilla Emacs (--init-directory) launcher functions
-# These coexist with Doom Emacs — default `emacs` command remains Doom.
-# `ev` starts a daemon if not running, then connects via emacsclient.
+# thbemacs — Emacs client (--init-directory ~/.config/thbemacs)
+# Daemon managed by LaunchAgent (com.thbemacs.daemon).
+# Coexists with Doom Emacs — default `emacs` command remains Doom.
 
-function ev --description "Start thbemacs daemon and connect"
-    if not emacsclient --socket-name=vanilla --eval '(daemonp)' >/dev/null 2>&1
-        /Applications/Emacs.app/Contents/MacOS/Emacs --init-directory ~/.config/thbemacs/ --daemon=vanilla &
-        echo "Starting thbemacs daemon..."
-        while not emacsclient --socket-name=vanilla --eval '(daemonp)' >/dev/null 2>&1
-            sleep 0.5
-        end
-    end
-    emacsclient --socket-name=vanilla --create-frame $argv
-end
-
-function evc --description "Connect to thbemacs daemon"
-    emacsclient --socket-name=vanilla --create-frame $argv
-end
-
-function eve --description "Eval elisp in thbemacs daemon"
-    emacsclient --socket-name=vanilla --eval $argv
+function thbemacs --description "Connect to thbemacs daemon"
+    emacsclient --socket-name=thbemacs --create-frame $argv
 end
