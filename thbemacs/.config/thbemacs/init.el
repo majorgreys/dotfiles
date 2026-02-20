@@ -9,7 +9,7 @@
 
 
 ;;; ============================================================
-;;; Section 1: Package Management
+;;; Package Management
 ;;; ============================================================
 
 ;; Configure package archives — MELPA for community packages,
@@ -43,7 +43,7 @@
 
 
 ;;; ============================================================
-;;; Section 2: Better Defaults + Performance
+;;; Better Defaults + Performance
 ;;; ============================================================
 
 ;; --- Encoding ---
@@ -190,7 +190,7 @@
 
 
 ;;; ============================================================
-;;; Section 3: macOS Integration
+;;; macOS Integration
 ;;; ============================================================
 
 (when (eq system-type 'darwin)
@@ -210,7 +210,7 @@
 
 
 ;;; ============================================================
-;;; Section 4: Appearance
+;;; Appearance
 ;;; ============================================================
 
 ;; Font — PragmataPro Mono Liga 16pt
@@ -311,7 +311,7 @@
 
 
 ;;; ============================================================
-;;; Section 5: Evil Mode + Leader Keys
+;;; Evil Mode + Leader Keys
 ;;; ============================================================
 
 ;; Evil — Vim emulation. This is the same approach Doom uses under the hood:
@@ -393,7 +393,8 @@
     "o"  '(:ignore t :which-key "open")
     "oa" '(org-agenda :which-key "agenda")
     "oc" '(org-capture :which-key "capture")
-    "oA" '(thb/org-agenda-toggle-view :which-key "toggle agenda view"))
+    "oA" '(thb/org-agenda-toggle-view :which-key "toggle agenda view")
+    "os" '(agent-shell :which-key "agent shell"))
 
   ;; --- SPC g: Git ---
   (thb/leader
@@ -480,7 +481,7 @@
 
 
 ;;; ============================================================
-;;; Section 6: Completion (Vertico Stack)
+;;; Completion (Vertico Stack)
 ;;; ============================================================
 
 ;; Vertico — vertical minibuffer completion UI (replaces Helm/Ivy).
@@ -523,7 +524,7 @@
 
 
 ;;; ============================================================
-;;; Section 6b: Workspaces (Tabspaces)
+;;; Workspaces (Tabspaces)
 ;;; ============================================================
 
 ;; Tabspaces — workspace-like buffer isolation using built-in tab-bar + project.el.
@@ -586,7 +587,7 @@
 
 
 ;;; ============================================================
-;;; Section 7: Org-Mode
+;;; Org-Mode
 ;;; ============================================================
 
 (use-package org
@@ -863,7 +864,7 @@
 
 
 ;;; ============================================================
-;;; Section 8: Org-Roam
+;;; Org-Roam
 ;;; ============================================================
 
 (use-package org-roam
@@ -915,7 +916,7 @@
 
 
 ;;; ============================================================
-;;; Section 9: Org-Modern
+;;; Org-Modern
 ;;; ============================================================
 
 ;; Visual improvements for org-mode: pretty headings, lists, tables, TODOs.
@@ -975,7 +976,20 @@
 
 
 ;;; ============================================================
-;;; Section 10: Markdown
+;;; Agent Shell (LLM)
+;;; ============================================================
+
+;; Agent-shell — interact with LLM agents (Claude Code, Gemini, etc.)
+;; via the Agent Client Protocol (ACP) in a native Emacs buffer.
+(use-package agent-shell
+  :commands (agent-shell agent-shell-anthropic-start-claude-code)
+  :config
+  (setq agent-shell-anthropic-claude-environment
+        (agent-shell-make-environment-variables :inherit-env t)))
+
+
+;;; ============================================================
+;;; Markdown
 ;;; ============================================================
 
 (use-package markdown-mode
@@ -988,7 +1002,7 @@
 
 
 ;;; ============================================================
-;;; Section 11: Version Control + Local Overrides
+;;; Version Control + Local Overrides
 ;;; ============================================================
 
 ;; Magit — the definitive Git interface for Emacs.
