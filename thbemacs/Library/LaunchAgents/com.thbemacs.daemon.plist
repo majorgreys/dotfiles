@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.thbemacs.daemon</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/opt/emacs-plus@30/bin/emacs</string>
+    <string>--init-directory</string>
+    <string>/Users/tahir.butt/.config/thbemacs</string>
+    <string>--fg-daemon=thbemacs</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/tahir.butt/.config/thbemacs/daemon.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/tahir.butt/.config/thbemacs/daemon.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>LIBRARY_PATH</key>
+    <string>/opt/homebrew/lib/gcc/current:/opt/homebrew/lib</string>
+  </dict>
+</dict>
+</plist>
