@@ -7,3 +7,4 @@ theme = modus-operandi
 command = /opt/homebrew/bin/fish
 shell-integration-features = ssh-terminfo,ssh-env
 desktop-notifications = true
+keybind = shift+enter=text:\x1b\r
