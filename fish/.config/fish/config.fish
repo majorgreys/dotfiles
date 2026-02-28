@@ -44,6 +44,7 @@ set -gx CLAUDE_CODE_DISABLE_NOTIFICATIONS 1
 
 direnv hook fish | source
 zoxide init fish | source
+bd completion fish | source
 starship init fish | source
 
 # Set Ghostty tab title (bypasses tmux to set outer terminal title)
