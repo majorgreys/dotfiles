@@ -29,7 +29,7 @@ if [[ "$OSTYPE" != "darwin"* ]]; then
 fi
 
 # ===================================
-# 1. Install Homebrew
+# Install Homebrew
 # ===================================
 print_header "Checking Homebrew"
 if command_exists brew; then
@@ -46,7 +46,7 @@ else
 fi
 
 # ===================================
-# 2. Install Brewfile packages
+# Install Brewfile packages
 # ===================================
 print_header "Installing Brewfile packages"
 
@@ -97,7 +97,7 @@ if [[ -d "/Applications/Ghostty.app" ]]; then
 fi
 
 # ===================================
-# 3. Install Rust
+# Install Rust
 # ===================================
 print_header "Installing Rust"
 if command_exists rustc; then
@@ -118,7 +118,7 @@ else
 fi
 
 # ===================================
-# 4. Install Python tools via uv
+# Install Python tools via uv
 # ===================================
 print_header "Installing Python tools"
 print_warning "Installing Python tools via uv..."
@@ -133,7 +133,7 @@ uv tool install nose
 print_success "Python tools installed"
 
 # ===================================
-# 5. Install Go tools
+# Install Go tools
 # ===================================
 print_header "Installing Go tools"
 
@@ -154,7 +154,19 @@ go install github.com/x-motemen/gore/cmd/gore@latest
 print_success "Go development tools installed"
 
 # ===================================
-# 6. Setup dotfiles with stow
+# Install Beads (git-backed issue tracker)
+# ===================================
+print_header "Installing Beads"
+if command_exists bd; then
+    print_success "Beads already installed: $(bd version 2>/dev/null || echo 'installed')"
+else
+    print_warning "Installing Beads..."
+    curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+    print_success "Beads installed"
+fi
+
+# ===================================
+# Setup dotfiles with stow
 # ===================================
 print_header "Setting up dotfiles with stow"
 
@@ -193,7 +205,7 @@ if command_exists fish; then
 fi
 
 # ===================================
-# 7. Setup Doom Emacs
+# Setup Doom Emacs
 # ===================================
 print_header "Setting up Doom Emacs"
 
@@ -223,7 +235,7 @@ else
 fi
 
 # ===================================
-# 8. Load/Restart Emacs LaunchAgent
+# Load/Restart Emacs LaunchAgent
 # ===================================
 print_header "Loading Emacs LaunchAgent"
 EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
@@ -241,7 +253,7 @@ if [[ -f "$EMACS_PLIST" ]]; then
 fi
 
 # ===================================
-# 9. Run doom doctor
+# Run doom doctor
 # ===================================
 print_header "Running Doom Doctor"
 if [[ -x "$DOOM_BIN" ]]; then
@@ -254,7 +266,7 @@ if [[ -x "$DOOM_BIN" ]]; then
 fi
 
 # ===================================
-# 10. Configure Docker Compose Plugin
+# Configure Docker Compose Plugin
 # ===================================
 print_header "Configuring Docker Compose Plugin"
 
@@ -282,7 +294,7 @@ else
 fi
 
 # ===================================
-# 11. Start Colima
+# Start Colima
 # ===================================
 print_header "Starting Colima"
 if colima status &>/dev/null; then
@@ -294,7 +306,7 @@ else
 fi
 
 # ===================================
-# 12. Test Colima & Docker
+# Test Colima & Docker
 # ===================================
 print_header "Testing Colima & Docker"
 
@@ -332,7 +344,7 @@ else
 fi
 
 # ===================================
-# 13. Summary
+# Summary
 # ===================================
 print_header "Setup Complete!"
 echo -e "${GREEN}Your development environment is ready!${NC}\n"
