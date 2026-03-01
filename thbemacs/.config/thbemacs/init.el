@@ -549,7 +549,7 @@
 
   ;; Integrate with consult: SPC , shows only tab-local buffers
   (with-eval-after-load 'consult
-    (consult-customize consult--source-buffer
+    (consult-customize consult-source-buffer
                        :narrow ?b
                        :hidden t)
     (defvar consult--source-tabspaces
