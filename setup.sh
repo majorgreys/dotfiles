@@ -171,7 +171,7 @@ fi
 print_header "Setting up dotfiles with stow"
 
 # Stow configs for installed tools
-configs=("fish" "ghostty" "tmux" "vim" "helix" "doom" "thbemacs" "starship")
+configs=("fish" "ghostty" "tmux" "vim" "helix" "doom" "thbemacs" "starship" "aerospace")
 for config in "${configs[@]}"; do
     if [[ -d "$DOTFILES_DIR/$config" ]]; then
         print_warning "Stowing $config config..."
