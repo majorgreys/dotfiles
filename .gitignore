@@ -28,3 +28,6 @@ thbemacs/.config/thbemacs/places.eld
 thbemacs/.config/thbemacs/recentf.eld
 thbemacs/.config/thbemacs/url/
 thbemacs/.config/thbemacs/transient/
+
+# direnv
+.envrc

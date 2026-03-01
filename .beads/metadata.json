@@ -1,0 +1,10 @@
+{
+  "database": "dolt",
+  "jsonl_export": "issues.jsonl",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_server_host": "100.98.116.79",
+  "dolt_server_port": 30306,
+  "dolt_server_user": "root",
+  "dolt_database": "beads_dotfiles"
+}
