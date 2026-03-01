@@ -66,10 +66,8 @@ brew "shfmt"
 
 # Window Management
 tap "nikitabobko/tap"
-tap "FelixKratz/formulae"
 cask "nikitabobko/tap/aerospace"
 cask "alt-tab"
-brew "borders"
 
 # Fonts
 cask "font-fira-code"
