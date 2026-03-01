@@ -21,6 +21,9 @@ default-root-container-orientation = 'auto'
     preset = 'qwerty'
 
 [mode.main.binding]
+    # Launch
+    alt-e = 'exec-and-forget emacsclient -c -s thbemacs'
+
     # Layout
     alt-slash = 'layout tiles horizontal vertical'
     alt-comma = 'layout accordion horizontal vertical'
