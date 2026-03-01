@@ -1061,6 +1061,20 @@
                                 'rear-nonsticky t)))))))
 
   ;; Fit markdown tables to window width with word-wrapped cells.
+  (defun thb/md-table-render-inline (str)
+    "Render markdown inline formatting in STR. Return propertized string."
+    (with-temp-buffer
+      (insert str)
+      (goto-char (point-min))
+      ;; Bold: **text** or __text__
+      (while (re-search-forward "\\*\\*\\([^*]+\\)\\*\\*" nil t)
+        (replace-match (propertize (match-string 1) 'face 'bold)))
+      (goto-char (point-min))
+      ;; Inline code: `text`
+      (while (re-search-forward "`\\([^`]+\\)`" nil t)
+        (replace-match (propertize (match-string 1) 'face 'markdown-inline-code-face)))
+      (buffer-string)))
+
   (defun thb/md-table-wrap-string (str width)
     "Wrap STR at word boundaries to fit WIDTH. Return list of lines."
     (if (<= (length str) width)
@@ -1072,12 +1086,14 @@
         (split-string (buffer-string) "\n"))))
 
   (defun thb/md-table-parse (text)
-    "Parse pipe-delimited TEXT into (HEADER . DATA-ROWS)."
+    "Parse pipe-delimited TEXT into (HEADER . DATA-ROWS).
+Cell text has markdown inline formatting rendered as text properties."
     (let (header rows)
       (dolist (line (split-string text "\n" t))
         (unless (string-match-p "^[ \t]*|[-+|: ]+|?[ \t]*$" line)
           (when (string-match "^[ \t]*|\\(.*\\)|[ \t]*$" line)
-            (let ((cells (mapcar #'string-trim
+            (let ((cells (mapcar (lambda (c)
+                                   (thb/md-table-render-inline (string-trim c)))
                                  (split-string (match-string 1 line) "|"))))
               (if header (push cells rows) (setq header cells))))))
       (cons header (nreverse rows))))
