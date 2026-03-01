@@ -2,11 +2,6 @@ config-version = 2
 
 start-at-login = true
 
-# Launch JankyBorders for visible window borders
-after-startup-command = [
-    'exec-and-forget borders style=round active_color=0xfff3d000 inactive_color=0xffc4c4c4 width=4.0'
-]
-
 enable-normalization-flatten-containers = true
 enable-normalization-opposite-orientation-for-nested-containers = true
 
