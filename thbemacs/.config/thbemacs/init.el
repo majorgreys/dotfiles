@@ -988,7 +988,8 @@
   (setq agent-shell-anthropic-claude-command nil
         agent-shell-anthropic-claude-acp-command '("claude-agent-acp")
         agent-shell-anthropic-claude-environment
-        (agent-shell-make-environment-variables :inherit-env t)))
+        (agent-shell-make-environment-variables :inherit-env t)
+        agent-shell-prefer-viewport-interaction t))
 
 
 ;;; ============================================================
