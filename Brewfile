@@ -64,6 +64,11 @@ brew "graphviz"
 brew "shellcheck"
 brew "shfmt"
 
+# Window Management
+tap "nikitabobko/tap"
+cask "nikitabobko/tap/aerospace"
+cask "alt-tab"
+
 # Fonts
 cask "font-fira-code"
 cask "font-fira-code-nerd-font"
