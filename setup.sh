@@ -53,12 +53,29 @@ print_header "Installing Brewfile packages"
 # Detect dotfiles directory (script location)
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [[ -f "$DOTFILES_DIR/Brewfile" ]]; then
+    # Ensure libgccjit is working before brew bundle (required by emacs-plus native compilation)
+    if brew list libgccjit &>/dev/null && ! brew test libgccjit &>/dev/null 2>&1; then
+        print_warning "Reinstalling libgccjit (test failed)..."
+        brew reinstall libgccjit
+    fi
     print_warning "Running 'brew bundle install'..."
     cd "$DOTFILES_DIR" && brew bundle install
     print_success "Brewfile packages installed"
 else
     print_error "Brewfile not found at $DOTFILES_DIR/Brewfile"
     exit 1
+fi
+
+# Fix jpeg dylib mismatch: emacs-plus may be linked against libjpeg.9.dylib
+# but jpeg was upgraded to v10. Create a compatibility symlink.
+JPEG_LIB_DIR="/opt/homebrew/opt/jpeg/lib"
+if [[ -d "$JPEG_LIB_DIR" && ! -f "$JPEG_LIB_DIR/libjpeg.9.dylib" ]]; then
+    CURRENT_JPEG=$(ls "$JPEG_LIB_DIR"/libjpeg.*.dylib 2>/dev/null | head -1)
+    if [[ -n "$CURRENT_JPEG" ]]; then
+        print_warning "Creating jpeg compatibility symlink (libjpeg.9.dylib -> $(basename "$CURRENT_JPEG"))..."
+        ln -sf "$CURRENT_JPEG" "$JPEG_LIB_DIR/libjpeg.9.dylib"
+        print_success "jpeg compatibility symlink created"
+    fi
 fi
 
 # Link Emacs to Applications
@@ -92,6 +109,7 @@ fi
 if [[ -d "/Applications/Ghostty.app" ]]; then
     print_warning "Configuring Ghostty TERMINFO..."
     /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" "$EMACS_PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:TERMINFO string /Applications/Ghostty.app/Contents/Resources/terminfo" "$EMACS_PLIST" 2>/dev/null || \
     /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:TERMINFO /Applications/Ghostty.app/Contents/Resources/terminfo" "$EMACS_PLIST"
     print_success "Ghostty TERMINFO configured"
 fi
