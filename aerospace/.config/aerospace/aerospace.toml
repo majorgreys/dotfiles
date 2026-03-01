@@ -4,7 +4,7 @@ start-at-login = true
 
 # Launch JankyBorders for visible window borders
 after-startup-command = [
-    'exec-and-forget borders active_color=0xff888888 inactive_color=0xff333333 width=6.0'
+    'exec-and-forget borders active_color=0xff0031a9 inactive_color=0xffc4c4c4 width=6.0'
 ]
 
 enable-normalization-flatten-containers = true
