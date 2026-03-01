@@ -253,9 +253,31 @@ else
 fi
 
 # ===================================
-# Load/Restart Emacs LaunchAgent
+# Load/Restart Emacs LaunchAgents
 # ===================================
-print_header "Loading Emacs LaunchAgent"
+print_header "Loading Emacs LaunchAgents"
+
+# Generate thbemacs LaunchAgent from template
+THBEMACS_PLIST="$HOME/Library/LaunchAgents/com.thbemacs.daemon.plist"
+THBEMACS_TEMPLATE="$DOTFILES_DIR/templates/com.thbemacs.daemon.plist.template"
+if [[ -f "$THBEMACS_TEMPLATE" ]]; then
+    print_warning "Generating thbemacs LaunchAgent..."
+    mkdir -p "$HOME/Library/LaunchAgents"
+    sed "s|__HOME__|$HOME|g" "$THBEMACS_TEMPLATE" > "$THBEMACS_PLIST"
+    print_success "thbemacs LaunchAgent generated"
+
+    if launchctl list com.thbemacs.daemon &>/dev/null; then
+        print_warning "Reloading thbemacs daemon..."
+        launchctl unload "$THBEMACS_PLIST"
+        launchctl load "$THBEMACS_PLIST"
+        print_success "thbemacs daemon reloaded"
+    else
+        print_warning "Starting thbemacs daemon..."
+        launchctl load "$THBEMACS_PLIST"
+        print_success "thbemacs daemon started"
+    fi
+fi
+
 EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
 if [[ -f "$EMACS_PLIST" ]]; then
     if launchctl list org.gnu.emacs.daemon &>/dev/null; then

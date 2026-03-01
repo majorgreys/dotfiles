@@ -10,7 +10,7 @@
   <array>
     <string>/opt/homebrew/opt/emacs-plus@30/bin/emacs</string>
     <string>--init-directory</string>
-    <string>/Users/tahir.butt/.config/thbemacs</string>
+    <string>__HOME__/.config/thbemacs</string>
     <string>--fg-daemon=thbemacs</string>
   </array>
 
@@ -21,10 +21,10 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/tahir.butt/.config/thbemacs/daemon.log</string>
+  <string>__HOME__/.config/thbemacs/daemon.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/tahir.butt/.config/thbemacs/daemon.log</string>
+  <string>__HOME__/.config/thbemacs/daemon.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>
