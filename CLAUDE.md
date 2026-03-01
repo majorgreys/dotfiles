@@ -22,5 +22,11 @@ Personal development environment setup. Configs are minimal, version-controlled,
 - Topgrade: `~/.config/topgrade.d/local.toml`
 
 **Commits:**
+- Format: `[dotfiles-xxx] type: description` (include beads issue ID when applicable)
 - Use conventional commits format
 - Only attribute human authors
+
+**Issue tracking:**
+- Beads (`bd`) for issue tracking, connected to dolt server at `100.98.116.79:30306`
+- Run `bd prime` for workflow context
+- `BEADS_DOLT_PASSWORD` set via `.envrc` (direnv)
