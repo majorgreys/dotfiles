@@ -10,6 +10,7 @@ brew "tmux"
 brew "starship"
 
 # Editors
+brew "libgccjit"
 brew "emacs-plus@30"
 brew "vim"
 brew "helix"
