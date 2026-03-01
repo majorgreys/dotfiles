@@ -23,6 +23,7 @@ default-root-container-orientation = 'auto'
 [mode.main.binding]
     # Launch
     alt-e = 'exec-and-forget emacsclient -c -s thbemacs'
+    alt-shift-enter = 'exec-and-forget open -na Ghostty'
 
     # Layout
     alt-slash = 'layout tiles horizontal vertical'
