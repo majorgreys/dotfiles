@@ -52,7 +52,7 @@
 
 ;;; macOS Frame Appearance
 (when (eq system-type 'darwin)
-  (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t))
+  (add-to-list 'default-frame-alist '(undecorated . t))
   (add-to-list 'default-frame-alist '(ns-appearance . light))
   (add-to-list 'default-frame-alist '(fullscreen . maximized)))
 
