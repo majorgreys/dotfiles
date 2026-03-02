@@ -6,6 +6,15 @@ window-padding-y = 5
 window-decoration = false
 theme = modus-operandi
 command = /opt/homebrew/bin/fish
-shell-integration-features = ssh-terminfo,ssh-env
+shell-integration-features = title,ssh-terminfo,ssh-env
 desktop-notifications = true
+unfocused-split-opacity = 0.85
 keybind = shift+enter=text:\x1b\r
+keybind = cmd+h=goto_split:left
+keybind = cmd+j=goto_split:bottom
+keybind = cmd+k=goto_split:top
+keybind = cmd+l=goto_split:right
+keybind = cmd+ctrl+h=resize_split:left,40
+keybind = cmd+ctrl+j=resize_split:down,40
+keybind = cmd+ctrl+k=resize_split:up,40
+keybind = cmd+ctrl+l=resize_split:right,40
