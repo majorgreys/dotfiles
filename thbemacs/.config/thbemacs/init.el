@@ -291,6 +291,7 @@
   (add-hook 'writeroom-mode-hook
             (lambda ()
               (text-scale-set (if writeroom-mode thb/zen-text-scale 0))
+              (display-line-numbers-mode (if writeroom-mode -1 1))
               (visual-fill-column-adjust)))
 
   (advice-add #'text-scale-adjust :after #'visual-fill-column-adjust))
@@ -307,6 +308,23 @@
              (load-theme 'modus-vivendi t))
     (disable-theme 'modus-vivendi)
     (load-theme 'modus-operandi t)))
+
+(defvar thb/big-font-mode nil "Non-nil when big font mode is active.")
+(defvar thb/big-font-increment 5 "Points to add when big font mode is active.")
+
+(defun thb/big-font-mode ()
+  "Toggle big font mode (increase default face height)."
+  (interactive)
+  (let* ((current (face-attribute 'default :height))
+         (increment (* thb/big-font-increment 10))) ; height is in 1/10 pt
+    (if thb/big-font-mode
+        (progn
+          (set-face-attribute 'default nil :height (- current increment))
+          (setq thb/big-font-mode nil)
+          (message "Big font mode off"))
+      (set-face-attribute 'default nil :height (+ current increment))
+      (setq thb/big-font-mode t)
+      (message "Big font mode on"))))
 
 ;; nano-theme — installed but not loaded by default.
 ;; Uncomment to use: (load-theme 'nano t)
@@ -349,6 +367,10 @@
     :prefix "SPC"
     :global-prefix "C-SPC")
 
+  ;; --- Global quick-access (matches Doom) ---
+  (thb/leader
+    "X" '(org-capture :which-key "capture"))
+
   ;; --- SPC f: Files ---
   (thb/leader
     "f"  '(:ignore t :which-key "files")
@@ -389,15 +411,18 @@
     "nri" '(org-roam-node-insert :which-key "insert link")
     "nrc" '(org-roam-capture :which-key "capture")
     "nrl" '(org-roam-buffer-toggle :which-key "backlinks")
-    "nrs" '(consult-org-roam-search :which-key "search roam"))
+    "nrs" '(consult-org-roam-search :which-key "search roam")
+    "nn" '(org-capture :which-key "capture")
+    "nN" '(org-capture-goto-target :which-key "goto capture"))
 
   ;; --- SPC o: Open ---
   (thb/leader
     "o"  '(:ignore t :which-key "open")
     "oa" '(org-agenda :which-key "agenda")
-    "oc" '(org-capture :which-key "capture")
     "oA" '(thb/org-agenda-toggle-view :which-key "toggle agenda view")
-    "os" '(agent-shell :which-key "agent shell"))
+    "os" '(agent-shell :which-key "agent shell")
+    "oS" '(agent-shell-manager-toggle :which-key "agent manager")
+    "oj" '(agent-shell-attention-jump :which-key "agent attention"))
 
   ;; --- SPC g: Git ---
   (thb/leader
@@ -409,6 +434,7 @@
   ;; --- SPC t: Toggles ---
   (thb/leader
     "t"  '(:ignore t :which-key "toggles")
+    "tb" '(thb/big-font-mode :which-key "big font")
     "tt" '(thb/toggle-theme :which-key "theme")
     "tl" '(display-line-numbers-mode :which-key "line numbers")
     "tw" '(whitespace-mode :which-key "whitespace")
@@ -614,7 +640,8 @@
 
   ;; --- Indentation ---
   ;; Virtual indentation based on heading level (no extra spaces in file).
-  (setq org-startup-indented t)
+  (setq org-startup-indented t
+        org-hide-leading-stars t)
 
   ;; Word wrap — wrap at word boundaries, respecting org-indent.
   (add-hook 'org-mode-hook #'visual-line-mode)
@@ -645,10 +672,20 @@
   (auto-save-visited-mode 1)
 
   ;; --- Capture Templates ---
-  ;; Start with two basic templates. Full set commented out below.
+  ;; All captures go to Inbox; refile later.
   (setq org-capture-templates
         '(("t" "Todo" entry (file+headline "todo.org" "Inbox")
            "** TODO %?\nSCHEDULED: %t\n")
+          ("i" "Interrupt" entry (file+headline "todo.org" "Inbox")
+           "** TODO %? :interrupt:\nSCHEDULED: %t\n")
+          ("e" "Enablement" entry (file+headline "todo.org" "Inbox")
+           "** TODO %? :enablement:\nSCHEDULED: %t\n")
+          ("c" "Compliance" entry (file+headline "todo.org" "Inbox")
+           "** TODO %? :compliance:\nSCHEDULED: %t\n")
+          ("l" "Leadership" entry (file+headline "todo.org" "Inbox")
+           "** TODO %? :leadership:\nSCHEDULED: %t\n")
+          ("p" "Personal" entry (file+headline "todo.org" "Inbox")
+           "** TODO %? :personal:\nSCHEDULED: %t\n")
           ("r" "Research" entry (file+headline "todo.org" "Inbox")
            "** TODO %? :research:\n")))
 
@@ -931,6 +968,89 @@
 
 
 ;;; ============================================================
+;;; Vulpea (trial — coexists with org-roam)
+;;; ============================================================
+
+;; Vulpea v2 — independent org-mode note database with async indexing.
+;; Evaluating as potential org-roam replacement. Both run simultaneously:
+;; org-roam uses org-roam.db, vulpea uses vulpea.db, same org files.
+(use-package vulpea
+  :after org
+  :config
+  ;; Index both roam notes and daily journal entries.
+  (setq vulpea-db-sync-directories
+        (list (expand-file-name "roam/" org-directory)
+              (expand-file-name "daily/" org-directory))
+        vulpea-default-notes-directory
+        (expand-file-name org-directory)
+
+        ;; Performance settings from d12frosted/environment:
+        vulpea-db-parse-method         'single-temp-buffer  ; reuse temp buffer
+        vulpea-db-sync-scan-on-enable  'async               ; non-blocking startup
+        vulpea-db-sync-external-method 'fswatch             ; macOS: detect git changes
+        vulpea-db-index-heading-level  t)                   ; index headings with IDs
+
+  ;; Display: show mtime + title (matches org-roam node display).
+  ;; Tags shown via annotate-fn (default: aliases + #tags).
+  (defun thb/vulpea-describe-with-mtime (note)
+    "Format NOTE as [mtime] title for completion candidates."
+    (let* ((path (vulpea-note-path note))
+           (mtime (when (and path (file-exists-p path))
+                    (file-attribute-modification-time
+                     (file-attributes path))))
+           (mtime-str (if mtime
+                          (format-time-string "[%Y-%m-%d %a %H:%M]" mtime)
+                        (make-string 22 ?\s)))
+           (title (vulpea-note-title note)))
+      (concat (propertize mtime-str 'face 'font-lock-comment-face)
+              " " title)))
+
+  (setq vulpea-select-describe-fn #'thb/vulpea-describe-with-mtime)
+
+  (setq vulpea-create-default-template
+        '(:file-name "roam/%<%Y%m%d%H%M>.org"
+          :head "#+date: %<[%Y-%m-%d]>"
+          :properties (("CREATED" . "%<[%Y-%m-%d %a %H:%M]>"))
+          :tags nil))
+
+  (vulpea-db-autosync-mode 1))
+
+;; Vulpea-UI — sidebar with outline, backlinks, stats widgets.
+(use-package vulpea-ui
+  :after vulpea)
+
+;; Vulpea-journal — daily journaling with calendar sidebar widget.
+;; Template matches existing org-roam-dailies format in ~/org/daily/.
+(use-package vulpea-journal
+  :after (vulpea vulpea-ui)
+  :config
+  (setq vulpea-journal-default-template
+        '(:file-name "daily/%Y-%m-%d.org"
+          :title "%Y-%m-%d %A"
+          :tags ("daily")
+          :properties (("CREATED" . "%<[%Y-%m-%d]>"))))
+
+  (vulpea-journal-setup))
+
+;; Consult-vulpea — search vulpea notes with consult/ripgrep.
+(use-package consult-vulpea
+  :after vulpea
+  :config
+  (setq consult-vulpea-grep-func #'consult-ripgrep))
+
+;; Vulpea keybindings — SPC n v (separate from org-roam's SPC n r)
+(with-eval-after-load 'vulpea
+  (thb/leader
+    "nv"  '(:ignore t :which-key "vulpea")
+    "nvf" '(vulpea-find :which-key "find note")
+    "nvi" '(vulpea-insert :which-key "insert link")
+    "nvb" '(vulpea-find-backlink :which-key "backlinks")
+    "nvs" '(consult-vulpea-ripgrep :which-key "search")
+    "nvj" '(vulpea-journal :which-key "today's journal")
+    "nvd" '(vulpea-journal-date :which-key "journal by date")))
+
+
+;;; ============================================================
 ;;; Org-Modern
 ;;; ============================================================
 
@@ -1187,7 +1307,22 @@ Cell text has markdown inline formatting rendered as text properties."
                     (when formatted
                       (delete-region tbl-start tbl-end)
                       (goto-char tbl-start)
-                      (insert formatted "\n")))))))))))
+                      (insert formatted "\n"))))))))))))
+
+;; Agent-shell-attention — mode-line indicator for agent buffers awaiting input.
+;; Shows AS:n (pending) in mode-line; click or SPC o S to jump to pending buffer.
+(use-package agent-shell-attention
+  :after agent-shell
+  :config
+  (agent-shell-attention-mode 1))
+
+;; Agent-shell-manager — tabulated list of all agent-shell sessions.
+;; Shows status, model, pending permissions. Auto-refreshes every 2s.
+(use-package agent-shell-manager
+  :after agent-shell
+  :commands agent-shell-manager-toggle
+  :config
+  (setq agent-shell-manager-side 'bottom))
 
 
 ;;; ============================================================
