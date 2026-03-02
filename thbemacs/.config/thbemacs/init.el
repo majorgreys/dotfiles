@@ -300,6 +300,20 @@
 ;; These are built-in since Emacs 28, high-contrast and WCAG-compliant.
 (load-theme 'modus-operandi t)
 
+;; Re-apply theme for new frames (terminal frames from emacsclient -nw).
+;; Re-run xterm init so term/xterm.el detects COLORTERM=truecolor
+;; from the client environment, enabling 24-bit color.
+(add-hook 'after-make-frame-functions
+          (lambda (frame)
+            (with-selected-frame frame
+              (unless (display-graphic-p)
+                (tty-run-terminal-initialization frame "xterm" t))
+              (when-let ((theme (car custom-enabled-themes)))
+                (load-theme theme t)))))
+
+;; Map xterm-ghostty to xterm so Emacs loads term/xterm.el for key handling.
+(add-to-list 'term-file-aliases '("xterm-ghostty" . "xterm"))
+
 (defun thb/toggle-theme ()
   "Toggle between modus-operandi (light) and modus-vivendi (dark)."
   (interactive)
