@@ -16,6 +16,18 @@ Personal development environment setup. Configs are minimal, version-controlled,
 - Use `stow -R <package>` to re-stow after modifications
 - Run `./setup.sh` to verify full installation works
 
+**Stow structure notes:**
+- `~/.config/fish` is a directory symlink to the stow source — edits to live path modify the repo directly
+- `fish/.config/fish/conf.d/` is gitignored; tracked files there need `git add -f`
+- LaunchAgents: place in `<package>/Library/LaunchAgents/` (e.g., `thbemacs/Library/LaunchAgents/`)
+
+**thbemacs (vanilla Emacs):**
+- Daemon managed by LaunchAgent (`com.thbemacs.daemon`), socket name `thbemacs`
+- Connect: `emacsclient -s thbemacs` or fish function `thbemacs`
+- Uses dd-gopls (not vanilla gopls) with `GOPLS_DISABLE_MODULE_LOADS=1`
+- LSP client: eglot (built-in), not lsp-mode
+- native-comp requires `LIBRARY_PATH=/opt/homebrew/lib/gcc/current` in LaunchAgent env
+
 **Local overrides (not synced):**
 - Fish: `~/.config/fish/config.local.fish`
 - Doom: `~/.config/doom/local.el` and `packages-local.el`
