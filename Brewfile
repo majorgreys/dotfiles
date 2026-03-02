@@ -7,6 +7,7 @@ tap "d12frosted/emacs-plus"
 # Shells & Prompt
 brew "fish"
 brew "tmux"
+brew "dtach"
 brew "starship"
 
 # Editors
