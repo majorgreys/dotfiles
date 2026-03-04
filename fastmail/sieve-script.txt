@@ -1,0 +1,370 @@
+require ["fileinto", "reject", "vacation", "envelope", "body", "relational", "regex", "subaddress", "copy", "mailbox", "mboxmetadata", "servermetadata", "date", "index", "comparator-i;ascii-numeric", "variables", "imap4flags", "editheader", "duplicate", "vacation-seconds", "fcc", "vnd.cyrus.jmapquery", "vnd.cyrus.log", "mailboxid", "special-use", "vnd.cyrus.snooze", "processcalendar", "vnd.cyrus.implicit_keep_target"];
+
+### Sieve generated for save-on-SMTP identities {{{
+# You do not have any identities with special filing.
+### }}}
+
+### Sieve generated for blocked senders {{{
+if not header :matches "X-Spam-Known-Sender" "yes*" {
+  if address :is "From" "Alan.J.Singer@hofstra.edu" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+  if address :is "From" "donotrespond@pof.com" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+  if address :is "From" "info@email.daraz.pk" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+  if address :is "From" "message@socialdatingmail.com" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+  if address :is "From" "usersgc09@gmail.com" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+  if address :is "From" "revsgroup@gmail.com" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+  if address :is "From" "no-reply@comewithdaddy.com" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+  if address :is "From" "matrix.secint@gmail.com" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+  if address :domain :is "From" "brooklynletters.org" {
+    addflag "\\Seen";
+    fileinto :specialuse "\\Trash" "INBOX.Trash";
+    stop;
+  }
+}
+### }}}
+
+### Sieve generated for disabled masked email addresses {{{
+if header :contains "Fastmail-MaskedEmail" " state=disabled" {
+  addflag "\\Seen";
+  fileinto :specialuse "\\Trash" "INBOX.Trash";
+  stop;
+}
+### }}}
+
+### Sieve generated for spam protection {{{
+if not anyof(
+    string :is "${spam}" "N",
+    header :matches "X-Spam-Known-Sender" "yes*"
+) {
+  if allof(
+      header :contains "X-Backscatter" "yes",
+      not header :matches "X-LinkName" "*"
+  ) {
+    set "spam" "Y";
+  }
+  if header :value "ge" :comparator "i;ascii-numeric" "X-Spam-score" "5" {
+    set "spam" "Y";
+  }
+}
+### }}}
+
+### MailFetch Implicit Keep {{{
+### }}}
+
+### Address rules {{{
+# You have no address rules
+### }}}
+
+### Execute spam filing {{{
+if string :is "${spam}" "Y" {
+  fileinto "\\Junk";
+  stop;
+}
+### }}}
+
+
+### Inbox filing - Auto-categorize messages {{{
+
+# ============================================================
+# PHASE 1: Explicit sender rules (run before generic categories)
+# ============================================================
+
+# Auto-trash: Known marketing junk
+if anyof(
+  address :domain :matches "From" ["*.t-mobile.com", "*.shutterfly.com", "*.health.amazon.com"],
+  address :is "From" "inmail-hit-reply@linkedin.com"
+) {
+  addflag "\\Seen";
+  fileinto :specialuse "\\Trash" "INBOX.Trash";
+  stop;
+}
+
+# Government/Tax → Notifications (important, don't bury)
+if address :domain :is "From" "messages.tax.ny.gov" {
+  fileinto :create "INBOX.Notifications";
+  stop;
+}
+
+# School-related → Notifications
+if anyof(
+  address :domain :is "From" ["bayridgeprep.org", "magnushealthportal.com", "thewindwardschool.org"],
+  address :domain :is "From" "jackrabbittech.com"
+) {
+  fileinto :create "INBOX.Notifications";
+  stop;
+}
+
+# Music/Culture → Newsletters
+if anyof(
+  address :domain :is "From" ["warprecords.com", "thirdmanrecords.com", "bleep.com", "numerogroup.com", "blankforms.org", "filmforum.org"],
+  address :domain :matches "From" "*.bbemusic.com"
+) {
+  fileinto :create "INBOX.Newsletters";
+  stop;
+}
+
+# News → Newsletters
+if anyof(
+  address :domain :matches "From" ["*.politico.com", "*.pbs.org"]
+) {
+  fileinto :create "INBOX.Newsletters";
+  stop;
+}
+
+# Political/Organizing → Mailing Lists
+if anyof(
+  address :domain :is "From" ["socialists.nyc", "workerorganizing.org", "david4queens.com", "gonzalezforny.com", "berniesanders.com", "labornotes.org", "dsausa.org", "clairevaldezforcongress.com"],
+  address :domain :matches "From" "*.mobilize.us"
+) {
+  fileinto :create "INBOX.Mailing Lists";
+  stop;
+}
+
+# Local community → Newsletters
+if anyof(
+  address :domain :is "From" ["thirstmerchants.com", "makeville.com"],
+  address :matches "From" "*slopecellars*"
+) {
+  fileinto :create "INBOX.Newsletters";
+  stop;
+}
+
+# ============================================================
+# PHASE 2: Generic category rules (header-based heuristics)
+# ============================================================
+
+# Auto-categorize Mailing Lists (exclude GitHub and Substack - those go to Notifications)
+if allof(
+  anyof(
+    header :contains "X-ME-VSCategory" "community:mailing-list",
+    exists "List-Id",
+    exists "List-Help",
+    exists "List-Post",
+    header :is "Precedence" "list"
+  ),
+  not anyof(
+    address :domain :is "From" ["github.com", "substack.com"]
+  )
+) {
+  fileinto :create "INBOX.Mailing Lists";
+  stop;
+}
+
+# Auto-categorize Notifications (exclude organizational newsletters)
+if allof(
+  anyof(
+    header :contains "X-ME-CMCategory" "notification",
+    header :contains "X-ME-VSCategory" "transactional",
+    header :contains "X-ME-VSCategory" "community:social",
+    address :matches "From" ["*@*.facebookmail.com", "*noreply*", "*no-reply*", "*donotreply*", "*notification*", "*@privaterelay.appleid.com"],
+    address :domain :is "From" ["github.com", "substack.com", "amazon.com", "bestbuy.com", "target.com", "walmart.com", "ebay.com", "etsy.com", "shopify.com", "apple.com", "homedepot.com", "lowes.com", "costco.com", "wayfair.com", "paypal.com", "aliexpress.com", "privaterelay.appleid.com"],
+    address :domain :matches "From" ["*.amazonses.com", "*.sendgrid.net", "*.mailgun.org", "*.mailgun.net", "*.sparkpostmail.com", "*.aliyun.com"],
+    header :contains "Feedback-Id" ["shopify", "transaction"],
+    exists "X-GitHub-Recipient",
+    exists "X-Mailgun-Sid",
+    anyof(
+      header :contains "Subject" "order",
+      header :contains "Subject" "receipt",
+      header :contains "Subject" "shipped",
+      header :contains "Subject" "delivered",
+      header :contains "Subject" "tracking",
+      header :contains "Subject" "confirmation",
+      header :contains "Subject" "package"
+    )
+  ),
+  not address :domain :matches "From" "*.ourtime.nyc"
+) {
+  fileinto :create "INBOX.Notifications";
+  stop;
+}
+
+# Auto-categorize Promotions (marketing emails) — tightened rules
+# Removed: exists "X-Report-Abuse" (too broad, catches legitimate senders)
+# Tightened: List-Unsubscribe now requires additional commercial signal
+if anyof(
+  header :contains "X-ME-CMCategory" "promotion",
+  header :contains "X-ME-VSCategory" "commercial:mce",
+  header :contains "Received" "klaviyomail.com",
+  exists "X-Kmail-Account",
+  allof(
+    exists "List-Unsubscribe",
+    not exists "List-Post",
+    anyof(
+      header :contains "X-ME-CMCategory" "promotion",
+      header :contains "X-ME-VSCategory" "commercial",
+      header :contains "Received" "klaviyomail.com",
+      header :contains "Received" "sailthru.com",
+      header :contains "Received" "braze.com",
+      header :contains "Received" "iterable.com",
+      header :contains "Received" "customer.io",
+      exists "X-Mailer-LID",
+      exists "X-Mailer-RecptId"
+    )
+  )
+) {
+  fileinto :create "INBOX.Promotions";
+  stop;
+}
+
+# Auto-categorize Newsletters
+if anyof(
+  header :is "Precedence" "bulk",
+  exists "X-Mailgun-Batch-Id",
+  exists "X-Mailgun-Tag",
+  exists "x-bulkmail",
+  exists "X-EmailOctopus-List-Id",
+  exists "X-Campaign",
+  exists "X-campaignid",
+  exists "X-maillist-guid",
+  exists "X-MC-User",
+  exists "X-CSA-Complaints",
+  exists "List-Unsubscribe-Post",
+  address :domain :matches "From" ["*.substack.com", "*.beehiiv.com", "*.buttondown.email", "*.ghost.io", "*.ourtime.nyc"]
+) {
+  fileinto :create "INBOX.Newsletters";
+  stop;
+}
+
+# Catch-all: emails with List-Unsubscribe but no List-Post that weren't
+# caught above go to Newsletters instead of Promotions
+if allof(
+  exists "List-Unsubscribe",
+  not exists "List-Post"
+) {
+  fileinto :create "INBOX.Newsletters";
+  stop;
+}
+
+### }}}
+### Calculate rule actions {{{
+
+if jmapquery "{\"someInThreadHaveKeyword\":\"$followed\"}" {
+  set "threadstatus" "followed";
+  addflag "$followed";
+} elsif jmapquery "{\"someInThreadHaveKeyword\":\"$muted\"}" {
+  set "threadstatus" "muted";
+  addflag "$muted";
+}
+
+# No user configured rules
+
+### }}}
+
+### Execute rule actions {{{
+
+# Muted/followed
+if string :is "${threadstatus}" "followed" {
+  addflag "$notify";
+}
+elsif string :is "${threadstatus}" "muted" {
+  removeflag "$notify";
+  set "skipinbox" "Y";
+}
+
+# Delete/spam always skips inbox
+if anyof(
+  string :is "${deletetotrash}" "Y",
+  string :is "${spam}" "Y"
+) {
+  set "skipinbox" "Y";
+}
+
+# Copies always get marked read for better compatibility with IMAP clients
+# and labels mode.
+if anyof(
+  string :is "${read}" "Y",
+  not string :is "${skipinbox}" "Y"
+) {
+  if hasflag "\\Seen" {
+    set "read" "Y";
+  } else {
+    addflag "\\Seen";
+  }
+}
+# Similarly, only the inbox copy gets flagged
+if allof(
+  string :is "${flagged}" "Y",
+  string :is "${skipinbox}" "Y"
+) {
+  addflag "\\Flagged";
+}
+
+# Rule sent message to trash
+if string :is "${deletetotrash}" "Y" {
+  fileinto :specialuse "\\Trash" "INBOX.Trash";
+}
+# Rule says message is spam
+elsif string :is "${spam}" "Y" {
+  fileinto :specialuse "\\Junk" "INBOX.Spam";
+}
+# Otherwise, do rule actions
+else {
+  ### Sieve generated for calendar preferences {{{
+  # You are not automatically processing calendar emails.
+  ### }}}
+  
+  ### File into folder actions {{{
+  
+  # Then archive or clear implicit keep if skipping inbox
+  if string :is "${skipinbox}" "Y" {
+    if not string :is "${hasmailbox}" "Y" {
+      fileinto
+        :specialuse "\\Archive"
+        "INBOX.Archive";
+    } else {
+      discard;
+    }
+  } else {
+    # Set flags for inbox copy
+    if not string :is "${read}" "Y" {
+      removeflag "\\Seen";
+    }
+    if string :is "${flagged}" "Y" {
+      addflag "\\Flagged";
+    }
+    # MailFetch stop action
+  }
+  ### }}}
+  
+  ### Sieve generated for vacation responses {{{
+  # You do not have vacation responses enabled.
+  ### }}}
+}
+### }}}
+
+if string :is "${stop}" "Y" {
+#   For backwards compatibility
+}
+
+
