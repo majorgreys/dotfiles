@@ -7,46 +7,55 @@ require ["fileinto", "reject", "vacation", "envelope", "body", "relational", "re
 ### Sieve generated for blocked senders {{{
 if not header :matches "X-Spam-Known-Sender" "yes*" {
   if address :is "From" "Alan.J.Singer@hofstra.edu" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
   }
   if address :is "From" "donotrespond@pof.com" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
   }
   if address :is "From" "info@email.daraz.pk" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
   }
   if address :is "From" "message@socialdatingmail.com" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
   }
   if address :is "From" "usersgc09@gmail.com" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
   }
   if address :is "From" "revsgroup@gmail.com" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
   }
   if address :is "From" "no-reply@comewithdaddy.com" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
   }
   if address :is "From" "matrix.secint@gmail.com" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
   }
   if address :domain :is "From" "brooklynletters.org" {
+    addflag "$sieve_blocked";
     addflag "\\Seen";
     fileinto :specialuse "\\Trash" "INBOX.Trash";
     stop;
@@ -105,6 +114,7 @@ if anyof(
   address :domain :matches "From" ["*.t-mobile.com", "*.shutterfly.com", "*.health.amazon.com"],
   address :is "From" "inmail-hit-reply@linkedin.com"
 ) {
+  addflag "$sieve_autotrash";
   addflag "\\Seen";
   fileinto :specialuse "\\Trash" "INBOX.Trash";
   stop;
@@ -112,6 +122,7 @@ if anyof(
 
 # Government/Tax → Notifications (important, don't bury)
 if address :domain :is "From" "messages.tax.ny.gov" {
+  addflag "$sieve_tax";
   fileinto :create "INBOX.Notifications";
   stop;
 }
@@ -121,6 +132,7 @@ if anyof(
   address :domain :is "From" ["bayridgeprep.org", "magnushealthportal.com", "thewindwardschool.org"],
   address :domain :is "From" "jackrabbittech.com"
 ) {
+  addflag "$sieve_school";
   fileinto :create "INBOX.Notifications";
   stop;
 }
@@ -130,6 +142,7 @@ if anyof(
   address :domain :is "From" ["warprecords.com", "thirdmanrecords.com", "bleep.com", "numerogroup.com", "blankforms.org", "filmforum.org"],
   address :domain :matches "From" "*.bbemusic.com"
 ) {
+  addflag "$sieve_music";
   fileinto :create "INBOX.Newsletters";
   stop;
 }
@@ -138,6 +151,7 @@ if anyof(
 if anyof(
   address :domain :matches "From" ["*.politico.com", "*.pbs.org"]
 ) {
+  addflag "$sieve_news";
   fileinto :create "INBOX.Newsletters";
   stop;
 }
@@ -147,6 +161,7 @@ if anyof(
   address :domain :is "From" ["socialists.nyc", "workerorganizing.org", "david4queens.com", "gonzalezforny.com", "berniesanders.com", "labornotes.org", "dsausa.org", "clairevaldezforcongress.com"],
   address :domain :matches "From" "*.mobilize.us"
 ) {
+  addflag "$sieve_political";
   fileinto :create "INBOX.Mailing Lists";
   stop;
 }
@@ -156,6 +171,7 @@ if anyof(
   address :domain :is "From" ["thirstmerchants.com", "makeville.com"],
   address :matches "From" "*slopecellars*"
 ) {
+  addflag "$sieve_local";
   fileinto :create "INBOX.Newsletters";
   stop;
 }
@@ -177,6 +193,7 @@ if allof(
     address :domain :is "From" ["github.com", "substack.com"]
   )
 ) {
+  addflag "$sieve_mailinglist";
   fileinto :create "INBOX.Mailing Lists";
   stop;
 }
@@ -205,6 +222,7 @@ if allof(
   ),
   not address :domain :matches "From" "*.ourtime.nyc"
 ) {
+  addflag "$sieve_notification";
   fileinto :create "INBOX.Notifications";
   stop;
 }
@@ -233,6 +251,7 @@ if anyof(
     )
   )
 ) {
+  addflag "$sieve_promotion";
   fileinto :create "INBOX.Promotions";
   stop;
 }
@@ -252,6 +271,7 @@ if anyof(
   exists "List-Unsubscribe-Post",
   address :domain :matches "From" ["*.substack.com", "*.beehiiv.com", "*.buttondown.email", "*.ghost.io", "*.ourtime.nyc"]
 ) {
+  addflag "$sieve_newsletter";
   fileinto :create "INBOX.Newsletters";
   stop;
 }
@@ -262,6 +282,7 @@ if allof(
   exists "List-Unsubscribe",
   not exists "List-Post"
 ) {
+  addflag "$sieve_newsletter_catchall";
   fileinto :create "INBOX.Newsletters";
   stop;
 }
