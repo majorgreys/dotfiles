@@ -245,7 +245,7 @@ export PATH="$HOME/.config/emacs/bin:$PATH"
 if [[ -f "$HOME/.config/emacs/.local/straight/repos/straight.el/README.md" ]]; then
     print_success "Doom already installed"
     print_warning "Running 'doom sync'..."
-    "$DOOM_BIN" sync
+    "$DOOM_BIN" sync --yes
 else
     print_warning "Running 'doom install'..."
     "$DOOM_BIN" install
