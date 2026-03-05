@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.doomemacs.daemon</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/opt/emacs-plus@30/bin/emacs</string>
+		<string>--fg-daemon=doom</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LANG</key>
+		<string>en_US.UTF-8</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>LIBRARY_PATH</key>
+		<string>/opt/homebrew/lib/gcc/current:/opt/homebrew/lib</string>
+		<key>TERMINFO</key>
+		<string>/Applications/Ghostty.app/Contents/Resources/terminfo</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/tmp/doomemacs-daemon.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/doomemacs-daemon.log</string>
+</dict>
+</plist>
