@@ -408,16 +408,15 @@
     "sp" '(consult-ripgrep :which-key "search project")
     "si" '(consult-imenu :which-key "imenu"))
 
-  ;; --- SPC n: Notes / Org-Roam ---
+  ;; --- SPC n: Notes (Vulpea) ---
   (thb/leader
     "n"  '(:ignore t :which-key "notes")
-    "nr" '(:ignore t :which-key "roam")
-    "nrf" '(org-roam-node-find :which-key "find node")
-    "nri" '(org-roam-node-insert :which-key "insert link")
-    "nrc" '(org-roam-capture :which-key "capture")
-    "nrl" '(org-roam-buffer-toggle :which-key "backlinks")
-    "nrs" '(consult-org-roam-search :which-key "search roam")
-)
+    "nf" '(vulpea-find :which-key "find note")
+    "ni" '(vulpea-insert :which-key "insert link")
+    "nb" '(vulpea-find-backlink :which-key "backlinks")
+    "ns" '(consult-vulpea-ripgrep :which-key "search notes")
+    "nj" '(vulpea-journal :which-key "today's journal")
+    "nd" '(vulpea-journal-date :which-key "journal by date"))
 
   ;; --- SPC o: Open ---
   (thb/leader
@@ -790,12 +789,11 @@
 
 
 ;;; ============================================================
-;;; Vulpea (trial — coexists with org-roam)
+;;; Vulpea (primary note interface)
 ;;; ============================================================
 
-;; Vulpea v2 — independent org-mode note database with async indexing.
-;; Evaluating as potential org-roam replacement. Both run simultaneously:
-;; org-roam uses org-roam.db, vulpea uses vulpea.db, same org files.
+;; Vulpea v2 — note interface built on org-roam-db with async indexing.
+;; org-roam stays as a dependency (provides the database layer).
 (use-package vulpea
   :after org
   :config
@@ -860,16 +858,6 @@
   :config
   (setq consult-vulpea-grep-func #'consult-ripgrep))
 
-;; Vulpea keybindings — SPC n v (separate from org-roam's SPC n r)
-(with-eval-after-load 'vulpea
-  (thb/leader
-    "nv"  '(:ignore t :which-key "vulpea")
-    "nvf" '(vulpea-find :which-key "find note")
-    "nvi" '(vulpea-insert :which-key "insert link")
-    "nvb" '(vulpea-find-backlink :which-key "backlinks")
-    "nvs" '(consult-vulpea-ripgrep :which-key "search")
-    "nvj" '(vulpea-journal :which-key "today's journal")
-    "nvd" '(vulpea-journal-date :which-key "journal by date")))
 
 
 ;;; ============================================================
