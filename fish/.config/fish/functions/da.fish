@@ -8,5 +8,5 @@ function da --description "dtach session tied to current directory"
     end
 
     set -l socket $socket_dir/$session_name
-    dtach -A $socket -z fish
+    dtach -A $socket -z -e '^]' fish
 end
