@@ -60,7 +60,6 @@
   '(("SPC ."     . "find file")
     ("SPC f r"   . "recent files")
     ("SPC n r f" . "org-roam find")
-    ("SPC o a"   . "agenda")
     ("SPC q q"   . "quit"))
   "Key hints shown on the splash screen.")
 
@@ -340,10 +339,6 @@
       (setq thb/big-font-mode t)
       (message "Big font mode on"))))
 
-;; nano-theme — installed but not loaded by default.
-;; Uncomment to use: (load-theme 'nano t)
-(use-package nano-theme :defer t)
-
 
 ;;; ============================================================
 ;;; Evil Mode + Leader Keys
@@ -380,10 +375,6 @@
     :keymaps 'override
     :prefix "SPC"
     :global-prefix "C-SPC")
-
-  ;; --- Global quick-access (matches Doom) ---
-  (thb/leader
-    "X" '(org-capture :which-key "capture"))
 
   ;; --- SPC f: Files ---
   (thb/leader
@@ -426,14 +417,11 @@
     "nrc" '(org-roam-capture :which-key "capture")
     "nrl" '(org-roam-buffer-toggle :which-key "backlinks")
     "nrs" '(consult-org-roam-search :which-key "search roam")
-    "nn" '(org-capture :which-key "capture")
-    "nN" '(org-capture-goto-target :which-key "goto capture"))
+)
 
   ;; --- SPC o: Open ---
   (thb/leader
     "o"  '(:ignore t :which-key "open")
-    "oa" '(org-agenda :which-key "agenda")
-    "oA" '(thb/org-agenda-toggle-view :which-key "toggle agenda view")
     "os" '(agent-shell :which-key "agent shell")
     "oS" '(agent-shell-manager-toggle :which-key "agent manager")
     "oj" '(agent-shell-attention-jump :which-key "agent attention"))
@@ -649,8 +637,7 @@
   :ensure nil                            ; built-in, don't install from MELPA
   :config
   ;; --- Directories ---
-  (setq org-directory "~/org/"
-        org-agenda-files (list (expand-file-name "todo.org" org-directory)))
+  (setq org-directory "~/org/")
 
   ;; --- Indentation ---
   ;; Virtual indentation based on heading level (no extra spaces in file).
@@ -661,47 +648,19 @@
   (add-hook 'org-mode-hook #'visual-line-mode)
 
   ;; --- TODO Keywords ---
-  ;; Matches Doom config exactly — same states work in both editors.
   (setq org-todo-keywords
-        '((sequence "ICEBOX(I)" "BACKLOG(b)" "TO-DO(T)" "TODO(t)" "IN-PROGRESS(i)" "PAUSED(p)" "BLOCKED(B)" "|" "DONE(d)" "CANCELLED(c)")))
-
-  ;; --- Priorities ---
-  (setq org-priority-highest ?A
-        org-priority-lowest ?C
-        org-priority-default ?B)
+        '((sequence "TODO(t)" "|" "DONE(d)")))
 
   ;; --- Logging ---
-  ;; Record timestamps for state changes, store in LOGBOOK drawer.
+  ;; Timestamp when marking DONE, store in LOGBOOK drawer.
   (setq org-log-done 'time
-        org-log-into-drawer t
-        org-treat-insert-todo-heading-as-state-change t
-        org-log-repeat 'time
-        org-log-reschedule 'time
-        org-log-redeadline 'time)
+        org-log-into-drawer t)
 
   ;; --- Auto-save ---
   ;; Save org buffers periodically (protects against data loss).
   (add-hook 'org-mode-hook #'auto-save-mode)
   (setq auto-save-visited-interval 10)
   (auto-save-visited-mode 1)
-
-  ;; --- Capture Templates ---
-  ;; All captures go to Inbox; refile later.
-  (setq org-capture-templates
-        '(("t" "Todo" entry (file+headline "todo.org" "Inbox")
-           "** TODO %?\nSCHEDULED: %t\n")
-          ("i" "Interrupt" entry (file+headline "todo.org" "Inbox")
-           "** TODO %? :interrupt:\nSCHEDULED: %t\n")
-          ("e" "Enablement" entry (file+headline "todo.org" "Inbox")
-           "** TODO %? :enablement:\nSCHEDULED: %t\n")
-          ("c" "Compliance" entry (file+headline "todo.org" "Inbox")
-           "** TODO %? :compliance:\nSCHEDULED: %t\n")
-          ("l" "Leadership" entry (file+headline "todo.org" "Inbox")
-           "** TODO %? :leadership:\nSCHEDULED: %t\n")
-          ("p" "Personal" entry (file+headline "todo.org" "Inbox")
-           "** TODO %? :personal:\nSCHEDULED: %t\n")
-          ("r" "Research" entry (file+headline "todo.org" "Inbox")
-           "** TODO %? :research:\n")))
 
   ;; --- Attachments ---
   ;; Matches Doom config: timestamp-based folders under ~/org/attachments/
@@ -723,47 +682,6 @@
   ;; archive/enablement.org, archive/interrupt.org, etc.)
   (setq org-archive-location "archive/%s::")
 
-  (defun thb/org-archive-done-tasks ()
-    "Archive all DONE and CANCELLED tasks in the current buffer."
-    (interactive)
-    (org-map-entries
-     (lambda ()
-       (org-archive-subtree)
-       (setq org-map-continue-from (outline-previous-heading)))
-     "/DONE|CANCELLED" 'file)
-    (org-save-all-org-buffers)
-    (message "Archived all done/cancelled tasks"))
-
-  ;; --- Agenda ---
-  (setq org-agenda-start-day nil
-        org-agenda-start-on-weekday nil
-        org-agenda-skip-deadline-if-done t
-        org-agenda-skip-scheduled-if-done t
-        org-agenda-tags-column 0)             ; tags inline after text (avoids overflow with org-modern boxes)
-
-  ;; Show agenda in a top 1/3 window
-  (add-to-list 'display-buffer-alist
-               '("\\*Org Agenda\\*"
-                 (display-buffer-in-direction)
-                 (direction . top)
-                 (window-height . 0.33)))
-
-  ;; Auto-save after agenda edits
-  (advice-add 'org-agenda-todo :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-priority :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-schedule :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-deadline :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-set-tags :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-refile :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-archive-default :after (lambda (&rest _) (org-save-all-org-buffers)))
-
-  ;; --- Agenda keybindings ---
-  ;; TAB = preview entry (stay in agenda), RET = go to entry
-  (with-eval-after-load 'org-agenda
-    (evil-define-key 'motion org-agenda-mode-map
-      (kbd "TAB") #'org-agenda-show-and-scroll-up
-      (kbd "RET") #'org-agenda-goto))
-
   ;; --- Link navigation ---
   (defun thb/org-open-link-other-window ()
     "Open org link at point in another window."
@@ -776,7 +694,6 @@
     :keymaps 'org-mode-map
     "m"  '(:ignore t :which-key "org")
     "mt" '(org-todo :which-key "todo state")
-    "mT" '(org-todo-list :which-key "todo list")
     "mq" '(org-set-tags-command :which-key "set tags")
     "mo" '(org-set-property :which-key "set property")
     "me" '(org-export-dispatch :which-key "export")
@@ -789,16 +706,6 @@
     "mds" '(org-schedule :which-key "schedule")
     "mdt" '(org-time-stamp :which-key "timestamp")
     "mdT" '(org-time-stamp-inactive :which-key "inactive timestamp")
-
-    ;; --- SPC m c: clock ---
-    "mc"  '(:ignore t :which-key "clock")
-    "mci" '(org-clock-in :which-key "clock in")
-    "mco" '(org-clock-out :which-key "clock out")
-    "mcc" '(org-clock-cancel :which-key "cancel")
-    "mcg" '(org-clock-goto :which-key "goto")
-    "mcr" '(org-clock-report :which-key "report")
-    "mcR" '(org-resolve-clocks :which-key "resolve")
-    "mcE" '(org-set-effort :which-key "set effort")
 
     ;; --- SPC m s: tree/subtree ---
     "ms"  '(:ignore t :which-key "subtree")
@@ -814,7 +721,6 @@
     "msb" '(org-tree-to-indirect-buffer :which-key "indirect buffer")
     "msa" '(org-toggle-archive-tag :which-key "toggle archive tag")
     "msA" '(org-archive-subtree-default :which-key "archive subtree")
-    "msD" '(thb/org-archive-done-tasks :which-key "archive all done")
 
     ;; --- SPC m l: links ---
     "ml"  '(:ignore t :which-key "links")
@@ -833,100 +739,6 @@
     "mpp" '(org-priority :which-key "set priority")
     "mpu" '(org-priority-up :which-key "priority up")
     "mpd" '(org-priority-down :which-key "priority down")))
-
-;; ----- Commented-out: Full Capture Templates -----
-;; Uncomment these and replace the basic templates above as you learn.
-;;
-;; (setq org-capture-templates
-;;       '(("t" "Todo" entry (file+headline "todo.org" "Inbox")
-;;          "** TODO %?\nSCHEDULED: %t\n")
-;;         ("i" "Interrupt" entry (file+olp "todo.org" "Areas" "Interrupt")
-;;          "*** TODO %? :interrupt:\nSCHEDULED: %t\n")
-;;         ("e" "Enablement" entry (file+olp "todo.org" "Areas" "Enablement")
-;;          "*** TODO %? :enablement:\nSCHEDULED: %t\n")
-;;         ("c" "Compliance" entry (file+olp "todo.org" "Areas" "Compliance")
-;;          "*** TODO %? :compliance:\nSCHEDULED: %t\n")
-;;         ("l" "Leadership" entry (file+olp "todo.org" "Areas" "Leadership")
-;;          "*** TODO %? :leadership:\nSCHEDULED: %t\n")
-;;         ("p" "Personal" entry (file+olp "todo.org" "Areas" "Personal")
-;;          "*** TODO %? :personal:\nSCHEDULED: %t\n")
-;;         ("r" "Research" entry (file+headline "todo.org" "Inbox")
-;;          "** TODO %? :research:\n")))
-
-;; Org-super-agenda — group agenda items into meaningful sections.
-(use-package org-super-agenda
-  :after org-agenda
-  :config
-  (org-super-agenda-mode 1)
-
-  ;; Focus view: today's actionable work only
-  (setq thb/org-super-agenda-groups-focus
-        '((:discard (:todo ("PROJ" "BACKLOG" "CANCELLED")))
-          (:name "Urgent" :tag "oncall" :priority "A")
-          (:name "Blocked" :todo "BLOCKED")
-          (:name "In progress" :todo "IN-PROGRESS" :order 1)
-          (:name "Overdue" :and (:scheduled past :todo ("TODO" "PAUSED")) :order 2)
-          (:name "Today" :and (:scheduled today :todo "TODO") :order 3)
-          (:name "Deadlines" :deadline past :deadline today :deadline future :order 4)
-          (:discard (:scheduled future))
-          (:discard (:todo "PAUSED"))
-          (:name "Other" :todo "TODO" :order 5)))
-
-  ;; Full view: everything grouped by status
-  (setq thb/org-super-agenda-groups-full
-        '((:name "Urgent" :tag "oncall" :priority "A")
-          (:name "Blocked" :todo "BLOCKED")
-          (:name "In progress" :todo "IN-PROGRESS")
-          (:name "Today" :and (:todo "TODO" :scheduled today))
-          (:name "Deadlines" :deadline future :deadline today)
-          (:name "Paused" :todo "PAUSED")
-          (:name "Overdue" :scheduled past)
-          (:name "Future" :scheduled future)
-          (:name "Other" :anything t)))
-
-  (setq org-super-agenda-groups thb/org-super-agenda-groups-focus)
-
-  ;; Custom agenda commands: f=focus, a=full week, w=weekly review
-  (setq org-agenda-custom-commands
-        '(("f" "Today's Focus"
-           ((agenda ""
-                    ((org-agenda-span 1)
-                     (org-agenda-start-day nil)
-                     (org-super-agenda-groups thb/org-super-agenda-groups-focus)
-                     (org-agenda-overriding-header "Today\n"))))
-           ((org-agenda-compact-blocks t)))
-          ("a" "Full Agenda"
-           ((agenda ""
-                    ((org-agenda-span 7)
-                     (org-agenda-start-day nil)
-                     (org-super-agenda-groups thb/org-super-agenda-groups-full)
-                     (org-agenda-overriding-header "Agenda\n"))))
-           ((org-agenda-compact-blocks t)))
-          ("w" "Weekly Review"
-           ((agenda ""
-                    ((org-agenda-span 'week)
-                     (org-agenda-start-on-weekday 1)
-                     (org-super-agenda-groups thb/org-super-agenda-groups-full)
-                     (org-agenda-overriding-header "Weekly\n"))))
-           ((org-agenda-compact-blocks t)))
-          ("b" "Backlog"
-           ((todo "BACKLOG"
-                  ((org-agenda-overriding-header "Backlog\n")
-                   (org-agenda-sorting-strategy '(category-keep priority-down)))))
-           ((org-agenda-compact-blocks t)))
-          ("B" "Blocked"
-           ((todo "BLOCKED"
-                  ((org-agenda-overriding-header "Blocked\n")
-                   (org-agenda-sorting-strategy '(priority-down category-keep)))))
-           ((org-agenda-compact-blocks t)))))
-
-  ;; Toggle focus/full by switching between custom agenda commands
-  (defun thb/org-agenda-toggle-view ()
-    "Toggle between focus and full agenda views."
-    (interactive)
-    (if (equal org-super-agenda-groups thb/org-super-agenda-groups-focus)
-        (org-agenda nil "a")
-      (org-agenda nil "f"))))
 
 
 ;;; ============================================================
@@ -975,10 +787,6 @@
   :after org-roam
   :config
   (setq consult-org-roam-grep-func #'consult-ripgrep))
-
-;; Org-download — drag-and-drop / URL file downloads into org buffers.
-;; Required by org-roam-skill's attach-file-to-references function.
-(use-package org-download :defer t)
 
 
 ;;; ============================================================

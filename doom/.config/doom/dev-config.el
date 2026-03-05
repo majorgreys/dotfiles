@@ -69,21 +69,4 @@
         projectile-project-root-files-bottom-up '(".projectile" ".git" ".hg" ".bzr" "_darcs")
         projectile-project-root-files-top-down-recurring '("Makefile" "setup.py" "pom.xml" "build.gradle")))
 
-;; Configure consult to exclude compressed files from search
-(after! consult
-  (setq consult-fd-args
-        (append consult-fd-args
-                '("--exclude=*.gz" "--exclude=*.zip" "--exclude=*.tar"
-                  "--exclude=*.bz2" "--exclude=*.xz" "--exclude=*.7z"
-                  "--exclude=*.rar" "--exclude=*.tgz"))))
-
-;; Claude Code IDE configuration
-(use-package! claude-code-ide
-  :bind ("C-c C-'" . claude-code-ide-menu)
-  :config
-  (claude-code-ide-emacs-tools-setup)
-  ;; Use vterm as the terminal backend
-  (setq claude-code-ide-terminal-backend 'vterm
-        claude-code-ide-window-side 'right))
-
 (provide 'dev-config)

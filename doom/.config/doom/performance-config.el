@@ -77,7 +77,6 @@
         lsp-lens-enable nil                     ; Disable code lens globally
         lsp-symbol-highlighting-skip-current t  ; Don't highlight current symbol
         lsp-enable-folding nil                  ; Disable LSP folding (use Doom's)
-        lsp-enable-snippet nil                  ; Disable LSP snippets (use yasnippet)
         lsp-enable-symbol-highlighting nil      ; Disable symbol highlighting
         lsp-enable-links nil))                  ; Disable clickable links
 

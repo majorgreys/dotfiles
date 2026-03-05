@@ -9,40 +9,13 @@
 (setq org-roam-directory (expand-file-name "roam/" org-directory))
 (setq org-roam-dailies-directory (expand-file-name "daily/" org-directory))
 
-;; Org-agenda configuration
-(after! org-agenda
-  ;; Primary task source - todo.org contains canonical task state
-  ;; Daily/roam/weekly notes provide context but are not agenda sources
-  ;; Use org-roam-find (SPC n r f) to search for narrative context
-  (setq org-agenda-files (list (expand-file-name "todo.org" org-directory))
-        org-agenda-start-day nil
-        org-agenda-start-on-weekday nil
-        org-agenda-skip-deadline-if-done t
-        org-agenda-skip-scheduled-if-done t)
-
-  ;; Auto-save todo.org after any agenda edit operation
-  ;; This ensures changes made in agenda view are immediately persisted
-  ;; Note: Must use lambda to ignore arguments passed by :after advice
-  (advice-add 'org-agenda-todo :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-priority :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-schedule :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-deadline :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-set-tags :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-archive-default :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-kill :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-refile :after (lambda (&rest _) (org-save-all-org-buffers)))
-  (advice-add 'org-agenda-bulk-action :after (lambda (&rest _) (org-save-all-org-buffers))))
-
 ;; Org TODO keywords and priorities
 (after! org
   ;; Line spacing for org-modern box rendering (calculates borders from this)
   (setq-default line-spacing 0.1)
 
   (setq org-todo-keywords
-        '((sequence "ICEBOX(I) BACKLOG(b)" "TO-DO(T)" "TODO(t)" "IN-PROGRESS(i)" "PAUSED(p)" "BLOCKED(B)" "|" "DONE(d)" "CANCELLED(c)"))
-        org-priority-highest ?A
-        org-priority-lowest ?C
-        org-priority-default ?B)
+        '((sequence "TODO(t)" "|" "DONE(d)")))
 
   ;; Custom org-babel blocks
   (add-to-list 'org-structure-template-alist '("slack" . "src slack"))
@@ -200,216 +173,14 @@ Returns absolute path for mmdc to write file to."
         '((:results . "output")
           (:prologue . "export DDR_DISABLE_COLORS=true")))
 
-  ;; TODO timestamp tracking
-  (setq org-log-done 'time                              ; Timestamp when marking DONE
-        org-log-into-drawer t                           ; Store in LOGBOOK drawer
-        org-treat-insert-todo-heading-as-state-change t ; Log TODO creation
-        org-log-repeat 'time                            ; Log repeating tasks
-        org-log-reschedule 'time                        ; Log schedule changes
-        org-log-redeadline 'time)                       ; Log deadline changes
-
-  ;; Prevent TAB from cycling TODO states - only handle folding
-  (setq org-cycle-include-plain-lists nil)
-  (advice-add 'org-cycle :before-while
-              (lambda (&rest _) (not (org-at-heading-p))))
+  ;; Timestamp when marking DONE, store in LOGBOOK drawer
+  (setq org-log-done 'time
+        org-log-into-drawer t)
 
   ;; Auto-save for org-mode (auto-save-visited-mode writes to real file, not #file#)
   (add-hook 'org-mode-hook #'auto-save-mode)
   (setq auto-save-visited-interval 10
-        auto-save-visited-mode t)
-
-  ;; Enable org-depend for task dependency management
-  ;; Provides :BLOCKER: property to establish blocking relationships between tasks
-  (require 'org-depend))
-
-;; Org-capture templates
-(after! org
-  (let ((todo (expand-file-name "todo.org" org-directory)))
-    (setq org-capture-templates
-          `(("t" "Todo" entry (file+headline ,todo "Inbox")
-             "** TODO %?\nSCHEDULED: %t\n")
-            ("i" "Interrupt" entry (file+olp ,todo "Areas" "Interrupt")
-             "*** TODO %? :interrupt:\nSCHEDULED: %t\n")
-            ("e" "Enablement" entry (file+olp ,todo "Areas" "Enablement")
-             "*** TODO %? :enablement:\nSCHEDULED: %t\n")
-            ("c" "Compliance" entry (file+olp ,todo "Areas" "Compliance")
-             "*** TODO %? :compliance:\nSCHEDULED: %t\n")
-            ("l" "Leadership" entry (file+olp ,todo "Areas" "Leadership")
-             "*** TODO %? :leadership:\nSCHEDULED: %t\n")
-            ("p" "Personal" entry (file+olp ,todo "Areas" "Personal")
-             "*** TODO %? :personal:\nSCHEDULED: %t\n")
-            ("r" "Research" entry (file+headline ,todo "Inbox")
-             "** TODO %? :research:\n")))))
-
-;; Org-super-agenda configuration
-;; Aligned with Daily Planning Protocol v3.0 (Eisenhower Matrix)
-(use-package! org-super-agenda
-  :after org-agenda
-  :config
-  (org-super-agenda-mode 1)
-
-  ;; Define preset group configurations for different views
-  (setq thb/org-super-agenda-groups-focus
-        '(;; Hide PROJ headings and BACKLOG items in focus view
-          (:discard (:todo ("PROJ" "BACKLOG" "CANCELLED")))
-
-          ;; P0: Urgent + Important (Oncall, production issues, security)
-          (:name "Urgent"
-           :tag "oncall"
-           :priority "A")
-
-          ;; BLOCKED items need attention to unblock
-          (:name "Blocked"
-           :todo "BLOCKED")
-
-          ;; Currently active work
-          (:name "In progress"
-           :todo "IN-PROGRESS"
-           :order 1)
-
-          ;; Overdue items that need rescheduling or completion
-          (:name "Overdue"
-           :and (:scheduled past
-                 :todo ("TODO" "PAUSED"))
-           :order 2)
-
-          ;; Today's scheduled work
-          (:name "Today"
-           :and (:scheduled today
-                 :todo "TODO")
-           :order 3)
-
-          ;; Deadlines within next 3 days
-          (:name "Deadlines"
-           :deadline past
-           :deadline today
-           :deadline future
-           :order 4)
-
-          ;; Hide future items and deferred work from focus view
-          (:discard (:scheduled future))
-          (:discard (:todo "PAUSED"))
-
-          ;; Catch remaining actionable items
-          (:name "Other"
-           :todo "TODO"
-           :order 5)))
-
-  (setq thb/org-super-agenda-groups-full
-        '(;; P0: Urgent + Important (Oncall, production issues, security)
-          (:name "Urgent"
-           :tag "oncall"
-           :priority "A")
-
-          ;; BLOCKED items (can be any priority - show them prominently)
-          (:name "Blocked"
-           :todo "BLOCKED")
-
-          ;; P1: Important, Not Urgent (IN-PROGRESS scheduled today/overdue, high completion %)
-          (:name "In progress (today)"
-           :and (:todo "IN-PROGRESS"
-                 :scheduled today))
-          (:name "In progress (overdue)"
-           :and (:todo "IN-PROGRESS"
-                 :scheduled past))
-
-          ;; P2: Committed (TODO items scheduled today with clear next actions)
-          (:name "Today"
-           :and (:todo "TODO"
-                 :scheduled today))
-
-          ;; Deadlines approaching (within 3 days)
-          (:name "Deadlines"
-           :deadline future
-           :deadline today)
-
-          ;; DEFERRED/PAUSED items (truly deferred work)
-          (:name "Paused"
-           :todo "PAUSED")
-
-          ;; P3: Nice-to-have (Carry-over work, code reviews)
-          (:name "Overdue"
-           :and (:scheduled past
-                 :not (:todo "IN-PROGRESS")))
-
-          ;; Future scheduled items
-          (:name "Future"
-           :scheduled future)
-
-          ;; Everything else
-          (:name "Other"
-           :anything t)))
-
-  ;; Set default to focus view
-  (setq org-super-agenda-groups thb/org-super-agenda-groups-focus))
-
-;; Custom agenda commands for different views
-(after! org-agenda
-  (setq org-agenda-custom-commands
-        '(("f" "Today's Focus"
-           ((agenda ""
-                    ((org-agenda-span 1)
-                     (org-agenda-start-day nil)
-                     (org-super-agenda-groups thb/org-super-agenda-groups-focus)
-                     (org-agenda-overriding-header "Today\n"))))
-           ((org-agenda-compact-blocks t)
-            (org-agenda-skip-deadline-prewarning-if-scheduled t)
-            (org-agenda-skip-scheduled-if-deadline-is-shown t)))
-
-          ("a" "Full Agenda"
-           ((agenda ""
-                    ((org-agenda-span 7)
-                     (org-agenda-start-day nil)
-                     (org-super-agenda-groups thb/org-super-agenda-groups-full)
-                     (org-agenda-overriding-header "Agenda\n"))))
-           ((org-agenda-compact-blocks t)))
-
-          ("b" "Blocked Items"
-           ((todo "BLOCKED"
-                  ((org-agenda-overriding-header "Blocked\n")
-                   (org-agenda-sorting-strategy '(priority-down category-keep)))))
-           ((org-agenda-compact-blocks t)))
-
-          ("p" "Projects Overview"
-           ((tags "PROJ"
-                  ((org-agenda-overriding-header "Projects\n")
-                   (org-super-agenda-groups
-                    '((:auto-property "PROJ_LOCATION")
-                      (:discard (:todo "DONE"))
-                      (:discard (:todo "CANCELLED")))))))
-           ((org-agenda-compact-blocks t)))
-
-          ("i" "In Progress"
-           ((todo "IN-PROGRESS"
-                  ((org-agenda-overriding-header "In Progress\n")
-                   (org-agenda-sorting-strategy '(priority-down scheduled-up)))))
-           ((org-agenda-compact-blocks t)))
-
-          ("w" "Weekly Review"
-           ((agenda ""
-                    ((org-agenda-span 'week)
-                     (org-agenda-start-on-weekday 1)
-                     (org-super-agenda-groups thb/org-super-agenda-groups-full)
-                     (org-agenda-overriding-header "Weekly\n"))))
-           ((org-agenda-compact-blocks t))))))
-
-;; Toggle between focus and full agenda views
-(defun thb/org-agenda-toggle-view ()
-  "Toggle between focus and full agenda views."
-  (interactive)
-  (if (equal org-super-agenda-groups thb/org-super-agenda-groups-focus)
-      (progn
-        (setq org-super-agenda-groups thb/org-super-agenda-groups-full)
-        (message "Full view"))
-    (setq org-super-agenda-groups thb/org-super-agenda-groups-focus)
-    (message "Focus view"))
-  (when (bound-and-true-p org-agenda-buffer-name)
-    (org-agenda-redo-all)))
-
-;; Keybinding for toggle (accessible from agenda view)
-(after! org-agenda
-  (map! :map org-agenda-mode-map
-        "v" #'thb/org-agenda-toggle-view))
+        auto-save-visited-mode t))
 
 ;; Consult-org-roam for enhanced search
 (use-package! consult-org-roam
