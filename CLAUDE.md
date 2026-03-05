@@ -21,6 +21,22 @@ Personal development environment setup. Configs are minimal, version-controlled,
 - `fish/.config/fish/conf.d/` is gitignored; tracked files there need `git add -f`
 - LaunchAgents: place in `<package>/Library/LaunchAgents/` (e.g., `thbemacs/Library/LaunchAgents/`)
 
+**Doom/thbemacs convergence:**
+- thbemacs = lightweight org/notes driver (vanilla Emacs, single init.el)
+- Doom = dev superset (multi-language LSP, tree-sitter, org-babel diagrams, confluence, org-db-v3)
+- Both share a common core that must stay in sync:
+  - TODO keywords: `TODO` / `DONE` (simple, tasks tracked in beads)
+  - Logging: `org-log-done 'time`, `org-log-into-drawer t`
+  - Vulpea: primary note interface, same config (describe-fn, template, journal)
+  - Agent-shell: same viewport evil bindings, table renderer, attention, manager
+  - Org-roam: stays as db layer for vulpea, same capture templates and dailies
+  - Org-attach: same timestamp-based config (`org-id-method 'ts`, cp method)
+  - Org-modern + org-tidy: same visual settings
+  - Modus-themes: `modus-operandi` default, same toggle function
+  - Keybindings: compatible SPC-leader namespace (general.el)
+- Doom-only features (not in thbemacs): lsp-mode, tree-sitter, multi-lang, org-babel (mermaid/D2/dot), org-confluence-publish, org-db-v3, persp-mode workspaces
+- thbemacs-only features: eglot, tabspaces, org-appear, custom splash screen
+
 **thbemacs (vanilla Emacs):**
 - Daemon managed by LaunchAgent (`com.thbemacs.daemon`), socket name `thbemacs`
 - Connect: `emacsclient -s thbemacs` or fish function `thbemacs`
