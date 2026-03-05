@@ -34,8 +34,6 @@
 (load! "org-config")
 (load! "dev-config")
 (load! "performance-config")
-(load! "custom-functions")
-
 ;; Custom keybindings
 (map! :leader
       :desc "Org-roam insert link" "n r i" #'org-roam-node-insert
@@ -45,27 +43,19 @@
       :desc "Org-roam dailies goto yesterday" "n r d y" #'org-roam-dailies-goto-yesterday
       :desc "Consult org-roam" "n r s" #'consult-org-roam-search
       :desc "Yank file path" "y f" #'(lambda () (interactive) (kill-new (buffer-file-name)))
-      :desc "Add TODO note" "o n" #'org-add-note
-      :desc "Capture TODO to inbox" "c t" #'(lambda () (interactive) (org-capture nil "t"))
       ;; Org-attach keybindings
       :desc "Attach file" "o a a" #'org-attach-attach
       :desc "Open attachment dir" "o a d" #'org-attach-dired
       :desc "Open attachment" "o a o" #'org-attach-open
       :desc "Delete attachment" "o a D" #'org-attach-delete-one
       :desc "Sync attachments" "o a s" #'org-attach-sync
-      ;; Claude Code IDE keybindings
-      :desc "Claude Code IDE menu" "C m" #'claude-code-ide-menu
-      :desc "Start Claude Code IDE" "C s" #'claude-code-ide
       ;; Agent Shell keybindings
       :desc "Agent Shell" "C a" #'agent-shell
       :desc "Agent Shell (Claude Code)" "C c" #'agent-shell-anthropic-start-claude-code
       ;; Git auto-commit toggle
       :desc "Toggle git auto-commit" "t g" #'git-auto-commit-mode
       ;; Theme toggle
-      :desc "Toggle light/dark theme" "t t" #'thb/toggle-modus-theme
-      ;; Transcript processing
-      :desc "Process transcript with Claude" "o t" #'thb/process-transcript-file
-      :desc "Process current file as transcript" "o T" #'thb/process-current-file-as-transcript)
+      :desc "Toggle light/dark theme" "t t" #'thb/toggle-modus-theme)
 
 ;; Image mode configuration
 (add-hook 'image-mode-hook
