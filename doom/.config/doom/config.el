@@ -61,8 +61,6 @@
       :desc "Agent Shell (Claude Code)" "C c" #'agent-shell-anthropic-start-claude-code
       :desc "Agent Shell manager" "C s" #'agent-shell-manager-toggle
       :desc "Agent Shell attention" "C j" #'agent-shell-attention-jump
-      ;; Git auto-commit toggle
-      :desc "Toggle git auto-commit" "t g" #'git-auto-commit-mode
       ;; Theme toggle
       :desc "Toggle light/dark theme" "t t" #'thb/toggle-modus-theme)
 

@@ -20,9 +20,5 @@
 (package! agent-shell-attention)
 (package! agent-shell-manager)
 
-;; Semantic search and indexing (plz is a dependency of org-db-v3)
-(package! plz)
-(package! org-db-v3 :recipe (:type git :host github :repo "jkitchin/org-db-v3" :files ("elisp/*.el" "python/*")))
-
 ;; Load local packages (not synced to repo)
 (load! "packages-local" nil t)

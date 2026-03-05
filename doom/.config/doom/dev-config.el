@@ -18,7 +18,7 @@
 
   (setq lsp-go-use-gofumpt nil
         lsp-go-directory-filters ["-bazel-bin" "-bazel-out" "-bazel-testlogs" "-bazel-mypkg"]
-        lsp-go-use-placeholders t
+        lsp-go-use-placeholders nil
         lsp-go-codelenses '((gc_details . :json-false)
                             (generate . :json-false)
                             (regenerate_cgo . :json-false)
