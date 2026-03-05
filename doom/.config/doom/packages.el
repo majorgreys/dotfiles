@@ -2,11 +2,9 @@
 ;;; $DOOMDIR/packages.el
 
 (package! modus-themes)
-(package! nano-theme :recipe (:type git :host github :repo "rougier/nano-theme"))
 
 ;; Personal org-mode packages
 (package! consult-org-roam)
-(package! org-super-agenda)
 (package! org-tidy)
 (package! org-confluence-publish :recipe (:type git :repo "git@github.com:majorgreys/org-confluence-publish.git"))
 (package! ob-mermaid)
