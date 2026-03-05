@@ -53,6 +53,9 @@ brew "colima"
 brew "docker"
 brew "docker-compose"
 
+# File Watching
+brew "fswatch"
+
 # Environment & Config
 brew "direnv"
 brew "coreutils"

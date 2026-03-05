@@ -189,7 +189,7 @@ fi
 print_header "Setting up dotfiles with stow"
 
 # Stow configs for installed tools
-configs=("fish" "ghostty" "tmux" "vim" "helix" "doom" "thbemacs" "starship" "aerospace")
+configs=("fish" "ghostty" "tmux" "vim" "helix" "doom" "thbemacs" "starship" "aerospace" "org-autosync")
 for config in "${configs[@]}"; do
     if [[ -d "$DOTFILES_DIR/$config" ]]; then
         print_warning "Stowing $config config..."
@@ -257,6 +257,28 @@ fi
 # ===================================
 print_header "Loading Emacs LaunchAgents"
 
+# Generate org-autosync LaunchAgent from template
+AUTOSYNC_PLIST="$HOME/Library/LaunchAgents/com.thb.org-autosync.plist"
+AUTOSYNC_TEMPLATE="$DOTFILES_DIR/templates/com.thb.org-autosync.plist.template"
+if [[ -f "$AUTOSYNC_TEMPLATE" ]]; then
+    print_warning "Generating org-autosync LaunchAgent..."
+    mkdir -p "$HOME/Library/LaunchAgents"
+    mkdir -p "$HOME/.local/share/org-autosync"
+    sed "s|__HOME__|$HOME|g" "$AUTOSYNC_TEMPLATE" > "$AUTOSYNC_PLIST"
+    print_success "org-autosync LaunchAgent generated"
+
+    if launchctl list com.thb.org-autosync &>/dev/null; then
+        print_warning "Reloading org-autosync..."
+        launchctl unload "$AUTOSYNC_PLIST"
+        launchctl load "$AUTOSYNC_PLIST"
+        print_success "org-autosync reloaded"
+    else
+        print_warning "Starting org-autosync..."
+        launchctl load "$AUTOSYNC_PLIST"
+        print_success "org-autosync started"
+    fi
+fi
+
 # Generate thbemacs LaunchAgent from template
 THBEMACS_PLIST="$HOME/Library/LaunchAgents/com.thbemacs.daemon.plist"
 THBEMACS_TEMPLATE="$DOTFILES_DIR/templates/com.thbemacs.daemon.plist.template"
@@ -278,17 +300,32 @@ if [[ -f "$THBEMACS_TEMPLATE" ]]; then
     fi
 fi
 
-EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
-if [[ -f "$EMACS_PLIST" ]]; then
+# Generate Doom Emacs LaunchAgent from template
+DOOM_PLIST="$HOME/Library/LaunchAgents/com.thb.doom-emacs.plist"
+DOOM_TEMPLATE="$DOTFILES_DIR/templates/com.thb.doom-emacs.plist.template"
+if [[ -f "$DOOM_TEMPLATE" ]]; then
+    print_warning "Generating Doom Emacs LaunchAgent..."
+    mkdir -p "$HOME/Library/LaunchAgents"
+    mkdir -p "$HOME/.local/share/doom-emacs"
+    sed "s|__HOME__|$HOME|g" "$DOOM_TEMPLATE" > "$DOOM_PLIST"
+    print_success "Doom Emacs LaunchAgent generated"
+
+    # Unload old homebrew plist if it exists
+    OLD_EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
     if launchctl list org.gnu.emacs.daemon &>/dev/null; then
-        print_warning "Reloading Emacs daemon..."
-        launchctl unload "$EMACS_PLIST"
-        launchctl load "$EMACS_PLIST"
-        print_success "Emacs daemon reloaded"
+        print_warning "Unloading old Emacs daemon..."
+        launchctl unload "$OLD_EMACS_PLIST" 2>/dev/null || true
+    fi
+
+    if launchctl list com.thb.doom-emacs &>/dev/null; then
+        print_warning "Reloading Doom Emacs daemon..."
+        launchctl unload "$DOOM_PLIST"
+        launchctl load "$DOOM_PLIST"
+        print_success "Doom Emacs daemon reloaded"
     else
-        print_warning "Starting Emacs daemon..."
-        launchctl load "$EMACS_PLIST"
-        print_success "Emacs daemon started"
+        print_warning "Starting Doom Emacs daemon..."
+        launchctl load "$DOOM_PLIST"
+        print_success "Doom Emacs daemon started"
     fi
 fi
 

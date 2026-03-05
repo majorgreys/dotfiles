@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+#
+# org-autosync — watch ~/org for changes, auto-commit and push.
+# Pulls with rebase before committing to handle multi-machine writes.
+#
+# Dependencies:
+#   macOS: fswatch (brew install fswatch)
+#   Linux: inotifywait (apt install inotify-tools / pacman -S inotify-tools)
+#
+# Usage: org-autosync [org-directory]
+
+set -euo pipefail
+
+ORG_DIR="${1:-$HOME/org}"
+DEBOUNCE_SECS=5
+LOG_TAG="org-autosync"
+
+log() { echo "[$LOG_TAG $(date '+%H:%M:%S')] $*"; }
+
+if [[ ! -d "$ORG_DIR/.git" ]]; then
+    log "ERROR: $ORG_DIR is not a git repository"
+    exit 1
+fi
+
+sync_repo() {
+    cd "$ORG_DIR"
+
+    # Pull with rebase first (multi-machine support)
+    if git remote get-url origin &>/dev/null; then
+        if ! git pull --rebase --autostash 2>&1; then
+            log "WARN: pull --rebase failed, attempting to continue"
+            # If rebase fails, abort and try merge instead
+            git rebase --abort 2>/dev/null || true
+            git pull --autostash 2>&1 || log "WARN: pull failed, committing locally"
+        fi
+    fi
+
+    # Stage all changes
+    git add -A
+
+    # Only commit if there are staged changes
+    if ! git diff --cached --quiet; then
+        local timestamp
+        timestamp=$(date '+%Y-%m-%d %H:%M')
+        git commit -m "auto: $timestamp"
+        log "committed changes"
+
+        # Push if remote exists
+        if git remote get-url origin &>/dev/null; then
+            if ! git push 2>&1; then
+                log "WARN: push failed, will retry on next change"
+            else
+                log "pushed to remote"
+            fi
+        fi
+    else
+        log "no changes to commit"
+    fi
+}
+
+# --- Platform-specific file watching ---
+
+watch_fswatch() {
+    log "watching $ORG_DIR with fswatch (debounce ${DEBOUNCE_SECS}s)"
+    fswatch --recursive \
+        --latency "$DEBOUNCE_SECS" \
+        --exclude '\.git' \
+        --exclude '\.DS_Store' \
+        --exclude '#.*#' \
+        --one-per-batch \
+        "$ORG_DIR" | while read -r _; do
+        log "changes detected"
+        sync_repo || log "ERROR: sync failed"
+    done
+}
+
+watch_inotifywait() {
+    log "watching $ORG_DIR with inotifywait (debounce ${DEBOUNCE_SECS}s)"
+    while true; do
+        inotifywait --recursive \
+            --event modify,create,delete,move \
+            --exclude '\.git|\.DS_Store|#.*#' \
+            --timeout -1 \
+            --quiet \
+            "$ORG_DIR" >/dev/null 2>&1
+
+        # Debounce: wait for writes to settle
+        sleep "$DEBOUNCE_SECS"
+
+        log "changes detected"
+        sync_repo || log "ERROR: sync failed"
+    done
+}
+
+# --- Initial sync on startup ---
+log "starting — initial sync of $ORG_DIR"
+sync_repo || log "WARN: initial sync failed"
+
+# --- Start watching ---
+case "$(uname -s)" in
+    Darwin)
+        if ! command -v fswatch &>/dev/null; then
+            log "ERROR: fswatch not found. Install with: brew install fswatch"
+            exit 1
+        fi
+        watch_fswatch
+        ;;
+    Linux)
+        if ! command -v inotifywait &>/dev/null; then
+            log "ERROR: inotifywait not found. Install with: apt install inotify-tools"
+            exit 1
+        fi
+        watch_inotifywait
+        ;;
+    *)
+        log "ERROR: unsupported platform $(uname -s)"
+        exit 1
+        ;;
+esac

@@ -37,10 +37,6 @@
   (load custom-file 'noerror 'nomessage))
 
 
-;; git-auto-commit-mode — needed because ~/org/.dir-locals.el enables it.
-;; Without this, org-roam fails to process files that trigger dir-locals eval.
-(use-package git-auto-commit-mode :defer t)
-
 
 ;;; ============================================================
 ;;; Better Defaults + Performance
@@ -59,7 +55,7 @@
 (defvar thb/splash-hints
   '(("SPC ."     . "find file")
     ("SPC f r"   . "recent files")
-    ("SPC n r f" . "org-roam find")
+    ("SPC n f"   . "vulpea find")
     ("SPC q q"   . "quit"))
   "Key hints shown on the splash screen.")
 
@@ -530,7 +526,7 @@
   :config
   (setq completion-styles '(orderless basic)
         completion-category-overrides '((file (styles basic partial-completion))
-                                        (org-roam-node (display-sort-function . identity)))))
+)))
 
 ;; Marginalia — rich annotations in the minibuffer (file sizes, docstrings).
 (use-package marginalia
@@ -657,7 +653,6 @@
 
   ;; --- Auto-save ---
   ;; Save org buffers periodically (protects against data loss).
-  (add-hook 'org-mode-hook #'auto-save-mode)
   (setq auto-save-visited-interval 10)
   (auto-save-visited-mode 1)
 
@@ -741,59 +736,22 @@
 
 
 ;;; ============================================================
-;;; Org-Roam
+;;; Org-Roam (database layer — used by Vulpea)
 ;;; ============================================================
 
+;; org-roam provides the SQLite database that Vulpea builds on.
+;; No direct org-roam UI config — Vulpea is the primary interface.
 (use-package org-roam
   :after org
   :config
-  (setq org-roam-directory (expand-file-name "roam/" org-directory)
-        org-roam-node-default-sort 'file-mtime
-        org-roam-node-display-template
-        (concat (propertize "${modified:22}" 'face 'font-lock-comment-face)
-                " ${title:*} "
-                (propertize "${orgtags}" 'face 'org-tag)))
-
-  (cl-defmethod org-roam-node-modified ((node org-roam-node))
-    "Return file modification time as org inactive timestamp."
-    (let ((mtime (org-roam-node-file-mtime node)))
-      (if mtime
-          (format-time-string "[%Y-%m-%d %a %H:%M]" mtime)
-        "")))
-
-  (cl-defmethod org-roam-node-orgtags ((node org-roam-node))
-    "Return tags formatted as org filetags (:tag1:tag2:)."
-    (let ((tags (org-roam-node-tags node)))
-      (if tags
-          (concat ":" (string-join tags ":") ":")
-        "")))
-
-  ;; Capture templates — timestamped default + named slug
-  (setq org-roam-capture-templates
-        '(("d" "default" plain "%?"
-           :target (file+head "%<%Y%m%d%H%M>.org"
-                              "#+title: ${title}\n#+date: %<%Y-%m-%d>\n#+created: %U\n\n")
-           :unnarrowed t)
-          ("n" "named note" plain "%?"
-           :target (file+head "${slug}.org"
-                              "#+title: ${title}\n#+date: %<%Y-%m-%d>\n\n")
-           :unnarrowed t)))
-
-  (org-roam-db-autosync-mode 1))
-
-;; Consult-org-roam — search roam notes with consult/ripgrep.
-(use-package consult-org-roam
-  :after org-roam
-  :config
-  (setq consult-org-roam-grep-func #'consult-ripgrep))
+  (setq org-roam-directory (expand-file-name "roam/" org-directory)))
 
 
 ;;; ============================================================
 ;;; Vulpea (primary note interface)
 ;;; ============================================================
 
-;; Vulpea v2 — note interface built on org-roam-db with async indexing.
-;; org-roam stays as a dependency (provides the database layer).
+;; Vulpea v2 — primary note interface built on org-roam-db with async indexing.
 (use-package vulpea
   :after org
   :config
@@ -810,14 +768,14 @@
         vulpea-db-sync-external-method 'fswatch             ; macOS: detect git changes
         vulpea-db-index-heading-level  t)                   ; index headings with IDs
 
-  ;; Display: show mtime + title (matches org-roam node display).
+  ;; Display: show mtime + title in completion candidates.
   ;; Tags shown via annotate-fn (default: aliases + #tags).
   (defun thb/vulpea-describe-with-mtime (note)
     "Format NOTE as [mtime] title for completion candidates."
     (let* ((path (vulpea-note-path note))
-           (mtime (when (and path (file-exists-p path))
-                    (file-attribute-modification-time
-                     (file-attributes path))))
+           (attrs (when path (file-attributes path)))
+           (mtime (when attrs
+                    (file-attribute-modification-time attrs)))
            (mtime-str (if mtime
                           (format-time-string "[%Y-%m-%d %a %H:%M]" mtime)
                         (make-string 22 ?\s)))
@@ -840,7 +798,7 @@
   :after vulpea)
 
 ;; Vulpea-journal — daily journaling with calendar sidebar widget.
-;; Template matches existing org-roam-dailies format in ~/org/daily/.
+;; Template matches existing daily format in ~/org/daily/.
 (use-package vulpea-journal
   :after (vulpea vulpea-ui)
   :config

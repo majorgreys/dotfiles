@@ -75,7 +75,6 @@
         lsp-eldoc-enable-hover nil              ; Disable hover eldoc (use lsp-ui if needed)
         lsp-signature-auto-activate nil         ; Disable automatic signature help
         lsp-lens-enable nil                     ; Disable code lens globally
-        lsp-symbol-highlighting-skip-current t  ; Don't highlight current symbol
         lsp-enable-folding nil                  ; Disable LSP folding (use Doom's)
         lsp-enable-symbol-highlighting nil      ; Disable symbol highlighting
         lsp-enable-links nil))                  ; Disable clickable links

@@ -24,7 +24,6 @@
   ;; Enable mermaid diagram support via ob-mermaid
   (require 'ob-mermaid)
   (add-to-list 'org-babel-load-languages '(mermaid . t))
-  (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
   (setq ob-mermaid-cli-path "mmdc"
         ob-mermaid-output-file-format "png"
         org-babel-default-header-args:mermaid
@@ -84,7 +83,7 @@ Returns absolute path for mmdc to write file to."
                           ;; RESULTS is empty - find the most recent mermaid file
                           (let ((latest-file
                                  (car (last (directory-files
-                                             (expand-file-name "diagrams/202511" org-directory)
+                                             (expand-file-name (format "diagrams/%s" (format-time-string "%Y%m")) org-directory)
                                              t "\\.png$" nil)))))
                             (when latest-file
                               (let ((rel-file (file-relative-name latest-file (file-name-directory (buffer-file-name)))))
@@ -97,7 +96,6 @@ Returns absolute path for mmdc to write file to."
   ;; Graphviz (dot) diagram support
   (require 'ob-dot)
   (add-to-list 'org-babel-load-languages '(dot . t))
-  (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
   (setq org-babel-default-header-args:dot '((:results . "file")))
 
   ;; Auto-generate dot filenames with timestamp
@@ -130,8 +128,8 @@ Returns absolute path for mmdc to write file to."
           (let ((params (org-element-property :parameters element)))
             (unless (string-match ":file" params)
               ;; Block doesn't have :file - add it
-              (let ((file-name (thb/org-babel-dot-filename))
-                    (file-dir (file-name-directory (thb/org-babel-dot-filename))))
+              (let* ((file-name (thb/org-babel-dot-filename))
+                     (file-dir (file-name-directory file-name)))
                 ;; Create directory
                 (unless (file-exists-p file-dir)
                   (make-directory file-dir t))
@@ -151,6 +149,8 @@ Returns absolute path for mmdc to write file to."
   ;; D2 diagram support via ob-d2
   (require 'ob-d2)
   (add-to-list 'org-babel-load-languages '(d2 . t))
+
+  ;; Load all babel languages (single call after all add-to-list)
   (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
   (setq org-babel-default-header-args:d2
         '((:results . "file")
@@ -178,9 +178,8 @@ Returns absolute path for mmdc to write file to."
         org-log-into-drawer t)
 
   ;; Auto-save for org-mode (auto-save-visited-mode writes to real file, not #file#)
-  (add-hook 'org-mode-hook #'auto-save-mode)
-  (setq auto-save-visited-interval 10
-        auto-save-visited-mode t))
+  (setq auto-save-visited-interval 10)
+  (auto-save-visited-mode 1))
 
 ;; Consult-org-roam for enhanced search
 (use-package! consult-org-roam
@@ -276,9 +275,9 @@ Returns absolute path for mmdc to write file to."
   (defun thb/vulpea-describe-with-mtime (note)
     "Format NOTE as [mtime] title for completion candidates."
     (let* ((path (vulpea-note-path note))
-           (mtime (when (and path (file-exists-p path))
-                    (file-attribute-modification-time
-                     (file-attributes path))))
+           (attrs (when path (file-attributes path)))
+           (mtime (when attrs
+                    (file-attribute-modification-time attrs)))
            (mtime-str (if mtime
                           (format-time-string "[%Y-%m-%d %a %H:%M]" mtime)
                         (make-string 22 ?\s)))
@@ -360,10 +359,6 @@ Returns absolute path for mmdc to write file to."
         org-pandoc-options '((standalone . t)
                              (self-contained . t))))
 
-;; Additional export formats via ox-gfm (GitHub Flavored Markdown)
-(after! ox-gfm
-  (eval-after-load "org"
-    '(require 'ox-gfm nil t)))
 
 ;; Zen mode configuration - disable variable pitch fonts
 (after! mixed-pitch
@@ -378,76 +373,6 @@ Returns absolute path for mmdc to write file to."
       (format "\\(%s\\)\\|\\(%s\\)"
               vc-ignore-dir-regexp
               (regexp-quote (expand-file-name org-directory))))
-
-;; org-db-v3 server process management
-;; Automatically start and manage the org-db-v3 FastAPI backend server
-(defvar org-db-v3-server-process nil
-  "Process object for the org-db-v3 server.")
-
-(defun org-db-v3-start-server ()
-  "Start the org-db-v3 FastAPI server if not already running."
-  (interactive)
-  (let ((repo-path (expand-file-name "~/.config/emacs/.local/straight/repos/org-db-v3/python"))
-        (default-directory (expand-file-name "~/.config/emacs/.local/straight/repos/org-db-v3/python")))
-    (unless (and org-db-v3-server-process
-                 (process-live-p org-db-v3-server-process))
-      (setq org-db-v3-server-process
-            (make-process
-             :name "org-db-v3-server"
-             :buffer "*org-db-v3-server*"
-             :command `("uv" "run" "uvicorn" "org_db_server.main:app"
-                        "--host" "127.0.0.1" "--port" "8765")
-             :noquery t
-             :stderr "*org-db-v3-server*"))
-      (message "Starting org-db-v3 server... (this may take a few seconds on first run)"))))
-
-(defun org-db-v3-stop-server ()
-  "Stop the org-db-v3 FastAPI server."
-  (interactive)
-  (when (and org-db-v3-server-process
-             (process-live-p org-db-v3-server-process))
-    (delete-process org-db-v3-server-process)
-    (setq org-db-v3-server-process nil)
-    (message "org-db-v3 server stopped")))
-
-;; Start server automatically when org-db-v3 is first loaded
-(add-hook 'emacs-startup-hook
-          (lambda ()
-            (when (locate-library "org-db-v3")
-              (run-at-time 2 nil #'org-db-v3-start-server))))
-
-;; Clean up server on Emacs exit
-(add-hook 'kill-emacs-hook #'org-db-v3-stop-server)
-
-;; org-db-v3 configuration
-;; Semantic search indexing for org files
-(use-package! org-db-v3
-  :commands (org-db-v3-semantic-search org-db-v3-index-all org-db-v3-build-db)
-  :config
-  ;; Index all org files in org directory
-  (setq org-db-v3-root-dir org-directory
-        org-db-v3-db-file (expand-file-name ".org-db-v3.db" org-directory)
-
-        ;; FastAPI backend configuration
-        ;; The backend runs locally and handles embeddings, indexing, and vector search
-        org-db-v3-server-port 8765
-        org-db-v3-server-host "127.0.0.1"
-
-        ;; Indexing options
-        org-db-v3-index-html t           ; Index HTML files
-        org-db-v3-index-markdown t       ; Index markdown files
-        org-db-v3-index-pdfs nil         ; Don't index PDFs (slower)
-        org-db-v3-max-file-size 10485760 ; 10MB max file size
-
-        ;; Search options
-        org-db-v3-semantic-similarity-threshold 0.5  ; Relevance threshold
-        org-db-v3-semantic-search-limit 20)          ; Return top 20 results
-
-  ;; Enable org-db-v3 keybindings
-  (map! :map org-mode-map
-        :leader
-        (:prefix "s"  ; search prefix
-         :desc "Semantic search org-db" "d" #'org-db-v3-semantic-search)))
 
 ;; org-confluence-publish configuration
 ;; One-way publishing of org files to Confluence Cloud
