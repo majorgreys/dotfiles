@@ -259,6 +259,61 @@ Returns absolute path for mmdc to write file to."
            :empty-lines 1
            :kill-buffer t))))
 
+;; Vulpea — primary note interface (built on org-roam-db)
+(use-package! vulpea
+  :after org
+  :config
+  (setq vulpea-db-sync-directories
+        (list (expand-file-name "roam/" org-directory)
+              (expand-file-name "daily/" org-directory))
+        vulpea-default-notes-directory
+        (expand-file-name org-directory)
+        vulpea-db-parse-method         'single-temp-buffer
+        vulpea-db-sync-scan-on-enable  'async
+        vulpea-db-sync-external-method 'fswatch
+        vulpea-db-index-heading-level  t)
+
+  (defun thb/vulpea-describe-with-mtime (note)
+    "Format NOTE as [mtime] title for completion candidates."
+    (let* ((path (vulpea-note-path note))
+           (mtime (when (and path (file-exists-p path))
+                    (file-attribute-modification-time
+                     (file-attributes path))))
+           (mtime-str (if mtime
+                          (format-time-string "[%Y-%m-%d %a %H:%M]" mtime)
+                        (make-string 22 ?\s)))
+           (title (vulpea-note-title note)))
+      (concat (propertize mtime-str 'face 'font-lock-comment-face)
+              " " title)))
+
+  (setq vulpea-select-describe-fn #'thb/vulpea-describe-with-mtime)
+
+  (setq vulpea-create-default-template
+        '(:file-name "roam/%<%Y%m%d%H%M>.org"
+          :head "#+date: %<[%Y-%m-%d]>"
+          :properties (("CREATED" . "%<[%Y-%m-%d %a %H:%M]>"))
+          :tags nil))
+
+  (vulpea-db-autosync-mode 1))
+
+(use-package! vulpea-ui
+  :after vulpea)
+
+(use-package! vulpea-journal
+  :after (vulpea vulpea-ui)
+  :config
+  (setq vulpea-journal-default-template
+        '(:file-name "daily/%Y-%m-%d.org"
+          :title "%Y-%m-%d %A"
+          :tags ("daily")
+          :properties (("CREATED" . "%<[%Y-%m-%d]>"))))
+  (vulpea-journal-setup))
+
+(use-package! consult-vulpea
+  :after vulpea
+  :config
+  (setq consult-vulpea-grep-func #'consult-ripgrep))
+
 ;; Org-modern for visual improvements
 (use-package! org-modern
   :hook (org-mode . org-modern-mode)

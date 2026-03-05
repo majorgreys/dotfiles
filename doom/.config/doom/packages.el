@@ -5,6 +5,10 @@
 
 ;; Personal org-mode packages
 (package! consult-org-roam)
+(package! vulpea)
+(package! vulpea-ui)
+(package! vulpea-journal)
+(package! consult-vulpea)
 (package! org-tidy)
 (package! org-confluence-publish :recipe (:type git :repo "git@github.com:majorgreys/org-confluence-publish.git"))
 (package! ob-mermaid)
@@ -13,6 +17,8 @@
 (package! shell-maker)
 (package! acp)
 (package! agent-shell)
+(package! agent-shell-attention)
+(package! agent-shell-manager)
 
 ;; Semantic search and indexing (plz is a dependency of org-db-v3)
 (package! plz)
