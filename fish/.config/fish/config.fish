@@ -41,6 +41,7 @@ end
 set -gx GITLAB_TOKEN (security find-generic-password -a $USER -s gitlab_token -w)
 
 set -gx CLAUDE_CODE_DISABLE_NOTIFICATIONS 1
+set -gx BD_ACTOR tahir
 
 direnv hook fish | source
 zoxide init fish | source

@@ -789,6 +789,7 @@
         '(:file-name "roam/%<%Y%m%d%H%M>.org"
           :head "#+date: %<[%Y-%m-%d]>"
           :properties (("CREATED" . "%<[%Y-%m-%d %a %H:%M]>"))
+          :meta (("status" . "in-progress"))
           :tags nil))
 
   (vulpea-db-autosync-mode 1))
@@ -923,7 +924,8 @@
 
   ;; Word wrap and visual distinction for viewport buffers.
   (defun thb/agent-shell-viewport-view-setup ()
-    (setq-local truncate-lines t))
+    (visual-line-mode 1)
+    (setq-local word-wrap t))
   (defun thb/agent-shell-viewport-edit-setup ()
     (visual-line-mode 1)
     (setq-local word-wrap t))
