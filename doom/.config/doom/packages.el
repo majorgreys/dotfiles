@@ -17,8 +17,6 @@
 (package! shell-maker)
 (package! acp)
 (package! agent-shell)
-(package! agent-shell-attention)
-(package! agent-shell-manager)
 
 ;; Load local packages (not synced to repo)
 (load! "packages-local" nil t)
