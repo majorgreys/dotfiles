@@ -59,8 +59,6 @@
       ;; Agent Shell keybindings
       :desc "Agent Shell" "C a" #'agent-shell
       :desc "Agent Shell (Claude Code)" "C c" #'agent-shell-anthropic-start-claude-code
-      :desc "Agent Shell manager" "C s" #'agent-shell-manager-toggle
-      :desc "Agent Shell attention" "C j" #'agent-shell-attention-jump
       ;; Theme toggle
       :desc "Toggle light/dark theme" "t t" #'thb/toggle-modus-theme)
 
@@ -252,17 +250,6 @@
                       (delete-region tbl-start tbl-end)
                       (goto-char tbl-start)
                       (insert formatted "\n"))))))))))))
-
-(use-package! agent-shell-attention
-  :after agent-shell
-  :config
-  (agent-shell-attention-mode 1))
-
-(use-package! agent-shell-manager
-  :after agent-shell
-  :commands agent-shell-manager-toggle
-  :config
-  (setq agent-shell-manager-side 'bottom))
 
 ;; Image mode configuration
 (add-hook 'image-mode-hook
