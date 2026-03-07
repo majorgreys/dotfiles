@@ -21,9 +21,18 @@
   (add-to-list 'org-structure-template-alist '("slack" . "src slack"))
   (add-to-list 'org-structure-template-alist '("quote" . "quote"))
 
+  ;; Auto-generate diagram filenames with timestamp (shared by mermaid, dot, etc.)
+  (defun thb/org-babel-diagram-filename ()
+    "Generate timestamped diagram filename in diagrams/YYYYMM/ directory.
+Returns absolute path for diagram renderers to write file to."
+    (let* ((date-dir (format-time-string "%Y%m"))
+           (timestamp (format-time-string "%s")))
+      (expand-file-name
+       (format "diagrams/%s/%s-diagram.png" date-dir timestamp)
+       org-directory)))
+
   ;; Enable mermaid diagram support via ob-mermaid
   (require 'ob-mermaid)
-  (add-to-list 'org-babel-load-languages '(mermaid . t))
   (setq ob-mermaid-cli-path "mmdc"
         ob-mermaid-output-file-format "png"
         org-babel-default-header-args:mermaid
@@ -31,30 +40,18 @@
           (:mermaid-config-file . "~/org/config/mermaid-config.json")
           (:cmdline . "--theme default --scale 2")))
 
-  ;; Auto-generate mermaid filenames with timestamp
-  (defun thb/org-babel-mermaid-filename ()
-    "Generate timestamped mermaid filename in diagrams/YYYYMM/ directory.
-Returns absolute path for mmdc to write file to."
-    (let* ((date-dir (format-time-string "%Y%m"))
-           (timestamp (format-time-string "%s")))
-      (expand-file-name
-       (format "diagrams/%s/%s-diagram.png" date-dir timestamp)
-       org-directory)))
-
   ;; Hook into mermaid execution to auto-generate :file
   (advice-add 'org-babel-execute:mermaid :around
               (lambda (orig-fn body params)
                 "Execute mermaid block, auto-generating :file if not specified."
-                (let* ((auto-file (thb/org-babel-mermaid-filename))
+                (let* ((auto-file (thb/org-babel-diagram-filename))
                        ;; Build params: add :file if missing, ensure :results file
                        (file (or (cdr (assoc :file params)) auto-file))
                        (params (if (assoc :file params)
                                    params
                                  (cons (cons :file file) params)))
                        (file-dir (file-name-directory file)))
-                  ;; Ensure output directory exists
-                  (unless (file-exists-p file-dir)
-                    (make-directory file-dir t))
+                  (make-directory file-dir t)
                   ;; Call original - it will return nil for :results file to work
                   (funcall orig-fn body params))))
 
@@ -95,17 +92,7 @@ Returns absolute path for mmdc to write file to."
 
   ;; Graphviz (dot) diagram support
   (require 'ob-dot)
-  (add-to-list 'org-babel-load-languages '(dot . t))
   (setq org-babel-default-header-args:dot '((:results . "file")))
-
-  ;; Auto-generate dot filenames with timestamp
-  (defun thb/org-babel-dot-filename ()
-    "Generate timestamped dot filename in diagrams/YYYYMM/ directory."
-    (let* ((date-dir (format-time-string "%Y%m"))
-           (timestamp (format-time-string "%s")))
-      (expand-file-name
-       (format "diagrams/%s/%s-diagram.png" date-dir timestamp)
-       org-directory)))
 
   ;; Inject default graph styling into dot code
   (defun thb/org-babel-dot-inject-defaults (body params)
@@ -128,11 +115,9 @@ Returns absolute path for mmdc to write file to."
           (let ((params (org-element-property :parameters element)))
             (unless (string-match ":file" params)
               ;; Block doesn't have :file - add it
-              (let* ((file-name (thb/org-babel-dot-filename))
+              (let* ((file-name (thb/org-babel-diagram-filename))
                      (file-dir (file-name-directory file-name)))
-                ;; Create directory
-                (unless (file-exists-p file-dir)
-                  (make-directory file-dir t))
+                (make-directory file-dir t)
                 ;; Add :file to the header-args
                 (save-excursion
                   (goto-char (org-element-property :begin element))
@@ -148,10 +133,6 @@ Returns absolute path for mmdc to write file to."
 
   ;; D2 diagram support via ob-d2
   (require 'ob-d2)
-  (add-to-list 'org-babel-load-languages '(d2 . t))
-
-  ;; Load all babel languages (single call after all add-to-list)
-  (org-babel-do-load-languages 'org-babel-load-languages org-babel-load-languages)
   (setq org-babel-default-header-args:d2
         '((:results . "file")
           (:exports . "results")
@@ -166,12 +147,10 @@ Returns absolute path for mmdc to write file to."
 
   ;; Bash/shell babel blocks - disable colors by default
   ;; This prevents ANSI color escape codes in output (e.g., from ddr commands)
-  (setq org-babel-default-header-args:bash
-        '((:results . "output")
-          (:prologue . "export DDR_DISABLE_COLORS=true")))
-  (setq org-babel-default-header-args:sh
-        '((:results . "output")
-          (:prologue . "export DDR_DISABLE_COLORS=true")))
+  (let ((shell-args '((:results . "output")
+                      (:prologue . "export DDR_DISABLE_COLORS=true"))))
+    (setq org-babel-default-header-args:bash shell-args
+          org-babel-default-header-args:sh shell-args))
 
   ;; Timestamp when marking DONE, store in LOGBOOK drawer
   (setq org-log-done 'time
