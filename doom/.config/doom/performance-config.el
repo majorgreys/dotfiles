@@ -41,27 +41,22 @@
           magit-insert-unstaged-changes
           magit-insert-staged-changes))
 
-  ;; Process I/O optimization
-  (setq read-process-output-max (* 4 1024 1024)  ; 4MB for faster git operations
-        magit-refresh-verbose nil
+  (setq magit-refresh-verbose nil
         magit-diff-highlight-trailing nil)
 
   ;; Repository scanning (local.el appends ~/dd via after! magit)
-  (when (boundp 'magit-repository-directories)
-    (setq magit-repository-directories
-          (append magit-repository-directories
-                  '(("~/Documents" . 0)
-                    ("~/.config" . 1))))))
+  (setq magit-repository-directories
+        (append magit-repository-directories
+                '(("~/Documents" . 0)
+                  ("~/.config" . 1)))))
 
 ;; General Emacs performance optimizations (beyond Doom's defaults)
+;; Process I/O optimization (global, not magit-specific)
+(setq read-process-output-max (* 4 1024 1024))  ; 4MB for faster subprocess I/O
+
 (setq ;; File handling optimizations
- auto-save-default nil                      ; Disable globally (org-config re-enables for org)
- make-backup-files nil                      ; Disable backup files
- create-lockfiles nil                       ; Disable lock files
- ;; Display optimizations
- frame-inhibit-implied-resize t             ; Don't resize frame implicitly
+ auto-save-default nil                      ; Disable #file# auto-saves (org uses auto-save-visited-mode instead)
  ;; Reduce minibuffer noise
- echo-keystrokes 0.1                        ; Show keystrokes faster
  eldoc-idle-delay 0.1                       ; Faster eldoc (Doom default is higher)
  which-key-idle-delay 0.4                   ; Faster which-key (Doom default is 1.0)
  ;; Compilation optimizations
@@ -71,11 +66,9 @@
 ;; Enhanced LSP performance (complementing existing config)
 (after! lsp-mode
   (setq lsp-idle-delay 0.5                      ; Authoritative value (not set in dev-config)
-        lsp-completion-provider :none           ; Use corfu instead of LSP
         lsp-eldoc-enable-hover nil              ; Disable hover eldoc (use lsp-ui if needed)
         lsp-signature-auto-activate nil         ; Disable automatic signature help
         lsp-lens-enable nil                     ; Disable code lens globally
-        lsp-enable-folding nil                  ; Disable LSP folding (use Doom's)
         lsp-enable-symbol-highlighting nil      ; Disable symbol highlighting
         lsp-enable-links nil))                  ; Disable clickable links
 

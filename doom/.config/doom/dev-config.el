@@ -7,11 +7,9 @@
 ;; Go LSP configuration
 (after! lsp-mode
   ;; Performance basics (lsp-idle-delay set in performance-config.el)
-  (setq lsp-use-plists nil
-        lsp-log-io nil
+  (setq lsp-log-io nil
         lsp-keep-workspace-alive nil
-        lsp-response-timeout 10
-        lsp-print-performance nil)
+        lsp-response-timeout 10)
 
   ;; Suppress semgrep notification warnings
   (setq lsp-warn-no-matched-clients nil)
@@ -64,9 +62,7 @@
         (append projectile-globally-ignored-file-suffixes
                 '("gz" "zip" "tar" "bz2" "xz" "7z" "rar" "tgz")))
 
-  ;; Reduce file watching for large projects
-  (setq projectile-enable-caching t
-        projectile-project-root-files-bottom-up '(".projectile" ".git" ".hg" ".bzr" "_darcs")
+  (setq projectile-project-root-files-bottom-up '(".projectile" ".git" ".hg" ".bzr" "_darcs")
         projectile-project-root-files-top-down-recurring '("Makefile" "setup.py" "pom.xml" "build.gradle")))
 
 (provide 'dev-config)
