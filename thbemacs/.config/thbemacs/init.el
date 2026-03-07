@@ -252,10 +252,18 @@
         (append '((:vc-added . ?+))          ; U+1F7A4 not in PragmataPro — use +
                 mood-line-glyphs-unicode))
 
+  ;; Workspace indicator in modeline — shows [workspace] before buffer name
+  (defun thb/modeline-workspace ()
+    "Return current workspace name for modeline."
+    (when-let ((tab (ignore-errors (tab-bar--current-tab))))
+      (propertize (format "[%s]" (alist-get 'name tab))
+                  'face 'font-lock-constant-face)))
+
   ;; Set format BEFORE enabling mode
   (setq mood-line-format
         (mood-line-defformat
          :left  (((mood-line-segment-buffer-status) . " ")
+                 ((thb/modeline-workspace) . " ")
                  ((mood-line-segment-buffer-name) . " ")
                  ((mood-line-segment-vc) . " "))
          :right (((mood-line-segment-cursor-position) . " ")
@@ -578,7 +586,8 @@
 ;;; ============================================================
 
 ;; Tabspaces — workspace-like buffer isolation using built-in tab-bar + project.el.
-;; Each tab gets its own filtered buffer list so SPC , only shows relevant buffers.
+;; Configured to feel like Doom's persp-mode: tab bar shows workspace names,
+;; modeline shows [workspace] indicator, quick create/delete bindings.
 (use-package tabspaces
   :after (consult general)
   :config
@@ -586,15 +595,17 @@
         tabspaces-default-tab "main"                 ; name for the initial tab
         tabspaces-include-buffers '("*scratch*" "*Messages*"))
 
-  ;; Show tab bar with the name of the active buffer in each tab
-  (setq tab-bar-show t                               ; always show tab bar
-        tab-bar-close-button-show nil                 ; no close button
-        tab-bar-new-button-show nil                   ; no new button
+  ;; Tab bar: show workspace names (not buffer names) like Doom's +workspace/display
+  (setq tab-bar-show t
+        tab-bar-close-button-show nil
+        tab-bar-new-button-show nil
+        tab-bar-tab-name-function #'tab-bar-tab-name-all
         tab-bar-format '(tab-bar-format-tabs tab-bar-separator))
 
-  ;; Tab name shows the current buffer name (built-in default).
-  ;; tabspaces renames tabs to the project name on creation.
-  (setq tab-bar-tab-name-function #'tab-bar-tab-name-current-with-count)
+  ;; Style: highlight current tab, dim others
+  (set-face-attribute 'tab-bar nil :inherit 'mode-line-inactive :box nil)
+  (set-face-attribute 'tab-bar-tab nil :inherit 'mode-line :weight 'bold :box nil)
+  (set-face-attribute 'tab-bar-tab-inactive nil :inherit 'mode-line-inactive :box nil)
 
   ;; Integrate with consult: SPC , shows only tab-local buffers
   (with-eval-after-load 'consult
@@ -615,10 +626,19 @@
       "Buffer source for tab-local buffers in `consult-buffer'.")
     (add-to-list 'consult-buffer-sources 'consult--source-tabspaces))
 
+  ;; Quick workspace creation (like Doom's +workspace/new)
+  (defun thb/workspace-new ()
+    "Create a new workspace with an auto-generated name."
+    (interactive)
+    (let ((name (format "workspace-%d" (length (tab-bar-tabs)))))
+      (tabspaces-switch-or-create-workspace name)
+      (message "Created workspace: %s" name)))
+
   ;; SPC TAB: workspace bindings (matches Doom conventions)
   (thb/leader
     "TAB"   '(:ignore t :which-key "workspaces")
     "TAB n" '(tabspaces-switch-or-create-workspace :which-key "new/switch")
+    "TAB N" '(thb/workspace-new :which-key "new (quick)")
     "TAB p" '(tabspaces-open-or-create-project-and-workspace :which-key "open project")
     "TAB d" '(tabspaces-kill-buffers-close-workspace :which-key "close")
     "TAB r" '(tabspaces-rename-existing-tab :which-key "rename")
