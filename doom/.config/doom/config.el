@@ -41,7 +41,6 @@
       :desc "Org-roam dailies capture today" "n r d c" #'(lambda () (interactive) (org-roam-dailies-capture-today nil "d"))
       :desc "Org-roam dailies goto today" "n r d d" #'org-roam-dailies-goto-today
       :desc "Org-roam dailies goto yesterday" "n r d y" #'org-roam-dailies-goto-yesterday
-      :desc "Consult org-roam" "n r s" #'consult-org-roam-search
       ;; Vulpea keybindings
       :desc "Vulpea find" "n v f" #'vulpea-find
       :desc "Vulpea insert" "n v i" #'vulpea-insert
