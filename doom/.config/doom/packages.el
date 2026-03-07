@@ -4,7 +4,6 @@
 (package! modus-themes)
 
 ;; Personal org-mode packages
-(package! consult-org-roam)
 (package! vulpea)
 (package! vulpea-ui)
 (package! vulpea-journal)

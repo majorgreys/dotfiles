@@ -181,12 +181,6 @@ Returns absolute path for mmdc to write file to."
   (setq auto-save-visited-interval 10)
   (auto-save-visited-mode 1))
 
-;; Consult-org-roam for enhanced search
-(use-package! consult-org-roam
-  :after org-roam
-  :config
-  (setq consult-org-roam-grep-func #'consult-ripgrep))
-
 ;; Org-roam configuration - load at startup for emacsclient compatibility
 (use-package! org-roam
   :demand t  ; Load at startup to ensure org-roam-skill is available via emacsclient
@@ -311,7 +305,8 @@ Returns absolute path for mmdc to write file to."
 (use-package! consult-vulpea
   :after vulpea
   :config
-  (setq consult-vulpea-grep-func #'consult-ripgrep))
+  (setq consult-vulpea-grep-func #'consult-ripgrep)
+  (consult-vulpea-mode 1))
 
 ;; Org-modern for visual improvements
 (use-package! org-modern
