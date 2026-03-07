@@ -34,27 +34,24 @@
 ;; Suppress noisy native-comp warnings. Enable JIT compilation.
 (when (featurep 'native-compile)
   (setq native-comp-async-report-warnings-errors 'silent
-        native-comp-jit-compilation t
-        native-comp-deferred-compilation t))   ; alias used by some versions
+        native-comp-jit-compilation t))
 
 ;;; GUI Chrome — Suppress Before First Frame
 ;; Turning these off here is faster than toggling them after the frame draws.
 (setq default-frame-alist
-      '((menu-bar-lines . 0)
+      `((menu-bar-lines . 0)
         (tool-bar-lines . 0)
         (vertical-scroll-bars . nil)
         (horizontal-scroll-bars . nil)
-        (internal-border-width . 16)))
+        (internal-border-width . 16)
+        ,@(when (eq system-type 'darwin)
+            '((undecorated . t)
+              (ns-appearance . light)
+              (fullscreen . maximized)))))
 
 (setq menu-bar-mode nil
       tool-bar-mode nil
       scroll-bar-mode nil)
-
-;;; macOS Frame Appearance
-(when (eq system-type 'darwin)
-  (add-to-list 'default-frame-alist '(undecorated . t))
-  (add-to-list 'default-frame-alist '(ns-appearance . light))
-  (add-to-list 'default-frame-alist '(fullscreen . maximized)))
 
 ;;; Skip Site Init
 ;; Avoid loading site-wide startup files (e.g., /etc/emacs/site-start.el).

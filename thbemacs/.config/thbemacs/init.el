@@ -134,6 +134,9 @@
 (setq show-paren-delay 0)
 
 ;; Disable line numbers for prose and special buffers
+(defun thb/disable-line-numbers ()
+  "Disable line numbers in current buffer."
+  (display-line-numbers-mode -1))
 (dolist (mode '(org-mode-hook
                org-agenda-mode-hook
                special-mode-hook
@@ -142,7 +145,7 @@
                agent-shell-mode-hook
                agent-shell-viewport-view-mode-hook
                agent-shell-viewport-edit-mode-hook))
-  (add-hook mode (lambda () (display-line-numbers-mode -1))))
+  (add-hook mode #'thb/disable-line-numbers))
 
 ;; Smooth scrolling — ultra-scroll replaces pixel-scroll-precision-mode
 ;; with much smoother trackpad/mouse wheel behavior on macOS.
@@ -195,7 +198,8 @@
   ;; Import PATH from shell so GUI Emacs finds brew/go/node/etc.
   (use-package exec-path-from-shell
     :config
-    (exec-path-from-shell-initialize))
+    (unless (daemonp)
+      (exec-path-from-shell-initialize)))
 
   ;; Modifier keys: Option=Meta, Command=Super, Right-Option=accents
   (setq mac-option-modifier 'meta
@@ -236,8 +240,7 @@
      "\\\\" "]#" "^=" "__" "_|_" "www" "{|" "|-" "|=" "|>" "|]" "||"
      "||=" "||>" "|}" "~-" "~=" "~>" "~~" "~~>"))
   ;; Only enable in prog-mode (global adds rendering cost during scroll)
-  (dolist (mode '(prog-mode-hook))
-    (add-hook mode #'ligature-mode)))
+  (add-hook 'prog-mode-hook #'ligature-mode))
 
 ;; Line spacing for org-modern box rendering (0.1 = minimum recommended)
 (setq-default line-spacing 0.1)
@@ -249,19 +252,10 @@
         (append '((:vc-added . ?+))          ; U+1F7A4 not in PragmataPro — use +
                 mood-line-glyphs-unicode))
 
-  ;; Custom segment: show "!!" when file on disk is newer than buffer
-  (defun thb/mood-line-segment-stale ()
-    "Show indicator when visited file has changed on disk."
-    (when (and (buffer-file-name)
-               (not (verify-visited-file-modtime (current-buffer)))
-               (file-exists-p (buffer-file-name)))
-      (propertize " !!" 'face 'warning)))
-
   ;; Set format BEFORE enabling mode
   (setq mood-line-format
         (mood-line-defformat
          :left  (((mood-line-segment-buffer-status) . " ")
-                 ((thb/mood-line-segment-stale) . " ")
                  ((mood-line-segment-buffer-name) . " ")
                  ((mood-line-segment-vc) . " "))
          :right (((mood-line-segment-cursor-position) . " ")
@@ -309,6 +303,20 @@
 ;; Map xterm-ghostty to xterm so Emacs loads term/xterm.el for key handling.
 (add-to-list 'term-file-aliases '("xterm-ghostty" . "xterm"))
 
+(defun thb/apply-org-faces ()
+  "Set org faces: theme-aware block colors + heading/label sizes."
+  (let ((bg  (modus-themes-get-color-value 'bg-dim))
+        (fg  (modus-themes-get-color-value 'fg-dim))
+        (bgm (modus-themes-get-color-value 'bg-inactive)))
+    (set-face-attribute 'org-block nil :background bg :extend t)
+    (set-face-attribute 'org-block-begin-line nil :background bgm :foreground fg :extend t)
+    (set-face-attribute 'org-block-end-line nil :background bgm :foreground fg :extend t))
+  (set-face-attribute 'org-document-title nil :height 1.4 :weight 'bold)
+  (set-face-attribute 'org-level-1 nil :height 1.3 :weight 'bold)
+  (set-face-attribute 'org-level-2 nil :height 1.15 :weight 'bold)
+  (set-face-attribute 'org-level-3 nil :height 1.05 :weight 'semi-bold)
+  (set-face-attribute 'org-modern-label nil :height 0.85 :width 'normal :weight 'regular))
+
 (defun thb/toggle-theme ()
   "Toggle between modus-operandi (light) and modus-vivendi (dark)."
   (interactive)
@@ -316,24 +324,25 @@
       (progn (disable-theme 'modus-operandi)
              (load-theme 'modus-vivendi t))
     (disable-theme 'modus-vivendi)
-    (load-theme 'modus-operandi t)))
+    (load-theme 'modus-operandi t))
+  (thb/apply-org-faces))
 
-(defvar thb/big-font-mode nil "Non-nil when big font mode is active.")
-(defvar thb/big-font-increment 5 "Points to add when big font mode is active.")
+;; Apply org faces after initial theme load
+(thb/apply-org-faces)
+
+(defvar thb/big-font-base-height (face-attribute 'default :height)
+  "Original default face height, recorded at init.")
+(defvar thb/big-font-increment 50 "1/10-pt to add when big font mode is active.")
 
 (defun thb/big-font-mode ()
   "Toggle big font mode (increase default face height)."
   (interactive)
-  (let* ((current (face-attribute 'default :height))
-         (increment (* thb/big-font-increment 10))) ; height is in 1/10 pt
-    (if thb/big-font-mode
-        (progn
-          (set-face-attribute 'default nil :height (- current increment))
-          (setq thb/big-font-mode nil)
-          (message "Big font mode off"))
-      (set-face-attribute 'default nil :height (+ current increment))
-      (setq thb/big-font-mode t)
-      (message "Big font mode on"))))
+  (let ((big-p (> (face-attribute 'default :height) thb/big-font-base-height)))
+    (set-face-attribute 'default nil
+                        :height (if big-p
+                                    thb/big-font-base-height
+                                  (+ thb/big-font-base-height thb/big-font-increment)))
+    (message "Big font mode %s" (if big-p "off" "on"))))
 
 
 ;;; ============================================================
@@ -359,7 +368,10 @@
   :init
   (setq evil-collection-setup-minibuffer t)  ; enable j/k in minibuffer (normal state)
   :config
-  (evil-collection-init))
+  (evil-collection-init
+   '(corfu consult dired embark ibuffer info magit minibuffer
+     org org-roam vertico which-key diff-hl eglot markdown-mode
+     go-mode help custom tab-bar)))
 
 ;; General.el — the same library Doom uses for SPC leader bindings.
 ;; Defines a leader key (SPC in normal/visual, C-SPC in insert/emacs).
@@ -653,8 +665,10 @@
 
   ;; --- Auto-save ---
   ;; Save org buffers periodically (protects against data loss).
-  (setq auto-save-visited-interval 10)
-  (auto-save-visited-mode 1)
+  (add-hook 'org-mode-hook
+            (lambda ()
+              (setq-local auto-save-visited-interval 10)
+              (auto-save-visited-mode 1)))
 
   ;; --- Attachments ---
   ;; Matches Doom config: timestamp-based folders under ~/org/attachments/
@@ -768,23 +782,6 @@
         vulpea-db-sync-external-method 'fswatch             ; macOS: detect git changes
         vulpea-db-index-heading-level  t)                   ; index headings with IDs
 
-  ;; Display: show mtime + title in completion candidates.
-  ;; Tags shown via annotate-fn (default: aliases + #tags).
-  (defun thb/vulpea-describe-with-mtime (note)
-    "Format NOTE as [mtime] title for completion candidates."
-    (let* ((path (vulpea-note-path note))
-           (attrs (when path (file-attributes path)))
-           (mtime (when attrs
-                    (file-attribute-modification-time attrs)))
-           (mtime-str (if mtime
-                          (format-time-string "[%Y-%m-%d %a %H:%M]" mtime)
-                        (make-string 22 ?\s)))
-           (title (vulpea-note-title note)))
-      (concat (propertize mtime-str 'face 'font-lock-comment-face)
-              " " title)))
-
-  (setq vulpea-select-describe-fn #'thb/vulpea-describe-with-mtime)
-
   (setq vulpea-create-default-template
         '(:file-name "roam/%<%Y%m%d%H%M>.org"
           :head "#+date: %<[%Y-%m-%d]>"
@@ -836,22 +833,8 @@
         org-modern-block-fringe t
         org-modern-todo t))
 
-;; Label face — slightly smaller for cleaner TODO boxes
-(custom-set-faces
- '(org-modern-label ((t (:height 0.85 :width normal :weight regular)))))
-
-;; Heading sizes — visual hierarchy like Doom
-(custom-set-faces
- '(org-level-1 ((t (:height 1.3 :weight bold))))
- '(org-level-2 ((t (:height 1.15 :weight bold))))
- '(org-level-3 ((t (:height 1.05 :weight semi-bold))))
- '(org-document-title ((t (:height 1.4 :weight bold)))))
-
-;; Source block background — subtle tint to distinguish code from prose
-(custom-set-faces
- '(org-block ((t (:background "#f2ede9" :extend t))))
- '(org-block-begin-line ((t (:background "#e8e3df" :extend t :foreground "#7c6f64"))))
- '(org-block-end-line ((t (:background "#e8e3df" :extend t :foreground "#7c6f64")))))
+;; Face customizations for org-modern, headings, and source blocks
+;; are in thb/apply-org-faces (Appearance section) — do not duplicate here.
 
 ;; Org-appear — hide markup until cursor enters (~code~, *bold*, etc.)
 ;; Manual trigger: only expand links/emphasis in evil insert mode.
@@ -923,14 +906,11 @@
       (funcall orig-fn)))
 
   ;; Word wrap and visual distinction for viewport buffers.
-  (defun thb/agent-shell-viewport-view-setup ()
+  (defun thb/agent-shell-viewport-setup ()
     (visual-line-mode 1)
     (setq-local word-wrap t))
-  (defun thb/agent-shell-viewport-edit-setup ()
-    (visual-line-mode 1)
-    (setq-local word-wrap t))
-  (add-hook 'agent-shell-viewport-view-mode-hook #'thb/agent-shell-viewport-view-setup)
-  (add-hook 'agent-shell-viewport-edit-mode-hook #'thb/agent-shell-viewport-edit-setup)
+  (add-hook 'agent-shell-viewport-view-mode-hook #'thb/agent-shell-viewport-setup)
+  (add-hook 'agent-shell-viewport-edit-mode-hook #'thb/agent-shell-viewport-setup)
 
   ;; Make prompt visually distinct: background highlight + separator.
   (define-advice agent-shell-viewport--initialize (:after (&rest _) style-prompt)
@@ -962,7 +942,7 @@
       (goto-char (point-min))
       ;; Inline code: `text`
       (while (re-search-forward "`\\([^`]+\\)`" nil t)
-        (replace-match (propertize (match-string 1) 'face 'markdown-inline-code-face)))
+        (replace-match (propertize (match-string 1) 'face 'fixed-pitch)))
       (buffer-string)))
 
   (defun thb/md-table-wrap-string (str width)
@@ -1192,9 +1172,8 @@ In daemon mode, restarts as a daemon."
                   (file "restart/.emacs.desktop"))
               (when (file-exists-p (expand-file-name file user-emacs-directory))
                 (desktop-read dir)
-                (delete-file (expand-file-name ".emacs.desktop" dir))
-                (let ((lock (expand-file-name ".emacs.desktop.lock" dir)))
-                  (when (file-exists-p lock) (delete-file lock)))))))
+                (delete-file (expand-file-name ".emacs.desktop" dir) t)
+                (delete-file (expand-file-name ".emacs.desktop.lock" dir) t))))))
 
 ;; --- Local Overrides ---
 ;; Load machine-specific settings from local.el (not tracked in git).
