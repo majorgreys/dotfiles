@@ -980,7 +980,7 @@
 Cell text has markdown inline formatting rendered as text properties."
     (let (header rows)
       (dolist (line (split-string text "\n" t))
-        (unless (string-match-p "^[ \t]*|[-+|: ]+|?[ \t]*$" line)
+        (unless (string-match-p "^[ \t]*|[-+|: ]*[-+][-+|: ]*|?[ \t]*$" line)
           (when (string-match "^[ \t]*|\\(.*\\)|[ \t]*$" line)
             (let ((cells (mapcar (lambda (c)
                                    (thb/md-table-render-inline (string-trim c)))
