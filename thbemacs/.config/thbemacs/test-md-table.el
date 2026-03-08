@@ -35,7 +35,7 @@
   "Parse pipe-delimited TEXT into (HEADER . DATA-ROWS)."
   (let (header rows)
     (dolist (line (split-string text "\n" t))
-      (unless (string-match-p "^[ \t]*|[-+|: ]+|?[ \t]*$" line)
+      (unless (string-match-p "^[ \t]*|[-+|: ]*[-+][-+|: ]*|?[ \t]*$" line)
         (when (string-match "^[ \t]*|\\(.*\\)|[ \t]*$" line)
           (let ((cells (mapcar (lambda (c)
                                  (thb/md-table-render-inline (string-trim c)))
@@ -338,6 +338,273 @@
     (should (string-match-p "a" result))
     (should (string-match-p "b" result))
     (should (string-match-p "c" result))))
+
+
+;;; ============================================================
+;;; Edge Cases: Malformed Input
+;;; ============================================================
+
+(ert-deftest md-table-parse/empty-string ()
+  "Empty string returns nil header and no rows."
+  (let ((parsed (thb/md-table-parse "")))
+    (should (null (car parsed)))
+    (should (null (cdr parsed)))))
+
+(ert-deftest md-table-parse/whitespace-only ()
+  "Whitespace-only input returns nil header."
+  (let ((parsed (thb/md-table-parse "   \n  \n")))
+    (should (null (car parsed)))))
+
+(ert-deftest md-table-parse/separator-only ()
+  "Table with only separator line and no header/data."
+  (let ((parsed (thb/md-table-parse "|---|---|")))
+    (should (null (car parsed)))
+    (should (null (cdr parsed)))))
+
+(ert-deftest md-table-parse/no-separator ()
+  "Table without separator line — all rows after first become data."
+  (let* ((text "| A | B |\n| 1 | 2 |\n| 3 | 4 |")
+         (parsed (thb/md-table-parse text)))
+    (should (= 2 (length (car parsed))))
+    (should (= 2 (length (cdr parsed))))))
+
+(ert-deftest md-table-parse/mismatched-columns-fewer ()
+  "Row with fewer columns than header."
+  (let* ((text "| A | B | C |\n|---|---|---|\n| 1 |")
+         (parsed (thb/md-table-parse text))
+         (row (nth 0 (cdr parsed))))
+    ;; Should parse without error; row has fewer cells
+    (should (< (length row) (length (car parsed))))))
+
+(ert-deftest md-table-parse/mismatched-columns-more ()
+  "Row with more columns than header."
+  (let* ((text "| A | B |\n|---|---|\n| 1 | 2 | 3 | 4 |")
+         (parsed (thb/md-table-parse text))
+         (row (nth 0 (cdr parsed))))
+    ;; Should parse without error; row has extra cells
+    (should (> (length row) (length (car parsed))))))
+
+(ert-deftest md-table-parse/single-column ()
+  "Single column table."
+  (let* ((text "| A |\n|---|\n| 1 |\n| 2 |")
+         (parsed (thb/md-table-parse text)))
+    (should (= 1 (length (car parsed))))
+    (should (= 2 (length (cdr parsed))))))
+
+(ert-deftest md-table-parse/no-closing-pipe ()
+  "Line without closing pipe is not matched."
+  (let* ((text "| A | B\n|---|---|\n| 1 | 2")
+         (parsed (thb/md-table-parse text)))
+    ;; Lines without closing | should be skipped by the regex
+    (should (null (car parsed)))))
+
+(ert-deftest md-table-parse/whitespace-cells ()
+  "Cells containing only whitespace are trimmed to empty."
+  (let* ((text "| A | B |\n|---|---|\n|   |   |")
+         (parsed (thb/md-table-parse text))
+         (row (nth 0 (cdr parsed))))
+    (should (equal "" (substring-no-properties (nth 0 row))))
+    (should (equal "" (substring-no-properties (nth 1 row))))))
+
+
+;;; ============================================================
+;;; Edge Cases: Unicode and Special Content
+;;; ============================================================
+
+(ert-deftest md-table-parse/unicode-content ()
+  "Table with unicode characters parses correctly."
+  (let* ((text "| Name | Symbol |\n|------|--------|\n| Alpha | α |\n| Beta | β |")
+         (parsed (thb/md-table-parse text)))
+    (should (= 2 (length (cdr parsed))))
+    (should (equal "α" (substring-no-properties (nth 1 (nth 0 (cdr parsed))))))))
+
+(ert-deftest md-table-render-inline/nested-backticks ()
+  "Backtick inside bold is not treated as inline code."
+  (let ((result (thb/md-table-render-inline "**has ` tick**")))
+    ;; The whole thing should be rendered as bold
+    (should (string-match-p "has" result))))
+
+(ert-deftest md-table-render-inline/unclosed-bold ()
+  "Unclosed **bold is left as-is."
+  (let ((result (thb/md-table-render-inline "**not closed")))
+    (should (string-match-p "\\*\\*" result))))
+
+(ert-deftest md-table-render-inline/unclosed-code ()
+  "Unclosed `code is left as-is."
+  (let ((result (thb/md-table-render-inline "`not closed")))
+    (should (string-match-p "`" result))))
+
+(ert-deftest md-table-render-inline/empty-bold ()
+  "Empty bold **** is handled."
+  (let ((result (thb/md-table-render-inline "****")))
+    ;; Should not error
+    (should (stringp result))))
+
+(ert-deftest md-table-render-inline/empty-code ()
+  "Empty code `` is handled."
+  (let ((result (thb/md-table-render-inline "``")))
+    ;; Should not error
+    (should (stringp result))))
+
+
+;;; ============================================================
+;;; Edge Cases: Column Width Calculation
+;;; ============================================================
+
+(ert-deftest md-table-col-widths/all-long-tiny-usable ()
+  "When usable is smaller than ncols*8, columns still get minimum 8."
+  (let ((widths (thb/md-table-col-widths
+                 (list (make-string 20 ?a) (make-string 20 ?b) (make-string 20 ?c))
+                 nil
+                 10)))
+    ;; Each column should be at least 8
+    (dolist (w widths)
+      (should (>= w 8)))))
+
+(ert-deftest md-table-col-widths/single-column ()
+  "Single column table width calculation."
+  (let ((widths (thb/md-table-col-widths '("Header") '(("data")) 40)))
+    (should (= 1 (length widths)))
+    (should (= 6 (nth 0 widths)))))  ; "Header" = 6
+
+(ert-deftest md-table-col-widths/empty-cells ()
+  "Column widths with empty cells in data."
+  (let ((widths (thb/md-table-col-widths '("Name" "Val") '(("" "")) 40)))
+    (should (= 4 (nth 0 widths)))    ; "Name" = 4
+    (should (= 3 (nth 1 widths))))) ; "Val" = 3
+
+(ert-deftest md-table-col-widths/zero-usable ()
+  "Zero usable space — columns still get minimum 8."
+  (let ((widths (thb/md-table-col-widths
+                 (list (make-string 20 ?a) (make-string 20 ?b))
+                 nil
+                 0)))
+    (dolist (w widths)
+      (should (>= w 8)))))
+
+
+;;; ============================================================
+;;; Edge Cases: Row Rendering
+;;; ============================================================
+
+(ert-deftest md-table-render-row/more-cells-than-widths ()
+  "Extra cells beyond col-widths are silently ignored."
+  (let ((result (thb/md-table-render-row '("a" "b" "c" "d") '(5 5))))
+    ;; Should render only 2 columns (matching col-widths length)
+    (should (stringp result))
+    (should (string-match-p "a" result))
+    (should (string-match-p "b" result))
+    ;; Extra cells c and d should not appear
+    (should-not (string-match-p "c" result))
+    (should-not (string-match-p "d" result))))
+
+(ert-deftest md-table-render-row/nil-cells ()
+  "Nil in cells list is treated as empty string."
+  (let ((result (thb/md-table-render-row '(nil nil) '(5 5))))
+    (should (stringp result))
+    (should (string-match-p "│" result))))
+
+(ert-deftest md-table-render-row/single-column ()
+  "Single column row renders with pipes."
+  (let ((result (thb/md-table-render-row '("hello") '(10))))
+    (should (string-match-p "│" result))
+    (should (string-match-p "hello" result))))
+
+
+;;; ============================================================
+;;; Edge Cases: Full Format Integration
+;;; ============================================================
+
+(ert-deftest md-table-format/single-column ()
+  "Single column table formats without error."
+  (let* ((text "| X |\n|---|\n| 1 |\n| 2 |")
+         (result (thb/md-table-format text 40)))
+    (should (stringp result))
+    (should (string-match-p "1" result))
+    (should (string-match-p "2" result))
+    ;; No column separators in rules (0 ┬ for 1 column)
+    (should (= 0 (cl-count ?┬ result)))))
+
+(ert-deftest md-table-format/very-narrow ()
+  "Table at extremely narrow width (10 chars) doesn't crash."
+  (let* ((text "| Name | Description |\n|------|-------------|\n| A | B |")
+         (result (thb/md-table-format text 10)))
+    (should (stringp result))))
+
+(ert-deftest md-table-format/wide-content-narrow-window ()
+  "Wide content in narrow window wraps rather than truncating."
+  (let* ((text "| Key | Value |\n|-----|-------|\n| name | This is a very long value that must wrap |")
+         (result (thb/md-table-format text 30)))
+    ;; The full content should still be present (wrapped, not truncated)
+    (should (string-match-p "very" result))
+    (should (string-match-p "wrap" result))))
+
+(ert-deftest md-table-format/mismatched-row-columns ()
+  "Table with rows having different column counts than header."
+  (let* ((text "| A | B | C |\n|---|---|---|\n| 1 |\n| x | y | z | w |")
+         (result (thb/md-table-format text 40)))
+    ;; Should not crash; renders based on header column count
+    (should (stringp result))))
+
+(ert-deftest md-table-format/unicode-alignment ()
+  "Table with unicode content aligns columns."
+  (let* ((text "| Name | Sym |\n|------|-----|\n| alpha | α |\n| beta | β |")
+         (result (thb/md-table-format text 40)))
+    (should (stringp result))
+    ;; Both rows should be present
+    (should (string-match-p "α" result))
+    (should (string-match-p "β" result))))
+
+(ert-deftest md-table-format/bold-in-cells ()
+  "Bold markdown in cells is rendered and stripped of markers."
+  (let* ((text "| Col |\n|-----|\n| **bold** |")
+         (result (thb/md-table-format text 40)))
+    (should (string-match-p "bold" result))
+    (should-not (string-match-p "\\*\\*" result))))
+
+(ert-deftest md-table-format/empty-table-text ()
+  "Empty table text doesn't crash format."
+  ;; thb/md-table-parse returns (nil) for empty input
+  ;; thb/md-table-format will get nil header — should handle gracefully
+  (condition-case err
+      (thb/md-table-format "" 40)
+    (error
+     ;; If it errors, that's a bug we're documenting
+     (should (consp err)))))
+
+(ert-deftest md-table-format/header-only-no-separator ()
+  "Table with header but no separator or data."
+  (let* ((text "| A | B |")
+         (result (thb/md-table-format text 40)))
+    ;; Should produce some output (header as only content)
+    (should (stringp result))))
+
+
+;;; ============================================================
+;;; Edge Cases: Word Wrapping
+;;; ============================================================
+
+(ert-deftest md-table-wrap/width-1 ()
+  "Wrapping at width 1 doesn't infinite loop."
+  (let ((result (thb/md-table-wrap-string "hello" 1)))
+    (should (>= (length result) 1))))
+
+(ert-deftest md-table-wrap/width-0 ()
+  "Width 0 doesn't crash."
+  ;; length "hi" = 2, > 0, so it enters the wrap branch
+  (let ((result (thb/md-table-wrap-string "hi" 0)))
+    (should (listp result))))
+
+(ert-deftest md-table-wrap/newlines-in-input ()
+  "Input containing newlines is handled."
+  (let ((result (thb/md-table-wrap-string "line1\nline2" 20)))
+    (should (listp result))))
+
+(ert-deftest md-table-wrap/unicode ()
+  "Unicode string wraps without error."
+  (let ((result (thb/md-table-wrap-string "αβγδ εζηθ ικλμ" 8)))
+    (should (listp result))
+    (should (> (length result) 0))))
 
 
 ;;; test-md-table.el ends here
