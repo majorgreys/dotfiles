@@ -73,6 +73,8 @@ brew "shfmt"
 tap "nikitabobko/tap"
 cask "nikitabobko/tap/aerospace"
 cask "alt-tab"
+tap "felixkratz/formulae"
+brew "felixkratz/formulae/sketchybar"
 
 # Fonts
 cask "font-fira-code"
