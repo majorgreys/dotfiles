@@ -1,0 +1,19 @@
+{
+  "name": "claude-status",
+  "owner": {
+    "name": "Tahir Butt"
+  },
+  "metadata": {
+    "description": "Sketchybar workspace agent-state for Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "claude-status",
+      "description": "Lights up sketchybar workspace pills based on Claude Code activity (yellow=running, red=needs-attention).",
+      "source": "./",
+      "strict": false,
+      "hooks": "./hooks/hooks.json"
+    }
+  ]
+}
