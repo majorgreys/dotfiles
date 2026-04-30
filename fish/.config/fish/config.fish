@@ -45,7 +45,7 @@ set -gx BD_ACTOR tahir
 
 direnv hook fish | source
 zoxide init fish | source
-bd completion fish | source
+br completions fish | source
 starship init fish | source
 
 # Set Ghostty tab title (bypasses tmux to set outer terminal title)
