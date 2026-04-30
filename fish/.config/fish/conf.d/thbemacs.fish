@@ -7,5 +7,5 @@ function thbemacs --description "Connect to thbemacs daemon"
 end
 
 function thbemacs-tui --description "Connect to thbemacs daemon in terminal mode"
-    env TERM=xterm-256color COLORTERM=truecolor emacsclient --socket-name=thbemacs -nw $argv
+    env TERM=ghostty-direct COLORTERM=truecolor emacsclient --socket-name=thbemacs -nw $argv
 end
