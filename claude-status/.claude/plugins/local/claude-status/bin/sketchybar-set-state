@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# sketchybar-set-state — write per-workspace agent state for sketchybar.
+# sketchybar-set-state — write per-workspace and per-session agent state.
 #
 # Usage:
-#   sketchybar-set-state <state>        # state in: running | needs-attention | idle | clear
-#                                   # reads Claude Code hook JSON on stdin (optional)
+#   sketchybar-set-state <state>
+#     state: running | needs-attention | idle | clear
+#     stdin (optional): Claude Code hook JSON; .session_id and .cwd are read.
 #
 # Behavior:
-#   1. Tries to read .session_id from stdin JSON (hook payload).
-#   2. If session_id is known and pinned, writes state to that pinned workspace.
-#   3. Otherwise resolves "current focused AeroSpace workspace" and pins it for
-#      this session_id. Subsequent hooks for the same session reuse that pin.
-#
-# This means UserPromptSubmit (fired while the Claude window is focused) sets
-# the workspace, and Stop/Notification later write to the same workspace even
-# if the user has switched focus elsewhere.
+#   1. Read .session_id and .cwd from stdin JSON if present.
+#   2. Resolve the session's workspace: if a session JSON record exists
+#      under $STATE_ROOT/sessions/<id>.json, reuse its workspace; else
+#      query AeroSpace for the focused workspace and pin to that.
+#   3. Write per-workspace state to $STATE_ROOT/agents/<workspace>.
+#   4. Write per-session JSON to $STATE_ROOT/sessions/<id>.json
+#      (atomically: tmp + rename).
+#   5. On state=clear, remove both the per-workspace and per-session
+#      records.
+#   6. Trigger claude_agent_state_change so subscribers re-render.
 
 set -euo pipefail
 
@@ -30,27 +33,45 @@ if [ ! -t 0 ]; then
 fi
 
 SESSION_ID=""
+CWD=""
 if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
   SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
+  CWD=$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
 fi
 
+# Resolve the pinned workspace for this session.
 WS=""
-if [ -n "$SESSION_ID" ] && [ -f "$SESS_DIR/$SESSION_ID" ]; then
-  WS=$(< "$SESS_DIR/$SESSION_ID")
+SESS_FILE=""
+if [ -n "$SESSION_ID" ]; then
+  SESS_FILE="$SESS_DIR/$SESSION_ID.json"
+  if [ -s "$SESS_FILE" ]; then
+    WS=$(jq -r '.workspace // empty' "$SESS_FILE" 2>/dev/null || true)
+  fi
 fi
 if [ -z "$WS" ]; then
   WS=$(aerospace list-workspaces --focused 2>/dev/null || true)
-  if [ -n "$SESSION_ID" ] && [ -n "$WS" ]; then
-    printf '%s' "$WS" > "$SESS_DIR/$SESSION_ID"
-  fi
 fi
 [ -z "$WS" ] && exit 0
 
 if [ "$STATE" = "clear" ]; then
   rm -f "$WS_DIR/$WS"
-  [ -n "$SESSION_ID" ] && rm -f "$SESS_DIR/$SESSION_ID"
+  [ -n "$SESS_FILE" ] && rm -f "$SESS_FILE"
 else
   printf '%s' "$STATE" > "$WS_DIR/$WS"
+
+  if [ -n "$SESSION_ID" ]; then
+    NOW=$(date +%s)
+    TMP="$SESS_FILE.tmp"
+    jq -n \
+      --arg sid "$SESSION_ID" \
+      --arg ws  "$WS" \
+      --arg st  "$STATE" \
+      --arg cw  "$CWD" \
+      --argjson ts "$NOW" \
+      '{session_id:$sid, workspace:$ws, state:$st, cwd:$cw, updated_at:$ts}' \
+      > "$TMP"
+    mv "$TMP" "$SESS_FILE"
+  fi
 fi
 
 sketchybar --trigger claude_agent_state_change >/dev/null 2>&1 || true
