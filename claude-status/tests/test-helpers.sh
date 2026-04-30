@@ -31,7 +31,10 @@ EOF
 
   # AeroSpace mock: only "list-workspaces --focused" is consulted.
   # Default focused workspace is "3"; tests can override via
-  # MOCK_AEROSPACE_WS before calling setup.
+  # MOCK_AEROSPACE_WS before calling setup. Note: the value is baked
+  # into the mock script at setup time (the heredoc below uses outer-
+  # shell interpolation) — changing MOCK_AEROSPACE_WS mid-test won't
+  # affect the already-written mock.
   : "${MOCK_AEROSPACE_WS:=3}"
   cat > "$MOCK_BIN/aerospace" <<EOF
 #!/usr/bin/env bash
