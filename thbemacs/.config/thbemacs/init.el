@@ -127,6 +127,12 @@
 (setq recentf-max-items 200)
 (savehist-mode 1)                         ; persist minibuffer history
 
+;; Hide .beads/ contents from project-find-file.  ~/work/ tracks
+;; .beads/issues.jsonl per project on purpose; we just don't want those
+;; files swamping completion candidates.
+(define-advice project-files (:filter-return (files) thb/skip-beads)
+  (seq-remove (lambda (f) (string-match-p "/\\.beads/" f)) files))
+
 ;; --- Display ---
 (global-display-line-numbers-mode 1)      ; line numbers everywhere
 (column-number-mode 1)                    ; column number in modeline
@@ -139,6 +145,7 @@
   (display-line-numbers-mode -1))
 (dolist (mode '(org-mode-hook
                org-agenda-mode-hook
+               markdown-mode-hook
                special-mode-hook
                term-mode-hook
                eshell-mode-hook
@@ -198,8 +205,15 @@
   ;; Import PATH from shell so GUI Emacs finds brew/go/node/etc.
   (use-package exec-path-from-shell
     :config
-    (unless (daemonp)
-      (exec-path-from-shell-initialize)))
+    (exec-path-from-shell-initialize))
+
+  ;; LaunchAgent daemons start with a stripped PATH; ensure user bin dirs
+  ;; (br, bd, cargo, go) are reachable for subprocesses regardless.
+  (dolist (dir '("~/.local/bin" "~/go/bin" "~/.cargo/bin"))
+    (let ((d (expand-file-name dir)))
+      (when (file-directory-p d)
+        (add-to-list 'exec-path d)
+        (setenv "PATH" (concat d ":" (getenv "PATH"))))))
 
   ;; Modifier keys: Option=Meta, Command=Super, Right-Option=accents
   (setq mac-option-modifier 'meta
@@ -220,6 +234,12 @@
                     :family "PragmataPro Mono Liga"
                     :height 160
                     :weight 'normal)
+;; Match fixed-pitch to default so org tables / code / inline-code don't fall
+;; back to the system "Monospace" (Menlo/Courier) which doesn't match the
+;; surrounding text. modus-themes-fixed-pitch inherits from this.
+(set-face-attribute 'fixed-pitch nil
+                    :family "PragmataPro Mono Liga"
+                    :height 1.0)
 
 ;; Font ligatures — PragmataPro Liga support via ligature.el
 ;; Doom's +pragmata-pro flag does this under the hood.
@@ -271,6 +291,33 @@
 
   (mood-line-mode 1))
 
+;; Mixed-pitch — variable-pitch fonts for prose, fixed-pitch for code/tables.
+;; Off by default (PragmataPro Mono is the global default); toggle with SPC t p.
+(use-package mixed-pitch
+  :commands mixed-pitch-mode
+  :config
+  (setq mixed-pitch-set-height nil))   ; preserve existing line-height
+
+;; Olivetti — narrow, centered text body (lighter than writeroom-mode).
+;; Per-buffer toggle via SPC t o; suitable for daily reading of org notes.
+(use-package olivetti
+  :commands olivetti-mode
+  :config
+  (setq olivetti-body-width 120
+        olivetti-style 'fancy
+        olivetti-minimum-body-width 80)
+  ;; Drop line numbers when olivetti is on; restore on toggle off.
+  (defvar-local thb/olivetti-prev-line-numbers nil)
+  (add-hook 'olivetti-mode-on-hook
+            (lambda ()
+              (setq thb/olivetti-prev-line-numbers
+                    (bound-and-true-p display-line-numbers-mode))
+              (display-line-numbers-mode -1)))
+  (add-hook 'olivetti-mode-off-hook
+            (lambda ()
+              (when thb/olivetti-prev-line-numbers
+                (display-line-numbers-mode 1)))))
+
 ;; Zen mode — writeroom-mode for distraction-free writing (like Doom's +zen).
 ;; Centers text column, scales text up, hides visual noise. Per-buffer only.
 (use-package writeroom-mode
@@ -293,13 +340,29 @@
 
   (advice-add #'text-scale-adjust :after #'visual-fill-column-adjust))
 
-;; Theme — modus-operandi (light) / modus-vivendi (dark)
+;; Theme — modus-operandi-tinted (light) / modus-vivendi-tinted (dark)
 ;; These are built-in since Emacs 28, high-contrast and WCAG-compliant.
-(load-theme 'modus-operandi t)
+;; Tinted variants match the Ghostty terminal themes for consistent TUI colors.
+(load-theme 'modus-operandi-tinted t)
+
+;; Enable 24-bit color on terminals with COLORTERM=truecolor.
+;; Emacs's tty-color-24bit only activates when display-color-cells == 16777216,
+;; but terminfo caps colors at 32767.  This advice bypasses that check when
+;; the terminal advertises truecolor support, allowing the ghostty-direct
+;; terminfo's setaf/setab to emit \e[38;2;R;G;Bm escape sequences.
+(defun thb/tty-color-24bit-truecolor (orig-fn rgb &optional display)
+  "Enable 24-bit color translation when COLORTERM=truecolor."
+  (if (and rgb
+           (not (display-graphic-p display))
+           (equal (getenv "COLORTERM" display) "truecolor"))
+      (let ((r (ash (car rgb) -8))
+            (g (ash (cadr rgb) -8))
+            (b (ash (nth 2 rgb) -8)))
+        (logior (ash r 16) (ash g 8) b))
+    (funcall orig-fn rgb display)))
+(advice-add 'tty-color-24bit :around #'thb/tty-color-24bit-truecolor)
 
 ;; Re-apply theme for new frames (terminal frames from emacsclient -nw).
-;; Re-run xterm init so term/xterm.el detects COLORTERM=truecolor
-;; from the client environment, enabling 24-bit color.
 (add-hook 'after-make-frame-functions
           (lambda (frame)
             (with-selected-frame frame
@@ -308,35 +371,53 @@
               (when-let ((theme (car custom-enabled-themes)))
                 (load-theme theme t)))))
 
-;; Map xterm-ghostty to xterm so Emacs loads term/xterm.el for key handling.
+;; Map terminal types to xterm so Emacs loads term/xterm.el for key handling.
 (add-to-list 'term-file-aliases '("xterm-ghostty" . "xterm"))
+(add-to-list 'term-file-aliases '("ghostty-direct" . "xterm"))
+(add-to-list 'term-file-aliases '("xterm-direct" . "xterm"))
 
 (defun thb/apply-org-faces ()
-  "Set org faces: theme-aware block colors + heading/label sizes."
-  (let ((bg  (modus-themes-get-color-value 'bg-dim))
-        (fg  (modus-themes-get-color-value 'fg-dim))
-        (bgm (modus-themes-get-color-value 'bg-inactive)))
-    (set-face-attribute 'org-block nil :background bg :extend t)
-    (set-face-attribute 'org-block-begin-line nil :background bgm :foreground fg :extend t)
-    (set-face-attribute 'org-block-end-line nil :background bgm :foreground fg :extend t))
+  "Set org faces: theme-aware block colors + heading/label sizes.
+In GUI frames, set block backgrounds from theme palette.
+In TUI frames, skip backgrounds to avoid 256-color approximation issues."
+  (when (display-graphic-p)
+    (let ((bg  (modus-themes-get-color-value 'bg-dim))
+          (fg  (modus-themes-get-color-value 'fg-dim))
+          (bgm (modus-themes-get-color-value 'bg-inactive))
+          (bgq (modus-themes-get-color-value 'bg-blue-nuanced))
+          (bge (modus-themes-get-color-value 'bg-green-nuanced)))
+      (set-face-attribute 'org-block nil :background bg :extend t)
+      (set-face-attribute 'org-block-begin-line nil :background bgm :foreground fg :extend t)
+      (set-face-attribute 'org-block-end-line nil :background bgm :foreground fg :extend t)
+      (when (facep 'org-quote)
+        (set-face-attribute 'org-quote nil :background bgq :slant 'italic :extend t))
+      (when (facep 'org-verse)
+        (set-face-attribute 'org-verse nil :background bge :slant 'italic :extend t))))
   (set-face-attribute 'org-document-title nil :height 1.4 :weight 'bold)
   (set-face-attribute 'org-level-1 nil :height 1.3 :weight 'bold)
   (set-face-attribute 'org-level-2 nil :height 1.15 :weight 'bold)
   (set-face-attribute 'org-level-3 nil :height 1.05 :weight 'semi-bold)
-  (set-face-attribute 'org-modern-label nil :height 0.85 :width 'normal :weight 'regular))
+  (when (facep 'org-modern-label)
+    (set-face-attribute 'org-modern-label nil :height 0.85 :width 'normal :weight 'regular)))
 
 (defun thb/toggle-theme ()
-  "Toggle between modus-operandi (light) and modus-vivendi (dark)."
+  "Toggle between modus-operandi-tinted (light) and modus-vivendi-tinted (dark)."
   (interactive)
-  (if (eq (car custom-enabled-themes) 'modus-operandi)
-      (progn (disable-theme 'modus-operandi)
-             (load-theme 'modus-vivendi t))
-    (disable-theme 'modus-vivendi)
-    (load-theme 'modus-operandi t))
-  (thb/apply-org-faces))
+  (if (eq (car custom-enabled-themes) 'modus-operandi-tinted)
+      (progn (disable-theme 'modus-operandi-tinted)
+             (load-theme 'modus-vivendi-tinted t))
+    (disable-theme 'modus-vivendi-tinted)
+    (load-theme 'modus-operandi-tinted t))
+  (thb/apply-org-faces)
+  (when (fboundp 'thb/apply-markdown-faces)
+    (thb/apply-markdown-faces)))
 
-;; Apply org faces after initial theme load
-(thb/apply-org-faces)
+;; Apply org faces once org-mode is available (faces don't exist until then).
+(with-eval-after-load 'org
+  (thb/apply-org-faces))
+;; Re-apply after org-modern loads so org-modern-label face gets customized.
+(with-eval-after-load 'org-modern
+  (thb/apply-org-faces))
 
 (defvar thb/big-font-base-height (face-attribute 'default :height)
   "Original default face height, recorded at init.")
@@ -430,16 +511,15 @@
     "nf" '(vulpea-find :which-key "find note")
     "ni" '(vulpea-insert :which-key "insert link")
     "nb" '(vulpea-find-backlink :which-key "backlinks")
-    "ns" '(consult-vulpea-ripgrep :which-key "search notes")
+    "ns" '(consult-vulpea-grep :which-key "search notes")
     "nj" '(vulpea-journal :which-key "today's journal")
-    "nd" '(vulpea-journal-date :which-key "journal by date"))
+    "nd" '(vulpea-journal-date :which-key "journal by date")
+    "nS" '(vulpea-ui-sidebar-toggle :which-key "toggle sidebar"))
 
   ;; --- SPC o: Open ---
   (thb/leader
     "o"  '(:ignore t :which-key "open")
-    "os" '(agent-shell :which-key "agent shell")
-    "oS" '(agent-shell-manager-toggle :which-key "agent manager")
-    "oj" '(agent-shell-attention-jump :which-key "agent attention"))
+    "os" '(agent-shell :which-key "agent shell"))
 
   ;; --- SPC g: Git ---
   (thb/leader
@@ -456,7 +536,11 @@
     "tl" '(display-line-numbers-mode :which-key "line numbers")
     "tw" '(whitespace-mode :which-key "whitespace")
     "tz" '(writeroom-mode :which-key "zen mode")
-    "ti" '(org-toggle-inline-images :which-key "inline images"))
+    "ti" '(org-toggle-inline-images :which-key "inline images")
+    "to" '(olivetti-mode :which-key "olivetti (centered)")
+    "tp" '(mixed-pitch-mode :which-key "mixed pitch")
+    "td" '(org-tidy-mode :which-key "tidy drawers")
+    "tc" '(org-columns :which-key "column view (org)"))
 
   ;; --- SPC h: Help ---
   (thb/leader
@@ -497,6 +581,15 @@
     "ps" '(consult-ripgrep :which-key "search project")
     "pb" '(project-switch-to-buffer :which-key "project buffer")
     "pk" '(project-kill-buffers :which-key "kill buffers"))
+
+  ;; --- SPC i: Issues (Beads) ---
+  (thb/leader
+    "i"  '(:ignore t :which-key "issues")
+    "ii" '(beads :which-key "issue list")
+    "ip" '(beads-project-list :which-key "project issues")
+    "ic" '(beads-create-issue :which-key "create issue")
+    "ia" '(beads-activity :which-key "activity feed")
+    "is" '(beads-stats :which-key "stats"))
 
   ;; --- SPC c: Code ---
   (thb/leader
@@ -590,6 +683,10 @@
 ;; modeline shows [workspace] indicator, quick create/delete bindings.
 (use-package tabspaces
   :after (consult general)
+  :init
+  ;; Drop the global C-c TAB prefix; we use SPC TAB instead and C-c TAB
+  ;; is org's `org-table-toggle-column-width' default — keep that for org.
+  (setq tabspaces-keymap-prefix nil)
   :config
   (setq tabspaces-use-filtered-buffers-as-default t  ; buffer isolation per tab
         tabspaces-default-tab "main"                 ; name for the initial tab
@@ -671,6 +768,18 @@
   (setq org-startup-indented t
         org-hide-leading-stars t)
 
+  ;; --- Rendered-like display ---
+  ;; Show inline images, render \alpha → α, style quote blocks, use a
+  ;; chevron fold indicator instead of ellipsis.
+  (setq org-startup-with-inline-images t
+        org-image-actual-width '(600)
+        org-pretty-entities t
+        org-pretty-entities-include-sub-superscripts nil
+        org-fontify-quote-and-verse-blocks t
+        org-fontify-whole-heading-line t
+        org-ellipsis " ▾"
+        org-link-descriptive t)
+
   ;; Word wrap — wrap at word boundaries, respecting org-indent.
   (add-hook 'org-mode-hook #'visual-line-mode)
 
@@ -717,6 +826,58 @@
     (let ((org-link-frame-setup
            (cl-acons 'file #'find-file-other-window org-link-frame-setup)))
       (org-open-at-point)))
+
+  ;; --- Table cell inspector ---
+  ;; In wide/shrunk tables (e.g. columnview dblocks with valign), show the
+  ;; full content of the cell at point as a posframe at point.  This is a
+  ;; child-frame popup — it draws on top of the buffer without shifting any
+  ;; text.  Dismissed automatically by any next command.  Falls back to
+  ;; momentary-string-display in terminal frames.  Bound to C-c TAB,
+  ;; replacing the default `org-table-toggle-column-width' behavior.
+  (defun thb/org-table-show-cell ()
+    "Show full content of the current org-table cell as a posframe popup."
+    (interactive)
+    (if (not (org-at-table-p))
+        (user-error "Not in a table")
+      (let* ((content (string-trim (org-table-get-field)))
+             (col (org-table-current-column))
+             (col-name (save-excursion
+                         (goto-char (org-table-begin))
+                         (while (or (looking-at "^[ \t]*|[-+]")
+                                    (looking-at "^[ \t]*|[ \t]*<[0-9]+>[ \t]*|"))
+                           (forward-line))
+                         (string-trim (org-table-get-field col))))
+             (display (concat (propertize (format "[%s] " col-name) 'face 'shadow)
+                              (propertize content 'face 'highlight))))
+        (cond
+         ((string-empty-p content)
+          (message "(empty cell)"))
+         ((and (display-graphic-p) (require 'posframe nil t))
+          (posframe-show " *thb-cell-popup*"
+                         :string display
+                         :position (point)
+                         :internal-border-width 8
+                         :internal-border-color (face-attribute 'mode-line :foreground)
+                         :background-color (face-attribute 'tooltip :background nil 'default)
+                         :foreground-color (face-attribute 'tooltip :foreground nil 'default)
+                         :max-width (- (frame-width) 4))
+          ;; Hide on next command (keystroke or motion).
+          (add-hook 'post-command-hook #'thb/org-table-hide-cell-popup))
+         (t
+          (momentary-string-display
+           (concat "\n  ↳ " display "\n")
+           (line-end-position)))))))
+
+  (defun thb/org-table-hide-cell-popup ()
+    "Internal: hide the table cell popup on next command."
+    (unless (eq this-command 'thb/org-table-show-cell)
+      (when (and (fboundp 'posframe-hide)
+                 (get-buffer " *thb-cell-popup*"))
+        (posframe-hide " *thb-cell-popup*"))
+      (remove-hook 'post-command-hook #'thb/org-table-hide-cell-popup)))
+
+  (with-eval-after-load 'org
+    (define-key org-mode-map (kbd "C-c TAB") #'thb/org-table-show-cell))
 
   (thb/leader
     :keymaps 'org-mode-map
@@ -766,7 +927,13 @@
     "mp"  '(:ignore t :which-key "priority")
     "mpp" '(org-priority :which-key "set priority")
     "mpu" '(org-priority-up :which-key "priority up")
-    "mpd" '(org-priority-down :which-key "priority down")))
+    "mpd" '(org-priority-down :which-key "priority down")
+
+    ;; --- SPC m v: preview (rendered view) ---
+    "mv"  '(:ignore t :which-key "preview")
+    "mvh" '(org-preview-html-mode :which-key "html (eww)")
+    "mvm" '(org-markdown-preview :which-key "markdown (browser)")
+    "mvf" '(org-fragtog-mode :which-key "fragtog (latex)")))
 
 
 ;;; ============================================================
@@ -802,6 +969,22 @@
         vulpea-db-sync-external-method 'fswatch             ; macOS: detect git changes
         vulpea-db-index-heading-level  t)                   ; index headings with IDs
 
+  ;; Sort vulpea-find candidates by file modification time (most recent first).
+  (setq vulpea-find-default-candidates-source
+        (lambda (&optional filter-fn)
+          (sort (vulpea-db-query filter-fn)
+                (lambda (a b)
+                  (time-less-p
+                   (file-attribute-modification-time
+                    (file-attributes (vulpea-note-path b)))
+                   (file-attribute-modification-time
+                    (file-attributes (vulpea-note-path a))))))))
+
+  ;; Disable vertico's re-sorting for vulpea-find so mtime order is preserved.
+  (define-advice vulpea-find (:around (fn &rest args) preserve-mtime-order)
+    (let ((vertico-sort-function nil))
+      (apply fn args)))
+
   (setq vulpea-create-default-template
         '(:file-name "roam/%<%Y%m%d%H%M>.org"
           :head "#+date: %<[%Y-%m-%d]>"
@@ -809,9 +992,22 @@
           :meta (("status" . "in-progress"))
           :tags nil))
 
+  ;; Guard against fswatch process leak: kill existing process before
+  ;; spawning a new one (upstream bug — setup-fswatch overwrites the
+  ;; variable without cleanup).  Clear the sentinel first so the
+  ;; upstream sentinel doesn't schedule a competing restart via
+  ;; run-at-time, which creates an infinite kill/restart loop.
+  (define-advice vulpea-db-sync--setup-fswatch (:before (&rest _) kill-stale)
+    (when (and vulpea-db-sync--fswatch-process
+               (process-live-p vulpea-db-sync--fswatch-process))
+      (set-process-sentinel vulpea-db-sync--fswatch-process #'ignore)
+      (delete-process vulpea-db-sync--fswatch-process)
+      (setq vulpea-db-sync--fswatch-process nil)))
+
   (vulpea-db-autosync-mode 1))
 
 ;; Vulpea-UI — sidebar with outline, backlinks, stats widgets.
+;; Loaded but not auto-opened; use SPC n S to toggle manually.
 (use-package vulpea-ui
   :after vulpea)
 
@@ -825,6 +1021,12 @@
           :title "%Y-%m-%d %A"
           :tags ("daily")
           :properties (("CREATED" . "%<[%Y-%m-%d]>"))))
+
+  ;; Don't auto-open sidebar when visiting journal; use SPC n S to toggle.
+  (defun vulpea-journal (&optional date)
+    "Open journal note for DATE (defaults to today)."
+    (interactive)
+    (vulpea-visit (vulpea-journal-note (or date (current-time)))))
 
   (vulpea-journal-setup))
 
@@ -846,15 +1048,43 @@
          (org-agenda-finalize . org-modern-agenda))
   :config
   (setq org-modern-star 'replace
+        org-modern-replace-stars "◉○✸✿✤✜✢❉"
+        org-modern-hide-stars 'leading
         org-modern-table-vertical 1
         org-modern-table-horizontal 0.2
-        org-modern-list '((42 . "◦") (43 . "•") (45 . "–"))
+        org-modern-list '((?* . "◦") (?+ . "•") (?- . "–"))
+        org-modern-checkbox '((?X . "☑")
+                              (?- . "◐")
+                              (?\s . "☐"))
+        org-modern-priority
+        '((?A . "❗")
+          (?B . "⬆")
+          (?C . "⬇"))
+        org-modern-todo-faces
+        '(("TODO" :inverse-video t :inherit org-todo)
+          ("DONE" :inverse-video t :inherit org-done))
+        org-modern-fold-stars
+        '(("▸" . "▾")
+          ("▹" . "▿")
+          ("▷" . "▽"))
+        org-modern-progress 4
         org-modern-keyword t
-        org-modern-block-fringe t
+        org-modern-block-fringe nil
+        org-modern-block-name '((t . t)
+                                ("src" "»" "«")
+                                ("example" "»–" "–«")
+                                ("quote" "❝" "❞"))
         org-modern-todo t))
 
 ;; Face customizations for org-modern, headings, and source blocks
 ;; are in thb/apply-org-faces (Appearance section) — do not duplicate here.
+
+;; Org-modern-indent — block borders that follow `org-indent` virtual indentation.
+;; Installed and available, but not auto-hooked: the inline bars duplicate the
+;; visual role of org-block backgrounds. Toggle manually if needed.
+(use-package org-modern-indent
+  :vc (:url "https://github.com/jdtsmith/org-modern-indent" :rev :newest)
+  :commands org-modern-indent-mode)
 
 ;; Org-appear — hide markup until cursor enters (~code~, *bold*, etc.)
 ;; Manual trigger: only expand links/emphasis in evil insert mode.
@@ -864,6 +1094,8 @@
   (setq org-appear-autoemphasis t
         org-appear-autolinks t
         org-appear-autosubmarkers t
+        org-appear-autoentities t
+        org-appear-autokeywords t
         org-appear-trigger 'manual)
   (add-hook 'org-mode-hook
             (lambda ()
@@ -881,6 +1113,40 @@
         org-tidy-top-property-style 'invisible
         org-tidy-protect-fontification nil))
 
+;; Valign — pixel-perfect alignment of org tables, including those with
+;; unicode characters or ligatures (PragmataPro arrows, →, etc.).
+(use-package valign
+  :hook (org-mode . valign-mode)
+  :config
+  ;; Plain bars; fancy bars render hline rows as fragmented "+" segments
+  ;; that look broken when columns are shrunk.
+  (setq valign-fancy-bar nil))
+
+;; Org-fragtog — auto-toggle LaTeX fragment previews on cursor enter/leave.
+;; Pairs with org-pretty-entities for rendered-like math display.
+(use-package org-fragtog
+  :hook (org-mode . org-fragtog-mode))
+
+
+;;; ============================================================
+;;; Org Preview (browser-rendered views)
+;;; ============================================================
+
+;; Org-preview-html — refresh-on-save HTML preview in `eww` (or xwidget).
+;; Lightweight: uses Emacs's built-in browser, no external process.
+(use-package org-preview-html
+  :commands (org-preview-html-mode org-preview-html)
+  :config
+  (setq org-preview-html-viewer 'eww
+        org-preview-html-refresh-configuration 'save))
+
+;; Org-markdown-preview — Pandoc-driven realtime preview of org as markdown
+;; rendered to HTML in an external browser. Useful for review-style reading.
+;; Not on MELPA — installed via :vc from upstream.
+(use-package org-markdown-preview
+  :vc (:url "https://github.com/KarimAziev/org-markdown-preview" :rev :newest)
+  :commands org-markdown-preview)
+
 
 ;;; ============================================================
 ;;; Agent Shell (LLM)
@@ -892,7 +1158,7 @@
   :commands (agent-shell agent-shell-anthropic-start-claude-code)
   :config
   (setq agent-shell-anthropic-claude-command nil
-        agent-shell-anthropic-claude-acp-command '("claude-agent-acp")
+        agent-shell-anthropic-claude-acp-command '("claude-code-acp")
         agent-shell-anthropic-claude-environment
         (agent-shell-make-environment-variables :inherit-env t)
         agent-shell-prefer-viewport-interaction t)
@@ -1079,20 +1345,6 @@ Cell text has markdown inline formatting rendered as text properties."
                       (goto-char tbl-start)
                       (insert formatted "\n"))))))))))))
 
-;; Agent-shell-attention — mode-line indicator for agent buffers awaiting input.
-;; Shows AS:n (pending) in mode-line; click or SPC o S to jump to pending buffer.
-(use-package agent-shell-attention
-  :after agent-shell
-  :config
-  (agent-shell-attention-mode 1))
-
-;; Agent-shell-manager — tabulated list of all agent-shell sessions.
-;; Shows status, model, pending permissions. Auto-refreshes every 2s.
-(use-package agent-shell-manager
-  :after agent-shell
-  :commands agent-shell-manager-toggle
-  :config
-  (setq agent-shell-manager-side 'bottom))
 
 
 ;;; ============================================================
@@ -1127,9 +1379,107 @@ Cell text has markdown inline formatting rendered as text properties."
          ("\\.markdown\\'" . markdown-mode))
   :config
   (setq markdown-fontify-code-blocks-natively t
+        markdown-hide-urls t
+        markdown-hide-markup t
+        markdown-header-scaling t
+        markdown-header-scaling-values '(1.3 1.15 1.05 1.0 1.0 1.0)
+        markdown-asymmetric-header t
+        markdown-italic-underscore t
+        markdown-display-remote-images t
         markdown-command "multimarkdown")
-  (add-hook 'markdown-mode-hook #'visual-line-mode))
 
+  ;; Pretty checkbox / arrow rendering via display table.
+  ;; Composes with PragmataPro ligatures (ligatures handle prog-mode glyphs;
+  ;; this handles markdown-specific tokens).
+  (defvar thb/markdown-prettify-symbols
+    '(("- [ ]" . "☐")
+      ("- [x]" . "☑")
+      ("- [X]" . "☑")
+      ("- [-]" . "◐")
+      ("* [ ]" . "☐")
+      ("* [x]" . "☑")
+      ("* [X]" . "☑")
+      ("* [-]" . "◐"))
+    "Markdown tokens replaced for rendered-like display.")
+
+  (defun thb/markdown-setup ()
+    "Per-buffer markdown setup: word-wrap, valign tables, prettify checkboxes,
+hide markup and URLs (re-fontify so existing buffers update)."
+    (visual-line-mode 1)
+    (setq-local markdown-hide-markup t
+                markdown-hide-urls t)
+    (when (fboundp 'valign-mode) (valign-mode 1))
+    (setq-local prettify-symbols-alist
+                (append thb/markdown-prettify-symbols
+                        prettify-symbols-alist))
+    (prettify-symbols-mode 1)
+    (font-lock-flush)
+    (font-lock-ensure))
+
+  (add-hook 'markdown-mode-hook #'thb/markdown-setup)
+
+  (defun thb/apply-markdown-faces ()
+    "Set markdown faces — heading sizes, code/quote backgrounds (GUI only)."
+    (set-face-attribute 'markdown-header-face-1 nil :height 1.3 :weight 'bold :inherit 'org-level-1)
+    (set-face-attribute 'markdown-header-face-2 nil :height 1.15 :weight 'bold :inherit 'org-level-2)
+    (set-face-attribute 'markdown-header-face-3 nil :height 1.05 :weight 'semi-bold :inherit 'org-level-3)
+    (when (display-graphic-p)
+      (let ((bg  (modus-themes-get-color-value 'bg-dim))
+            (bgq (modus-themes-get-color-value 'bg-blue-nuanced)))
+        (when (facep 'markdown-code-face)
+          (set-face-attribute 'markdown-code-face nil :background bg :extend t))
+        (when (facep 'markdown-pre-face)
+          (set-face-attribute 'markdown-pre-face nil :background bg))
+        (when (facep 'markdown-blockquote-face)
+          (set-face-attribute 'markdown-blockquote-face nil
+                              :background bgq :slant 'italic :extend t)))))
+
+  (with-eval-after-load 'markdown-mode
+    (thb/apply-markdown-faces))
+
+  ;; --- SPC m: markdown bindings (mirror org leader namespace) ---
+  (thb/leader
+    :keymaps 'markdown-mode-map
+    "m"  '(:ignore t :which-key "markdown")
+    "mi" '(markdown-toggle-inline-images :which-key "inline images")
+    "mh" '(markdown-toggle-markup-hiding :which-key "toggle markup hiding")
+    "mu" '(markdown-toggle-url-hiding :which-key "toggle url hiding")
+
+    ;; --- SPC m v: preview (rendered view) ---
+    "mv"  '(:ignore t :which-key "preview")
+    "mvl" '(markdown-live-preview-mode :which-key "live preview (eww)")
+    "mvp" '(markdown-preview :which-key "preview (browser)")
+    "mvo" '(markdown-open :which-key "open externally")))
+
+
+;;; ============================================================
+;;; Beads (Issue Tracking)
+;;; ============================================================
+
+(use-package hierarchy)
+
+(use-package beads
+  :ensure nil
+  :load-path "~/src/beads.el/lisp"
+  :commands (beads beads-project-list beads-create-issue beads-activity beads-stats)
+  :config
+  ;; Pin to br backend.  Auto-detect prefers bd when both are on PATH, but
+  ;; bd >=0.58 dropped the `daemon' subcommand, so the bd-backend daemon
+  ;; start fails with exit code 1 and the viewer dies on launch.  br has
+  ;; no daemon support and beads-client falls back to direct CLI.
+  (setq beads-cli-program "br"
+        beads-autoupdate-enable t
+        beads-list-highlight-p0-rows t
+        beads-detail-render-markdown t
+        beads-verbose t)
+
+  ;; Silently skip autoupdate when no .beads/ is reachable from the buffer's
+  ;; default-directory.  Prevents recurring "No Beads database found" errors
+  ;; in list buffers opened from a non-project path (e.g. ~/org/roam/).
+  (with-eval-after-load 'beads-autoupdate
+    (define-advice beads-autoupdate--refresh (:around (orig &rest args) skip-no-db)
+      (when (ignore-errors (beads-client--find-database))
+        (apply orig args)))))
 
 ;;; ============================================================
 ;;; Version Control + Local Overrides
@@ -1193,7 +1543,7 @@ In daemon mode, restarts as a daemon."
               (when (file-exists-p (expand-file-name file user-emacs-directory))
                 (desktop-read dir)
                 (delete-file (expand-file-name ".emacs.desktop" dir) t)
-                (delete-file (expand-file-name ".emacs.desktop.lock" dir) t))))))
+                (delete-file (expand-file-name ".emacs.desktop.lock" dir) t)))))
 
 ;; --- Local Overrides ---
 ;; Load machine-specific settings from local.el (not tracked in git).
