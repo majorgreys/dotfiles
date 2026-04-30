@@ -3,10 +3,10 @@
 
 PLUGIN_DIR="$CONFIG_DIR/plugins"
 
-FONT_REGULAR="PragmataPro Mono Liga:Regular:13.0"
-FONT_BOLD="PragmataPro Mono Liga:Bold:13.0"
-FONT_DOT="PragmataPro Mono Liga:Bold:11.0"
-FONT_ICON="FiraCode Nerd Font Mono:Regular:15.0"
+FONT_REGULAR="PragmataPro Mono Liga:Regular:15.0"
+FONT_BOLD="PragmataPro Mono Liga:Bold:15.0"
+FONT_DOT="PragmataPro Mono Liga:Bold:13.0"
+FONT_ICON="FiraCode Nerd Font Mono:Regular:17.0"
 
 COLOR_BG="0xff000000"
 COLOR_FG="0xffcdd6f4"
@@ -17,7 +17,7 @@ COLOR_ACCENT_FG="0xff1e1e2e"
 # Bar — height matches the macOS menu-bar area so AeroSpace tiles flush
 # against it (no thin gap below the bar).
 sketchybar --bar \
-    height=32 \
+    height=38 \
     position=top \
     sticky=on \
     topmost=window \
@@ -27,7 +27,7 @@ sketchybar --bar \
     border_width=0 \
     blur_radius=0 \
     shadow=off \
-    notch_display_height=32
+    notch_display_height=38
 
 sketchybar --default \
     icon.font="$FONT_BOLD" \
@@ -35,7 +35,7 @@ sketchybar --default \
     label.font="$FONT_REGULAR" \
     label.color="$COLOR_FG" \
     background.corner_radius=4 \
-    background.height=22 \
+    background.height=26 \
     padding_left=2 \
     padding_right=2
 
@@ -58,7 +58,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
                    label.drawing=off \
                    background.height=2 \
                    background.corner_radius=0 \
-                   background.y_offset=-11 \
+                   background.y_offset=-14 \
                    background.color=0x00000000 \
                    width=dynamic \
                    click_script="aerospace workspace $i" \
