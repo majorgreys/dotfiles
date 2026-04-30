@@ -1,7 +1,14 @@
 {
+  "name": "claude-status",
+  "version": "1.0.0",
+  "description": "Lights up sketchybar workspace pills + dropdown based on Claude Code activity (yellow=running, red=needs-attention).",
+  "author": {
+    "name": "Tahir Butt"
+  },
   "hooks": {
     "UserPromptSubmit": [
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -12,6 +19,7 @@
     ],
     "Stop": [
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -22,6 +30,7 @@
     ],
     "Notification": [
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -32,6 +41,7 @@
     ],
     "SessionEnd": [
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
