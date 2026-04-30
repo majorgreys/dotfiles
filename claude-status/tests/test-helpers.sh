@@ -78,7 +78,7 @@ assert_no_file() {
 # Assert sketchybar mock log contains a line matching the regex.
 # Args: regex, [label]
 assert_sketchybar_logged() {
-  if ! grep -Eq "$1" "$SKETCHYBAR_LOG"; then
+  if ! grep -Eq -e "$1" "$SKETCHYBAR_LOG"; then
     echo "sketchybar log was:" >&2
     cat "$SKETCHYBAR_LOG" >&2
     fail "${2:-assert_sketchybar_logged}: no line matched /$1/"
