@@ -74,7 +74,8 @@ test_renderer_zero_sessions_dim_zero() {
     '--set claude_sessions .*label\.color=0xff7f849c' "dim grey"
 }
 
-test_renderer_aggregate_state_red() {
+test_renderer_aggregate_state_yellow() {
+  # any needs-attention → parent label color is yellow
   mkdir -p "$XDG_STATE_HOME/sketchybar/sessions"
   jq -n '{session_id:"a",workspace:"3",state:"running",cwd:"/x",updated_at:1}' \
     > "$XDG_STATE_HOME/sketchybar/sessions/a.json"
@@ -85,12 +86,13 @@ test_renderer_aggregate_state_red() {
 
   assert_sketchybar_logged \
     '--set claude_sessions .*label=2' "label=2"
-  # red 0xfff38ba8
+  # yellow 0xfff9e2af
   assert_sketchybar_logged \
-    '--set claude_sessions .*label\.color=0xfff38ba8' "red color"
+    '--set claude_sessions .*label\.color=0xfff9e2af' "yellow color"
 }
 
-test_renderer_aggregate_state_yellow() {
+test_renderer_aggregate_state_green() {
+  # only running sessions → parent label color is green
   mkdir -p "$XDG_STATE_HOME/sketchybar/sessions"
   jq -n '{session_id:"a",workspace:"3",state:"running",cwd:"/x",updated_at:1}' \
     > "$XDG_STATE_HOME/sketchybar/sessions/a.json"
@@ -99,9 +101,9 @@ test_renderer_aggregate_state_yellow() {
 
   assert_sketchybar_logged \
     '--set claude_sessions .*label=1' "label=1"
-  # yellow 0xfff9e2af
+  # green 0xffa6e3a1
   assert_sketchybar_logged \
-    '--set claude_sessions .*label\.color=0xfff9e2af' "yellow color"
+    '--set claude_sessions .*label\.color=0xffa6e3a1' "green color"
 }
 
 test_renderer_popup_children_sorted() {
@@ -138,14 +140,40 @@ test_renderer_popup_children_sorted() {
     "--set claude_sessions\\.bbbb2222 .*popup\\.drawing=off" \
     "ws3 closes popup"
 
-  # Sort order: needs-attention (b) before running (a) before idle (c).
+  # Sort order: running (a) before needs-attention (b) before idle (c).
   # Verify by line numbers in the log.
   local b_line a_line c_line
   b_line=$(grep -n 'add item claude_sessions\.bbbb2222' "$SKETCHYBAR_LOG" | head -1 | cut -d: -f1)
   a_line=$(grep -n 'add item claude_sessions\.aaaa1111' "$SKETCHYBAR_LOG" | head -1 | cut -d: -f1)
   c_line=$(grep -n 'add item claude_sessions\.cccc3333' "$SKETCHYBAR_LOG" | head -1 | cut -d: -f1)
-  [ "$b_line" -lt "$a_line" ] || fail "needs-attention should sort before running"
-  [ "$a_line" -lt "$c_line" ] || fail "running should sort before idle"
+  [ "$a_line" -lt "$b_line" ] || fail "running should sort before needs-attention"
+  [ "$b_line" -lt "$c_line" ] || fail "needs-attention should sort before idle"
+}
+
+test_renderer_emits_header_and_section_dividers() {
+  mkdir -p "$XDG_STATE_HOME/sketchybar/sessions"
+  jq -n '{session_id:"aaaa",workspace:"3",state:"running",cwd:"/x",updated_at:1}' \
+    > "$XDG_STATE_HOME/sketchybar/sessions/aaaa.json"
+  jq -n '{session_id:"bbbb",workspace:"5",state:"needs-attention",cwd:"/y",updated_at:2}' \
+    > "$XDG_STATE_HOME/sketchybar/sessions/bbbb.json"
+
+  "$PLUGIN_BIN/claude-render-sessions"
+
+  # Header item summarising counts.
+  assert_sketchybar_logged \
+    '--add item claude_sessions\._header popup\.claude_sessions' "header item added"
+  assert_sketchybar_logged \
+    'claude_sessions\._header .*1 working . 1 waiting . 0 idle' "summary text"
+
+  # One section divider per non-empty group (running + needs-attention here).
+  assert_sketchybar_logged \
+    '--add item claude_sessions\._sec_1 popup\.claude_sessions' "first section"
+  assert_sketchybar_logged \
+    'claude_sessions\._sec_1 .*label=WORKING' "first section label"
+  assert_sketchybar_logged \
+    '--add item claude_sessions\._sec_2 popup\.claude_sessions' "second section"
+  assert_sketchybar_logged \
+    'claude_sessions\._sec_2 .*label=WAITING' "second section label"
 }
 
 test_renderer_removes_existing_children() {
@@ -184,10 +212,11 @@ TESTS=(
   test_helper_purges_legacy_text_pins
   test_helper_clear_removes_session_json
   test_renderer_zero_sessions_dim_zero
-  test_renderer_aggregate_state_red
   test_renderer_aggregate_state_yellow
+  test_renderer_aggregate_state_green
   test_renderer_popup_children_sorted
   test_renderer_removes_existing_children
+  test_renderer_emits_header_and_section_dividers
 )
 
 main() {

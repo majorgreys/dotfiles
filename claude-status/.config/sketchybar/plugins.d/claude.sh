@@ -26,8 +26,10 @@ done
 # Catppuccin colors (must match the workspace-pill plugin).
 CLAUDE_COLOR_FG="0xffcdd6f4"
 CLAUDE_COLOR_DIM="0xff7f849c"
-CLAUDE_COLOR_ACCENT="0xff89b4fa"
-CLAUDE_COLOR_BG="0xff000000"
+CLAUDE_COLOR_PILL_BG="0xff1e1e2e"      # base
+CLAUDE_COLOR_PILL_BORDER="0xff45475a"  # surface1
+CLAUDE_COLOR_POPUP_BG="0xff181825"     # mantle
+CLAUDE_COLOR_POPUP_BORDER="0xff313244" # surface0
 CLAUDE_FONT_ICON="FiraCode Nerd Font Mono:Regular:23.0"
 CLAUDE_FONT_REGULAR="PragmataPro Mono Liga:Regular:15.0"
 
@@ -39,18 +41,24 @@ sketchybar --add item claude_sessions right \
                  icon="󰚩" \
                  icon.font="$CLAUDE_FONT_ICON" \
                  icon.color="$CLAUDE_COLOR_FG" \
-                 icon.padding_left=8 \
-                 icon.padding_right=6 \
+                 icon.padding_left=10 \
+                 icon.padding_right=8 \
                  label="0" \
                  label.font="$CLAUDE_FONT_REGULAR" \
                  label.color="$CLAUDE_COLOR_DIM" \
-                 label.padding_right=8 \
+                 label.padding_right=10 \
+                 background.color="$CLAUDE_COLOR_PILL_BG" \
+                 background.corner_radius=6 \
+                 background.border_width=1 \
+                 background.border_color="$CLAUDE_COLOR_PILL_BORDER" \
+                 background.height=28 \
                  click_script="sketchybar --set claude_sessions popup.drawing=toggle" \
-                 popup.background.color="$CLAUDE_COLOR_BG" \
-                 popup.background.corner_radius=6 \
+                 popup.background.color="$CLAUDE_COLOR_POPUP_BG" \
+                 popup.background.corner_radius=8 \
                  popup.background.border_width=1 \
-                 popup.background.border_color="$CLAUDE_COLOR_ACCENT" \
+                 popup.background.border_color="$CLAUDE_COLOR_POPUP_BORDER" \
                  popup.horizontal=off \
                  popup.align=right \
+                 popup.y_offset=4 \
                  script="$HOME/.local/bin/claude-render-sessions" \
            --subscribe claude_sessions claude_agent_state_change
