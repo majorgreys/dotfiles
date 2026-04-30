@@ -51,9 +51,23 @@ test_helper_purges_legacy_text_pins() {
   assert_file "$XDG_STATE_HOME/sketchybar/sessions/new-id.json"
 }
 
+test_helper_clear_removes_session_json() {
+  echo '{"session_id":"sid","cwd":"/x"}' \
+    | "$PLUGIN_BIN/sketchybar-set-state" running
+  assert_file "$XDG_STATE_HOME/sketchybar/sessions/sid.json"
+  assert_file "$XDG_STATE_HOME/sketchybar/agents/3"
+
+  echo '{"session_id":"sid"}' \
+    | "$PLUGIN_BIN/sketchybar-set-state" clear
+
+  assert_no_file "$XDG_STATE_HOME/sketchybar/sessions/sid.json"
+  assert_no_file "$XDG_STATE_HOME/sketchybar/agents/3"
+}
+
 TESTS=(
   test_helper_writes_json_with_cwd
   test_helper_purges_legacy_text_pins
+  test_helper_clear_removes_session_json
 )
 
 main() {
