@@ -64,10 +64,53 @@ test_helper_clear_removes_session_json() {
   assert_no_file "$XDG_STATE_HOME/sketchybar/agents/3"
 }
 
+test_renderer_zero_sessions_dim_zero() {
+  "$PLUGIN_BIN/claude-render-sessions"
+
+  # Parent label set to "0", color = dim grey 0xff7f849c
+  assert_sketchybar_logged \
+    '--set claude_sessions .*label=0' "label=0"
+  assert_sketchybar_logged \
+    '--set claude_sessions .*label\.color=0xff7f849c' "dim grey"
+}
+
+test_renderer_aggregate_state_red() {
+  mkdir -p "$XDG_STATE_HOME/sketchybar/sessions"
+  jq -n '{session_id:"a",workspace:"3",state:"running",cwd:"/x",updated_at:1}' \
+    > "$XDG_STATE_HOME/sketchybar/sessions/a.json"
+  jq -n '{session_id:"b",workspace:"5",state:"needs-attention",cwd:"/y",updated_at:2}' \
+    > "$XDG_STATE_HOME/sketchybar/sessions/b.json"
+
+  "$PLUGIN_BIN/claude-render-sessions"
+
+  assert_sketchybar_logged \
+    '--set claude_sessions .*label=2' "label=2"
+  # red 0xfff38ba8
+  assert_sketchybar_logged \
+    '--set claude_sessions .*label\.color=0xfff38ba8' "red color"
+}
+
+test_renderer_aggregate_state_yellow() {
+  mkdir -p "$XDG_STATE_HOME/sketchybar/sessions"
+  jq -n '{session_id:"a",workspace:"3",state:"running",cwd:"/x",updated_at:1}' \
+    > "$XDG_STATE_HOME/sketchybar/sessions/a.json"
+
+  "$PLUGIN_BIN/claude-render-sessions"
+
+  assert_sketchybar_logged \
+    '--set claude_sessions .*label=1' "label=1"
+  # yellow 0xfff9e2af
+  assert_sketchybar_logged \
+    '--set claude_sessions .*label\.color=0xfff9e2af' "yellow color"
+}
+
 TESTS=(
   test_helper_writes_json_with_cwd
   test_helper_purges_legacy_text_pins
   test_helper_clear_removes_session_json
+  test_renderer_zero_sessions_dim_zero
+  test_renderer_aggregate_state_red
+  test_renderer_aggregate_state_yellow
 )
 
 main() {

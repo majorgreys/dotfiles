@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# claude-render-sessions — repaint the sketchybar `claude_sessions`
+# parent item and rebuild its popup children from per-session JSON
+# records under $XDG_STATE_HOME/sketchybar/sessions/.
+#
+# Invoked as the `script` of the claude_sessions sketchybar item, so it
+# runs on initial render and on every claude_agent_state_change.
+#
+# Output: only sketchybar --set / --add / --remove commands; nothing on
+# stdout/stderr in normal operation.
+
+set -euo pipefail
+
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/sketchybar"
+SESS_DIR="$STATE_ROOT/sessions"
+
+# Aggregate state and count.
+COUNT=0
+HAS_NEEDS=0
+HAS_RUN=0
+shopt -s nullglob
+for f in "$SESS_DIR"/*.json; do
+  COUNT=$((COUNT + 1))
+  STATE=$(jq -r '.state // empty' "$f" 2>/dev/null || true)
+  case "$STATE" in
+    needs-attention) HAS_NEEDS=1 ;;
+    running)         HAS_RUN=1 ;;
+  esac
+done
+shopt -u nullglob
+
+# Catppuccin palette (matches sketchybarrc + workspace-pill plugin).
+COLOR_FG="0xffcdd6f4"
+COLOR_DIM="0xff7f849c"
+COLOR_YELLOW="0xfff9e2af"
+COLOR_RED="0xfff38ba8"
+
+if [ "$COUNT" -eq 0 ]; then
+  PARENT_COLOR="$COLOR_DIM"
+elif [ "$HAS_NEEDS" -eq 1 ]; then
+  PARENT_COLOR="$COLOR_RED"
+elif [ "$HAS_RUN" -eq 1 ]; then
+  PARENT_COLOR="$COLOR_YELLOW"
+else
+  PARENT_COLOR="$COLOR_FG"
+fi
+
+sketchybar --set claude_sessions \
+  label="$COUNT" \
+  label.color="$PARENT_COLOR"
