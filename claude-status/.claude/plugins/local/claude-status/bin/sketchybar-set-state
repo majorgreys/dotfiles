@@ -27,6 +27,16 @@ SESS_DIR="$STATE_ROOT/sessions"
 WS_DIR="$STATE_ROOT/agents"
 mkdir -p "$SESS_DIR" "$WS_DIR"
 
+# One-shot purge: drop legacy bare-text pin files from earlier versions
+# of this helper. We only keep .json records now.
+for f in "$SESS_DIR"/*; do
+  [ -e "$f" ] || continue
+  case "$f" in
+    *.json|*.tmp) ;;
+    *) rm -f "$f" ;;
+  esac
+done
+
 HOOK_INPUT=""
 if [ ! -t 0 ]; then
   HOOK_INPUT=$(cat || true)
