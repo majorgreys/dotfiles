@@ -37,8 +37,23 @@ test_helper_writes_json_with_cwd() {
   assert_eq "$(< "$XDG_STATE_HOME/sketchybar/agents/3")" "running" "agent file"
 }
 
+test_helper_purges_legacy_text_pins() {
+  mkdir -p "$XDG_STATE_HOME/sketchybar/sessions"
+  printf '%s' "5" > "$XDG_STATE_HOME/sketchybar/sessions/legacy-id"
+  printf '%s' "7" > "$XDG_STATE_HOME/sketchybar/sessions/another-old"
+
+  echo '{"session_id":"new-id","cwd":"/Users/me/proj"}' \
+    | "$PLUGIN_BIN/sketchybar-set-state" running
+
+  assert_no_file "$XDG_STATE_HOME/sketchybar/sessions/legacy-id"
+  assert_no_file "$XDG_STATE_HOME/sketchybar/sessions/another-old"
+  # New JSON should still be written.
+  assert_file "$XDG_STATE_HOME/sketchybar/sessions/new-id.json"
+}
+
 TESTS=(
   test_helper_writes_json_with_cwd
+  test_helper_purges_legacy_text_pins
 )
 
 main() {
