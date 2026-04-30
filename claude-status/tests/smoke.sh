@@ -104,6 +104,81 @@ test_renderer_aggregate_state_yellow() {
     '--set claude_sessions .*label\.color=0xfff9e2af' "yellow color"
 }
 
+test_renderer_popup_children_sorted() {
+  mkdir -p "$XDG_STATE_HOME/sketchybar/sessions"
+  jq -n '{session_id:"aaaa1111zzzz",workspace:"5",state:"running",
+         cwd:"/Users/me/rum-ios",updated_at:100}' \
+    > "$XDG_STATE_HOME/sketchybar/sessions/aaaa1111zzzz.json"
+  jq -n '{session_id:"bbbb2222zzzz",workspace:"3",state:"needs-attention",
+         cwd:"/Users/me/.dotfiles",updated_at:200}' \
+    > "$XDG_STATE_HOME/sketchybar/sessions/bbbb2222zzzz.json"
+  jq -n '{session_id:"cccc3333zzzz",workspace:"7",state:"idle",
+         cwd:"/Users/me/notes",updated_at:300}' \
+    > "$XDG_STATE_HOME/sketchybar/sessions/cccc3333zzzz.json"
+
+  "$PLUGIN_BIN/claude-render-sessions"
+
+  # Existing children removed before re-adding (no-op when none exist,
+  # but the renderer must at least query for them).
+  assert_sketchybar_logged '--query bar' "query bar to enumerate children"
+
+  # All three children added with popup.claude_sessions.
+  assert_sketchybar_logged \
+    '--add item claude_sessions\.bbbb2222 popup\.claude_sessions' "ws3 child"
+  assert_sketchybar_logged \
+    '--add item claude_sessions\.aaaa1111 popup\.claude_sessions' "ws5 child"
+  assert_sketchybar_logged \
+    '--add item claude_sessions\.cccc3333 popup\.claude_sessions' "ws7 child"
+
+  # Click scripts switch workspace and toggle popup off.
+  assert_sketchybar_logged \
+    "--set claude_sessions\\.bbbb2222 .*click_script=.*aerospace workspace 3" \
+    "ws3 click"
+  assert_sketchybar_logged \
+    "--set claude_sessions\\.bbbb2222 .*popup\\.drawing=off" \
+    "ws3 closes popup"
+
+  # Sort order: needs-attention (b) before running (a) before idle (c).
+  # Verify by line numbers in the log.
+  local b_line a_line c_line
+  b_line=$(grep -n 'add item claude_sessions\.bbbb2222' "$SKETCHYBAR_LOG" | head -1 | cut -d: -f1)
+  a_line=$(grep -n 'add item claude_sessions\.aaaa1111' "$SKETCHYBAR_LOG" | head -1 | cut -d: -f1)
+  c_line=$(grep -n 'add item claude_sessions\.cccc3333' "$SKETCHYBAR_LOG" | head -1 | cut -d: -f1)
+  [ "$b_line" -lt "$a_line" ] || fail "needs-attention should sort before running"
+  [ "$a_line" -lt "$c_line" ] || fail "running should sort before idle"
+}
+
+test_renderer_removes_existing_children() {
+  mkdir -p "$XDG_STATE_HOME/sketchybar/sessions"
+  # Mock sketchybar --query bar to report two existing children + the
+  # parent + an unrelated item. Replace the previous mock for this test.
+  cat > "$MOCK_BIN/sketchybar" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$SKETCHYBAR_LOG"
+if [ "\$1" = "--query" ] && [ "\$2" = "bar" ]; then
+  cat <<'JSON'
+{ "items": ["claude_sessions", "claude_sessions.olda", "claude_sessions.oldb", "clock"] }
+JSON
+fi
+exit 0
+EOF
+  chmod +x "$MOCK_BIN/sketchybar"
+
+  "$PLUGIN_BIN/claude-render-sessions"
+
+  # Both old children must be removed; parent and unrelated must not.
+  assert_sketchybar_logged \
+    '--remove claude_sessions\.olda' "removes olda"
+  assert_sketchybar_logged \
+    '--remove claude_sessions\.oldb' "removes oldb"
+  if grep -Eq -- '--remove claude_sessions(\s|$)' "$SKETCHYBAR_LOG"; then
+    fail "must not remove the parent claude_sessions item"
+  fi
+  if grep -Eq -- '--remove clock' "$SKETCHYBAR_LOG"; then
+    fail "must not remove unrelated items"
+  fi
+}
+
 TESTS=(
   test_helper_writes_json_with_cwd
   test_helper_purges_legacy_text_pins
@@ -111,6 +186,8 @@ TESTS=(
   test_renderer_zero_sessions_dim_zero
   test_renderer_aggregate_state_red
   test_renderer_aggregate_state_yellow
+  test_renderer_popup_children_sorted
+  test_renderer_removes_existing_children
 )
 
 main() {

@@ -5,29 +5,11 @@
 #
 # Invoked as the `script` of the claude_sessions sketchybar item, so it
 # runs on initial render and on every claude_agent_state_change.
-#
-# Output: only sketchybar --set / --add / --remove commands; nothing on
-# stdout/stderr in normal operation.
 
 set -euo pipefail
 
 STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/sketchybar"
 SESS_DIR="$STATE_ROOT/sessions"
-
-# Aggregate state and count.
-COUNT=0
-HAS_NEEDS=0
-HAS_RUN=0
-shopt -s nullglob
-for f in "$SESS_DIR"/*.json; do
-  COUNT=$((COUNT + 1))
-  STATE=$(jq -r '.state // empty' "$f" 2>/dev/null || true)
-  case "$STATE" in
-    needs-attention) HAS_NEEDS=1 ;;
-    running)         HAS_RUN=1 ;;
-  esac
-done
-shopt -u nullglob
 
 # Catppuccin palette (matches sketchybarrc + workspace-pill plugin).
 COLOR_FG="0xffcdd6f4"
@@ -35,11 +17,30 @@ COLOR_DIM="0xff7f849c"
 COLOR_YELLOW="0xfff9e2af"
 COLOR_RED="0xfff38ba8"
 
+# Read all session JSONs into a single jq input array. Each entry gets
+# a sort_state numeric for the primary sort key.
+sessions_json() {
+  shopt -s nullglob
+  local files=("$SESS_DIR"/*.json)
+  shopt -u nullglob
+  if [ "${#files[@]}" -eq 0 ]; then
+    echo '[]'
+    return
+  fi
+  jq -s 'map(select(.session_id and .workspace and .state))' "${files[@]}"
+}
+
+ALL=$(sessions_json)
+COUNT=$(jq 'length' <<< "$ALL")
+
+HAS_NEEDS=$(jq '[.[] | select(.state == "needs-attention")] | length' <<< "$ALL")
+HAS_RUN=$(jq '[.[] | select(.state == "running")]         | length' <<< "$ALL")
+
 if [ "$COUNT" -eq 0 ]; then
   PARENT_COLOR="$COLOR_DIM"
-elif [ "$HAS_NEEDS" -eq 1 ]; then
+elif [ "$HAS_NEEDS" -gt 0 ]; then
   PARENT_COLOR="$COLOR_RED"
-elif [ "$HAS_RUN" -eq 1 ]; then
+elif [ "$HAS_RUN" -gt 0 ]; then
   PARENT_COLOR="$COLOR_YELLOW"
 else
   PARENT_COLOR="$COLOR_FG"
@@ -48,3 +49,78 @@ fi
 sketchybar --set claude_sessions \
   label="$COUNT" \
   label.color="$PARENT_COLOR"
+
+# Wipe any existing popup children. Query the bar, filter for items
+# whose names start with "claude_sessions." (note the dot — must not
+# remove the parent itself).
+EXISTING=$(sketchybar --query bar 2>/dev/null \
+  | jq -r '.items[]? | select(startswith("claude_sessions."))' \
+  || true)
+if [ -n "$EXISTING" ]; then
+  while IFS= read -r name; do
+    [ -n "$name" ] && sketchybar --remove "$name"
+  done <<< "$EXISTING"
+fi
+
+# Sort and emit one child per session. Sort key:
+#   needs-attention=0, running=1, idle=2, other=3
+#   then workspace asc (numeric)
+#   then updated_at desc
+SORTED=$(jq -c '
+  def state_rank:
+    if . == "needs-attention" then 0
+    elif . == "running" then 1
+    elif . == "idle" then 2
+    else 3 end;
+  sort_by(
+    (.state | state_rank),
+    (.workspace | tonumber? // 999),
+    -(.updated_at)
+  ) | .[]
+' <<< "$ALL")
+
+# Compute longest project basename for column alignment in mono font.
+MAX_PROJ=0
+while IFS= read -r row; do
+  [ -z "$row" ] && continue
+  PROJ=$(jq -r '.cwd // "" | split("/") | last // "?"' <<< "$row")
+  [ -z "$PROJ" ] && PROJ="?"
+  L=${#PROJ}
+  [ "$L" -gt "$MAX_PROJ" ] && MAX_PROJ=$L
+done <<< "$SORTED"
+
+while IFS= read -r row; do
+  [ -z "$row" ] && continue
+  SID=$(jq -r .session_id  <<< "$row")
+  WS=$(jq  -r .workspace   <<< "$row")
+  ST=$(jq  -r .state       <<< "$row")
+  CWD=$(jq -r '.cwd // ""' <<< "$row")
+
+  PROJ=$(printf '%s' "$CWD" | awk -F/ '{print $NF}')
+  [ -z "$PROJ" ] && PROJ="?"
+  # Pad PROJ to MAX_PROJ for column alignment (mono font).
+  while [ "${#PROJ}" -lt "$MAX_PROJ" ]; do PROJ="$PROJ "; done
+
+  case "$ST" in
+    running)         DOT_COLOR="$COLOR_YELLOW" ;;
+    needs-attention) DOT_COLOR="$COLOR_RED" ;;
+    idle)            DOT_COLOR="$COLOR_DIM" ;;
+    *)               DOT_COLOR="$COLOR_FG" ;;
+  esac
+
+  SHORT="${SID:0:8}"
+  CHILD="claude_sessions.$SHORT"
+
+  LABEL=$(printf '%s  %s  %s' "$WS" "$PROJ" "$ST")
+
+  sketchybar --add item "$CHILD" popup.claude_sessions \
+             --set "$CHILD" \
+                   icon="●" \
+                   icon.color="$DOT_COLOR" \
+                   icon.padding_left=8 \
+                   icon.padding_right=6 \
+                   label="$LABEL" \
+                   label.color="$COLOR_FG" \
+                   label.padding_right=8 \
+                   click_script="aerospace workspace $WS && sketchybar --set claude_sessions popup.drawing=off"
+done <<< "$SORTED"
