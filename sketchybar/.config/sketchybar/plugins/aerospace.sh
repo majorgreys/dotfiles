@@ -38,12 +38,12 @@ fi
 case "$STATE" in
   running)
     LABEL="●"
-    LABEL_COLOR="0xfff9e2af"
+    LABEL_COLOR="0xffa6e3a1"
     LABEL_DRAW="on"
     ;;
   needs-attention)
     LABEL="●"
-    LABEL_COLOR="0xfff38ba8"
+    LABEL_COLOR="0xfff9e2af"
     LABEL_DRAW="on"
     ;;
   idle)
