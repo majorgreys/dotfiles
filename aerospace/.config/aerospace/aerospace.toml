@@ -26,7 +26,7 @@ exec-on-workspace-change = ['/bin/bash', '-c',
 
 [mode.main.binding]
     # Launch
-    alt-e = 'exec-and-forget emacsclient -c -s thbemacs'
+    alt-e = 'exec-and-forget emacsclient -c -s thbemacs --eval (vulpea-find)'
     alt-shift-enter = 'exec-and-forget open -a Ghostty'
 
     # Layout
