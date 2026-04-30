@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# i3/sway-style minimal bar driven by AeroSpace.
+
+PLUGIN_DIR="$CONFIG_DIR/plugins"
+
+FONT_REGULAR="PragmataPro Mono Liga:Regular:13.0"
+FONT_BOLD="PragmataPro Mono Liga:Bold:13.0"
+FONT_DOT="PragmataPro Mono Liga:Bold:11.0"
+FONT_ICON="FiraCode Nerd Font Mono:Regular:15.0"
+
+COLOR_BG="0xff000000"
+COLOR_FG="0xffcdd6f4"
+COLOR_DIM="0xff7f849c"
+COLOR_ACCENT_BG="0xff89b4fa"
+COLOR_ACCENT_FG="0xff1e1e2e"
+
+# Bar — height matches the macOS menu-bar area so AeroSpace tiles flush
+# against it (no thin gap below the bar).
+sketchybar --bar \
+    height=32 \
+    position=top \
+    sticky=on \
+    topmost=window \
+    padding_left=6 \
+    padding_right=6 \
+    color="$COLOR_BG" \
+    border_width=0 \
+    blur_radius=0 \
+    shadow=off \
+    notch_display_height=32
+
+sketchybar --default \
+    icon.font="$FONT_BOLD" \
+    icon.color="$COLOR_FG" \
+    label.font="$FONT_REGULAR" \
+    label.color="$COLOR_FG" \
+    background.corner_radius=4 \
+    background.height=22 \
+    padding_left=2 \
+    padding_right=2
+
+sketchybar --add event aerospace_workspace_change
+
+# Workspace pills — fixed width so single-digit and double-digit pills
+# align identically.
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  sketchybar --add item space.$i left \
+             --set space.$i \
+                   icon="$i" \
+                   icon.padding_left=0 \
+                   icon.padding_right=2 \
+                   icon.width=20 \
+                   icon.align=center \
+                   icon.color="$COLOR_FG" \
+                   label.font="$FONT_DOT" \
+                   label.padding_left=0 \
+                   label.padding_right=6 \
+                   label.drawing=off \
+                   background.height=2 \
+                   background.corner_radius=0 \
+                   background.y_offset=-11 \
+                   background.color=0x00000000 \
+                   width=dynamic \
+                   click_script="aerospace workspace $i" \
+                   script="$PLUGIN_DIR/aerospace.sh $i" \
+             --subscribe space.$i aerospace_workspace_change
+done
+
+# Right side — battery, volume, wifi, clock (rightmost-first reads right-to-left)
+sketchybar --add item clock right \
+           --set clock \
+                 icon.drawing=off \
+                 update_freq=10 \
+                 padding_left=8 \
+                 padding_right=4 \
+                 script="$PLUGIN_DIR/clock.sh" \
+           --subscribe clock system_woke
+
+sketchybar --add item battery right \
+           --set battery \
+                 icon.font="$FONT_ICON" \
+                 label.drawing=off \
+                 update_freq=60 \
+                 padding_left=8 \
+                 padding_right=8 \
+                 script="$PLUGIN_DIR/battery.sh" \
+           --subscribe battery power_source_change system_woke
+
+sketchybar --add item volume right \
+           --set volume \
+                 icon.font="$FONT_ICON" \
+                 label.drawing=off \
+                 padding_left=8 \
+                 padding_right=8 \
+                 script="$PLUGIN_DIR/volume.sh" \
+           --subscribe volume volume_change
+
+sketchybar --add item wifi right \
+           --set wifi \
+                 icon.font="$FONT_ICON" \
+                 icon.padding_right=4 \
+                 update_freq=30 \
+                 padding_left=8 \
+                 padding_right=8 \
+                 script="$PLUGIN_DIR/wifi.sh" \
+           --subscribe wifi wifi_change system_woke
+
+# Drop-in plugins (e.g. claude-status) extend the bar by adding events,
+# items, or subscriptions. Each *.sh in plugins.d is sourced after the
+# base setup so plugins can attach to existing items.
+if [ -d "$CONFIG_DIR/plugins.d" ]; then
+  for plugin in "$CONFIG_DIR/plugins.d"/*.sh; do
+    [ -e "$plugin" ] || continue
+    # shellcheck disable=SC1090
+    source "$plugin"
+  done
+fi
+
+sketchybar --update

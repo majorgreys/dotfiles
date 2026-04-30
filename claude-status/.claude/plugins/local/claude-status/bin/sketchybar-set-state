@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# sketchybar-set-state — write per-workspace agent state for sketchybar.
+#
+# Usage:
+#   sketchybar-set-state <state>        # state in: running | needs-attention | idle | clear
+#                                   # reads Claude Code hook JSON on stdin (optional)
+#
+# Behavior:
+#   1. Tries to read .session_id from stdin JSON (hook payload).
+#   2. If session_id is known and pinned, writes state to that pinned workspace.
+#   3. Otherwise resolves "current focused AeroSpace workspace" and pins it for
+#      this session_id. Subsequent hooks for the same session reuse that pin.
+#
+# This means UserPromptSubmit (fired while the Claude window is focused) sets
+# the workspace, and Stop/Notification later write to the same workspace even
+# if the user has switched focus elsewhere.
+
+set -euo pipefail
+
+STATE="${1:?state required: running|needs-attention|idle|clear}"
+
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/sketchybar"
+SESS_DIR="$STATE_ROOT/sessions"
+WS_DIR="$STATE_ROOT/agents"
+mkdir -p "$SESS_DIR" "$WS_DIR"
+
+HOOK_INPUT=""
+if [ ! -t 0 ]; then
+  HOOK_INPUT=$(cat || true)
+fi
+
+SESSION_ID=""
+if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
+  SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
+fi
+
+WS=""
+if [ -n "$SESSION_ID" ] && [ -f "$SESS_DIR/$SESSION_ID" ]; then
+  WS=$(< "$SESS_DIR/$SESSION_ID")
+fi
+if [ -z "$WS" ]; then
+  WS=$(aerospace list-workspaces --focused 2>/dev/null || true)
+  if [ -n "$SESSION_ID" ] && [ -n "$WS" ]; then
+    printf '%s' "$WS" > "$SESS_DIR/$SESSION_ID"
+  fi
+fi
+[ -z "$WS" ] && exit 0
+
+if [ "$STATE" = "clear" ]; then
+  rm -f "$WS_DIR/$WS"
+  [ -n "$SESSION_ID" ] && rm -f "$SESS_DIR/$SESSION_ID"
+else
+  printf '%s' "$STATE" > "$WS_DIR/$WS"
+fi
+
+sketchybar --trigger claude_agent_state_change >/dev/null 2>&1 || true
+exit 0
