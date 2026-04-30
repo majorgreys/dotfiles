@@ -27,8 +27,11 @@ SESS_DIR="$STATE_ROOT/sessions"
 WS_DIR="$STATE_ROOT/agents"
 mkdir -p "$SESS_DIR" "$WS_DIR"
 
-# One-shot purge: drop legacy bare-text pin files from earlier versions
-# of this helper. We only keep .json records now.
+# Drop legacy bare-text pin files from earlier versions of this helper.
+# Runs every invocation — idempotent no-op after the first cleanup.
+# .tmp is preserved on purpose: a concurrent invocation may briefly have
+# a "<id>.json.tmp" present between its `jq >` and `mv`, and deleting it
+# here would race that invocation's atomic write into failure.
 for f in "$SESS_DIR"/*; do
   [ -e "$f" ] || continue
   case "$f" in
