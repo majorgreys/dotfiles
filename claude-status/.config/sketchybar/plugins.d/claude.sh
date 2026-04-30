@@ -28,7 +28,7 @@ CLAUDE_COLOR_FG="0xffcdd6f4"
 CLAUDE_COLOR_DIM="0xff7f849c"
 CLAUDE_COLOR_ACCENT="0xff89b4fa"
 CLAUDE_COLOR_BG="0xff000000"
-CLAUDE_FONT_ICON="FiraCode Nerd Font Mono:Regular:17.0"
+CLAUDE_FONT_ICON="FiraCode Nerd Font Mono:Regular:20.0"
 CLAUDE_FONT_REGULAR="PragmataPro Mono Liga:Regular:15.0"
 
 # Parent item — added with `right` after the four status items, so it
