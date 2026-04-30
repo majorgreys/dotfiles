@@ -6,7 +6,7 @@ PLUGIN_DIR="$CONFIG_DIR/plugins"
 FONT_REGULAR="PragmataPro Mono Liga:Regular:15.0"
 FONT_BOLD="PragmataPro Mono Liga:Bold:15.0"
 FONT_DOT="PragmataPro Mono Liga:Bold:13.0"
-FONT_ICON="FiraCode Nerd Font Mono:Regular:20.0"
+FONT_ICON="FiraCode Nerd Font Mono:Regular:23.0"
 
 COLOR_BG="0xff000000"
 COLOR_FG="0xffcdd6f4"
