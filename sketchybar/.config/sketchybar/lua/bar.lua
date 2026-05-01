@@ -7,23 +7,25 @@
 
 local sbar = require("sketchybar")
 
--- Catppuccin Mocha palette. Hex strings are the same colors used by the
--- prior bash config and the workspace-pill plugin.
+-- Modus Vivendi Tinted palette — matches the Ghostty / Emacs theme.
+-- Reference colors come from the Ghostty theme file at
+-- ghostty/.config/ghostty/themes/modus-vivendi-tinted plus the wider
+-- Modus Vivendi UI palette (bg-dim/bg-alt etc.) for chrome.
 Colors = {
-  bg          = 0xff000000,
-  fg          = 0xffcdd6f4,
-  dim         = 0xff7f849c,
-  dim_dark    = 0xff6c7086,
-  accent_bg   = 0xff89b4fa,
-  accent_fg   = 0xff1e1e2e,
-  red         = 0xfff38ba8,
-  yellow      = 0xfff9e2af,
-  green       = 0xffa6e3a1,
-  -- Pill / popup chrome.
-  pill_bg     = 0xff1e1e2e,  -- catppuccin "base"
-  pill_border = 0xff45475a,  -- catppuccin "surface1"
-  popup_bg    = 0xff181825,  -- catppuccin "mantle"
-  popup_border= 0xff313244,  -- catppuccin "surface0"
+  bg          = 0xff0d0e1c,  -- background (main)
+  fg          = 0xffffffff,  -- foreground (main text)
+  dim         = 0xff989898,  -- white-faint (less prominent text)
+  dim_dark    = 0xff4a4f69,  -- bright black (very dim)
+  accent_bg   = 0xff2fafff,  -- blue — focused workspace underline
+  accent_fg   = 0xff0d0e1c,
+  red         = 0xffff5f59,  -- regular red (urgent error tone)
+  yellow      = 0xffd0bc00,  -- regular yellow (caution)
+  green       = 0xff44bc44,  -- regular green (active)
+  -- Pill / popup chrome — tinted dark elevations of the bg.
+  pill_bg     = 0xff1d2235,  -- bg-dim equivalent (slight elevation)
+  pill_border = 0xff4a4f69,  -- bright black, subtle outline
+  popup_bg    = 0xff1d2235,  -- same elevation as pill
+  popup_border= 0xff4a4f69,
   transparent = 0x00000000,
 }
 
