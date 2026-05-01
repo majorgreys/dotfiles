@@ -39,6 +39,9 @@ brew "yq"
 brew "cmake"
 brew "tree-sitter"
 
+# Lua (used by sketchybar via SbarLua)
+brew "lua"
+
 # Languages & Runtimes
 brew "python@3.12"
 brew "go"

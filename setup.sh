@@ -209,6 +209,28 @@ for pkg in claude-status; do
     fi
 done
 
+# ===================================
+# Install SbarLua (Lua bindings for sketchybar)
+# ===================================
+# SbarLua has no homebrew formula. Build from source and install the Lua
+# C module to ~/.local/share/sketchybar_lua/sketchybar.so. Idempotent —
+# rebuilds even if installed (the script is fast and cheap to re-run).
+SBARLUA_SO="$HOME/.local/share/sketchybar_lua/sketchybar.so"
+if [[ ! -f "$SBARLUA_SO" ]]; then
+    print_warning "Installing SbarLua..."
+    SBARLUA_TMP="$(mktemp -d)"
+    if git clone --depth 1 https://github.com/FelixKratz/SbarLua.git "$SBARLUA_TMP" \
+        && (cd "$SBARLUA_TMP" && make install >/dev/null); then
+        rm -rf "$SBARLUA_TMP"
+        print_success "SbarLua installed at $SBARLUA_SO"
+    else
+        rm -rf "$SBARLUA_TMP"
+        print_warning "SbarLua install failed — sketchybar will not start until this is resolved"
+    fi
+else
+    print_success "SbarLua already installed at $SBARLUA_SO"
+fi
+
 # Setup fisher and fish plugins
 if command_exists fish; then
     print_warning "Setting up fisher and fish plugins..."

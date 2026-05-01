@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sketchybar-set-state — write per-workspace and per-session agent state.
+# sketchybar-set-state — push agent state into sketchybar.
 #
 # Usage:
 #   sketchybar-set-state <state>
@@ -8,55 +8,36 @@
 #
 # Behavior:
 #   1. Read .session_id and .cwd from stdin JSON if present.
-#   2. Resolve the session's workspace: if a session JSON record exists
-#      under $STATE_ROOT/sessions/<id>.json, reuse its workspace; else
-#      query AeroSpace for the focused workspace and pin to that.
-#   3. Write per-workspace state to $STATE_ROOT/agents/<workspace>.
-#   4. Write per-session JSON to $STATE_ROOT/sessions/<id>.json
-#      (atomically: tmp + rename).
-#   5. On state=clear, remove both the per-workspace and per-session
-#      records.
-#   6. Trigger claude_agent_state_change so subscribers re-render.
+#   2. Resolve the session's workspace: if a per-session pin file exists
+#      under $STATE_ROOT/sessions/<id>.ws, reuse it; else query AeroSpace
+#      for the focused workspace and write the pin.
+#   3. Trigger `claude_agent_state_change` with kv args carrying the
+#      action, session_id, state, cwd, and workspace. The Lua handler in
+#      sketchybar's claude_status module owns the popup + workspace dot
+#      from there.
+#   4. On state=clear, remove the per-session pin file before triggering.
 #
 # Logging:
 #   One tab-separated line per invocation appended to
 #   $STATE_ROOT/helper.log:
 #     <ISO time>  <state>  <action>  <sid8>  <ws>  <cwd>
-#   `action` is one of: write | clear | skip-no-ws. `sid8` is the first
-#   8 chars of session_id, or "-" if not provided. Tail with:
-#     tail -f ~/.local/state/sketchybar/helper.log
+#   `action` is one of: write | clear | skip-no-ws.
 
 set -euo pipefail
 
 STATE="${1:?state required: running|needs-attention|idle|clear}"
 
 STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/sketchybar"
-SESS_DIR="$STATE_ROOT/sessions"
-WS_DIR="$STATE_ROOT/agents"
+PIN_DIR="$STATE_ROOT/sessions"
 LOG_FILE="$STATE_ROOT/helper.log"
-mkdir -p "$SESS_DIR" "$WS_DIR"
+mkdir -p "$PIN_DIR"
 
-log() {
-  # action=$1 sid8=$2 ws=$3 cwd=$4
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$(date '+%Y-%m-%d %H:%M:%S')" \
-    "$STATE" \
-    "${1:--}" \
-    "${2:--}" \
-    "${3:--}" \
-    "${4:--}" \
-    >> "$LOG_FILE" 2>/dev/null || true
-}
-
-# Drop legacy bare-text pin files from earlier versions of this helper.
-# Runs every invocation — idempotent no-op after the first cleanup.
-# .tmp is preserved on purpose: a concurrent invocation may briefly have
-# a "<id>.json.tmp" present between its `jq >` and `mv`, and deleting it
-# here would race that invocation's atomic write into failure.
-for f in "$SESS_DIR"/*; do
+# Drop legacy .json records from the pre-Lua iteration of this helper.
+# Idempotent no-op after first cleanup. Files we still keep: <id>.ws.
+for f in "$PIN_DIR"/*; do
   [ -e "$f" ] || continue
   case "$f" in
-    *.json|*.tmp) ;;
+    *.ws) ;;
     *) rm -f "$f" ;;
   esac
 done
@@ -76,43 +57,53 @@ SID8="${SESSION_ID:0:8}"
 
 # Resolve the pinned workspace for this session.
 WS=""
-SESS_FILE=""
+PIN_FILE=""
 if [ -n "$SESSION_ID" ]; then
-  SESS_FILE="$SESS_DIR/$SESSION_ID.json"
-  if [ -s "$SESS_FILE" ]; then
-    WS=$(jq -r '.workspace // empty' "$SESS_FILE" 2>/dev/null || true)
+  PIN_FILE="$PIN_DIR/$SESSION_ID.ws"
+  if [ -s "$PIN_FILE" ]; then
+    WS=$(< "$PIN_FILE")
   fi
 fi
 if [ -z "$WS" ]; then
   WS=$(aerospace list-workspaces --focused 2>/dev/null || true)
+  if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ]; then
+    printf '%s' "$WS" > "$PIN_FILE"
+  fi
 fi
+
+log() {
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" \
+    "$STATE" \
+    "${1:--}" \
+    "${SID8:--}" \
+    "${WS:--}" \
+    "${CWD:--}" \
+    >> "$LOG_FILE" 2>/dev/null || true
+}
+
 if [ -z "$WS" ]; then
-  log "skip-no-ws" "$SID8" "" "$CWD"
+  log "skip-no-ws"
   exit 0
 fi
 
 if [ "$STATE" = "clear" ]; then
-  rm -f "$WS_DIR/$WS"
-  [ -n "$SESS_FILE" ] && rm -f "$SESS_FILE"
-  log "clear" "$SID8" "$WS" "$CWD"
+  [ -n "$PIN_FILE" ] && rm -f "$PIN_FILE"
+  log "clear"
+  sketchybar --trigger claude_agent_state_change \
+    "action=clear" \
+    "session_id=$SESSION_ID" \
+    "workspace=$WS" \
+    >/dev/null 2>&1 || true
 else
-  printf '%s' "$STATE" > "$WS_DIR/$WS"
-
-  if [ -n "$SESSION_ID" ]; then
-    NOW=$(date +%s)
-    TMP="$SESS_FILE.tmp"
-    jq -n \
-      --arg sid "$SESSION_ID" \
-      --arg ws  "$WS" \
-      --arg st  "$STATE" \
-      --arg cw  "$CWD" \
-      --argjson ts "$NOW" \
-      '{session_id:$sid, workspace:$ws, state:$st, cwd:$cw, updated_at:$ts}' \
-      > "$TMP"
-    mv "$TMP" "$SESS_FILE"
-  fi
-  log "write" "$SID8" "$WS" "$CWD"
+  log "write"
+  sketchybar --trigger claude_agent_state_change \
+    "action=write" \
+    "session_id=$SESSION_ID" \
+    "state=$STATE" \
+    "workspace=$WS" \
+    "cwd=$CWD" \
+    >/dev/null 2>&1 || true
 fi
 
-sketchybar --trigger claude_agent_state_change >/dev/null 2>&1 || true
 exit 0
