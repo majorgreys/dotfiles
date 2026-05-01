@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke tests for claude-status helpers.
+# Smoke tests for agent-status helpers.
 #
 # Run with: ./tests/smoke.sh
 #
@@ -16,7 +16,7 @@ source "$TESTS_DIR/test-helpers.sh"
 # Collect all sketchybar invocations from a single helper run, ignoring
 # unrelated commands. Returns the most recent --trigger line.
 last_trigger() {
-  grep -E '^--trigger claude_agent_state_change' "$SKETCHYBAR_LOG" | tail -n 1
+  grep -E '^--trigger agent_state_change' "$SKETCHYBAR_LOG" | tail -n 1
 }
 
 test_helper_writes_pin_file_and_triggers_event() {

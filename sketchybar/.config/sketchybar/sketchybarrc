@@ -13,7 +13,7 @@
 --   status/battery.lua  — right-side battery.
 --   status/volume.lua   — right-side volume.
 --   status/wifi.lua     — right-side wifi.
---   claude_status.lua   — claude_sessions parent + popup, push-driven
+--   agent_status.lua   — agent_sessions parent + popup, push-driven
 --                         from sketchybar-set-state hook events.
 
 package.cpath = package.cpath
@@ -38,7 +38,7 @@ require("status.clock")
 require("status.battery")
 require("status.volume")
 require("status.wifi")
-require("claude_status")
+require("agent_status")
 
 sbar.end_config()
 

@@ -1,4 +1,4 @@
-# claude-status
+# agent-status
 
 Claude Code plugin that pushes per-session agent state into a
 SbarLua-driven sketchybar config.
@@ -6,21 +6,21 @@ SbarLua-driven sketchybar config.
 - Workspace pill dot — colored by the most-urgent agent state of any
   session pinned to that workspace (green=running, yellow=needs-attention,
   dim=idle, hidden=no agent activity).
-- `claude_sessions` dropdown — bordered pill on the right side with
+- `agent_sessions` dropdown — bordered pill on the right side with
   count + popup listing every active session, grouped by state. Click a
   row to jump to that AeroSpace workspace.
 
 ## Layout
 
 ```
-~/.dotfiles/claude-status/                           # stow package source
-├── .claude/plugins/local/claude-status/             # → ~/.claude/plugins/local/claude-status/
+~/.dotfiles/agent-status/                           # stow package source
+├── .claude/plugins/local/agent-status/             # → ~/.claude/plugins/local/agent-status/
 │   ├── .claude-plugin/                              # plugin + marketplace manifest
 │   │   ├── marketplace.json                         # local marketplace (source.source: "directory")
 │   │   └── plugin.json                              # hooks (UserPromptSubmit, Stop, Notification, SessionEnd)
 │   └── bin/sketchybar-set-state                     # the canonical helper, on PATH when plugin enabled
 ├── .local/bin/                                      # → ~/.local/bin/
-│   └── sketchybar-set-state                         # → ../../.claude/plugins/local/claude-status/bin/sketchybar-set-state
+│   └── sketchybar-set-state                         # → ../../.claude/plugins/local/agent-status/bin/sketchybar-set-state
 ├── tests/                                           # smoke tests (NOT stowed)
 │   ├── smoke.sh
 │   └── test-helpers.sh
@@ -44,14 +44,14 @@ in Lua against [SbarLua](https://github.com/FelixKratz/SbarLua):
     │   ├── battery.lua
     │   ├── volume.lua
     │   └── wifi.lua
-    └── claude_status.lua       # claude_sessions parent + popup
+    └── agent_status.lua       # agent_sessions parent + popup
 ```
 
 ## Install
 
 ```bash
-cd ~/.dotfiles && stow claude-status
-~/.dotfiles/claude-status/install.sh
+cd ~/.dotfiles && stow agent-status
+~/.dotfiles/agent-status/install.sh
 ```
 
 Prereqs (handled by the dotfiles' `setup.sh`):
@@ -63,10 +63,10 @@ Prereqs (handled by the dotfiles' `setup.sh`):
 
 `install.sh`:
 
-1. Verifies `~/.claude/plugins/local/claude-status` exists (the stowed
+1. Verifies `~/.claude/plugins/local/agent-status` exists (the stowed
    plugin tree).
 2. Registers it as a Claude Code marketplace (`directory` source).
-3. Installs the bundled plugin (`claude-status@claude-status`).
+3. Installs the bundled plugin (`agent-status@agent-status`).
 4. Reloads sketchybar.
 
 Idempotent — safe to re-run after edits. Hooks come from the plugin's
@@ -77,14 +77,14 @@ After editing the plugin source in dotfiles, refresh Claude Code's
 loaded copy with:
 
 ```bash
-claude plugin marketplace update claude-status
+claude plugin marketplace update agent-status
 ```
 
 ## Uninstall
 
 ```bash
-~/.dotfiles/claude-status/uninstall.sh
-cd ~/.dotfiles && stow -D claude-status
+~/.dotfiles/agent-status/uninstall.sh
+cd ~/.dotfiles && stow -D agent-status
 ```
 
 ## Push protocol
@@ -97,11 +97,11 @@ on stdin. The helper:
    `$XDG_STATE_HOME/sketchybar/sessions/<id>.ws` if present (one-line
    text file containing the workspace number), else asking
    `aerospace list-workspaces --focused` and pinning.
-3. Triggers the sketchybar `claude_agent_state_change` event with kv
+3. Triggers the sketchybar `agent_state_change` event with kv
    args:
 
    ```
-   sketchybar --trigger claude_agent_state_change \
+   sketchybar --trigger agent_state_change \
      action=<write|clear> \
      session_id=<id> \
      workspace=<n> \
@@ -118,7 +118,7 @@ on stdin. The helper:
    Where `action` ∈ `{write, clear, skip-no-ws}`.
    Tail with `tail -f ~/.local/state/sketchybar/helper.log`.
 
-The Lua handler in `claude_status.lua` updates an in-memory sessions
+The Lua handler in `agent_status.lua` updates an in-memory sessions
 table, recomputes the per-workspace aggregate, repaints the parent
 pill's count + color, and rebuilds the popup. No on-disk state for the
 dropdown survives a sketchybar reload — the next Claude hook event
@@ -136,7 +136,7 @@ echo '{"session_id":"manual-test"}' \
 ## Tests
 
 ```bash
-~/.dotfiles/claude-status/tests/smoke.sh
+~/.dotfiles/agent-status/tests/smoke.sh
 ```
 
 Runs the bash helper through a tempdir-`$XDG_STATE_HOME` + mocked

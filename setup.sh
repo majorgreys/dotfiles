@@ -189,7 +189,7 @@ fi
 print_header "Setting up dotfiles with stow"
 
 # Stow configs for installed tools
-configs=("fish" "ghostty" "tmux" "vim" "helix" "doom" "thbemacs" "starship" "aerospace" "sketchybar" "claude-status" "org-autosync")
+configs=("fish" "ghostty" "tmux" "vim" "helix" "doom" "thbemacs" "starship" "aerospace" "sketchybar" "agent-status" "org-autosync")
 for config in "${configs[@]}"; do
     if [[ -d "$DOTFILES_DIR/$config" ]]; then
         print_warning "Stowing $config config..."
@@ -202,7 +202,7 @@ for config in "${configs[@]}"; do
 done
 
 # Packages that need a post-stow install step (e.g. merging into a JSON config).
-for pkg in claude-status; do
+for pkg in agent-status; do
     if [[ -x "$DOTFILES_DIR/$pkg/install.sh" ]]; then
         print_warning "Running $pkg post-stow install..."
         "$DOTFILES_DIR/$pkg/install.sh" && print_success "$pkg installed" || print_warning "$pkg install failed"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test scaffold for claude-status helpers.
+# Test scaffold for agent-status helpers.
 #
 # Each test function should call setup at the top and trap teardown EXIT.
 # setup creates a tmpdir, points XDG_STATE_HOME at it, and prepends a
@@ -9,7 +9,7 @@
 set -euo pipefail
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$TESTS_DIR/../.claude/plugins/local/claude-status"
+PLUGIN_ROOT="$TESTS_DIR/../.claude/plugins/local/agent-status"
 PLUGIN_BIN="$PLUGIN_ROOT/bin"
 
 setup() {

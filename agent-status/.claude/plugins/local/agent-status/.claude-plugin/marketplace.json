@@ -1,5 +1,5 @@
 {
-  "name": "claude-status",
+  "name": "agent-status",
   "owner": {
     "name": "Tahir Butt"
   },
@@ -9,7 +9,7 @@
   },
   "plugins": [
     {
-      "name": "claude-status",
+      "name": "agent-status",
       "description": "Lights up sketchybar workspace pills based on Claude Code activity (yellow=running, red=needs-attention).",
       "source": "./",
       "strict": false

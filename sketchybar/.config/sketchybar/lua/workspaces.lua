@@ -1,7 +1,7 @@
 -- workspaces.lua — i3-style AeroSpace workspace pills 1..10.
 --
 -- Each pill renders the workspace number plus an optional small dot
--- showing claude-status' agent state for that workspace (yellow=running,
+-- showing agent-status' agent state for that workspace (yellow=running,
 -- red/yellow=needs-attention, dim=idle, hidden=no agent activity).
 --
 -- Focus state arrives via env.FOCUSED_WORKSPACE on aerospace_workspace_change
@@ -67,9 +67,9 @@ for i = 1, 10 do
 
   pills[i] = pill
 
-  -- Both events trigger a repaint. claude_agent_state_change has no
+  -- Both events trigger a repaint. agent_state_change has no
   -- env.FOCUSED_WORKSPACE so we re-query AeroSpace (cheap).
-  pill:subscribe({"aerospace_workspace_change", "claude_agent_state_change"},
+  pill:subscribe({"aerospace_workspace_change", "agent_state_change"},
     function(env)
       if env.FOCUSED_WORKSPACE and env.FOCUSED_WORKSPACE ~= "" then
         paint(pill, i, env.FOCUSED_WORKSPACE)
