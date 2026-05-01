@@ -28,8 +28,15 @@ SESS_DIR="$STATE_ROOT/sessions"
 # the same on-disk state, so the visual outcome converges.
 mkdir -p "$STATE_ROOT"
 LOCKDIR="$STATE_ROOT/.render.lock"
+
+# Clear any leftover regular file at the lock path. Earlier versions of
+# this script briefly used `exec >LOCK` (via `flock`), which left a
+# zero-byte file behind. `mkdir` would then permanently fail, silently
+# wedging every subsequent render.
+[ -e "$LOCKDIR" ] && [ ! -d "$LOCKDIR" ] && rm -f "$LOCKDIR"
+
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  # Lock older than 30s is stale (crashed render); reclaim it.
+  # Lock older than 1 minute is stale (crashed render); reclaim it.
   if [ -d "$LOCKDIR" ] && [ "$(find "$LOCKDIR" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
     rmdir "$LOCKDIR" 2>/dev/null || true
     mkdir "$LOCKDIR" 2>/dev/null || exit 0
