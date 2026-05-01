@@ -129,13 +129,35 @@ local function schedule_close()
   end)
 end
 
-local function add_popup_item(name, props)
+-- Fixed pixel width for every popup row so the popup doesn't jitter
+-- as agents come and go. POPUP_WIDTH and TARGET_LABEL_CHARS are tuned
+-- in lockstep so the right-justified workspace number sits flush
+-- against the inside edge of the popup.
+local POPUP_WIDTH = 260
+local TARGET_LABEL_CHARS = 22
+
+local function add_popup_item(name, props, opts)
+  opts = opts or {}
   table.insert(popup_children, name)
+  props.width = props.width or POPUP_WIDTH
   local item = sbar.add("item", name, props)
   -- Subscribing every popup child means cursor hovering anywhere in
   -- the popup keeps it open; leaving the last child schedules a close.
-  item:subscribe("mouse.entered", open_popup)
-  item:subscribe("mouse.exited", schedule_close)
+  -- `opts.highlightable` adds a subtle bg fill on hover so clickable
+  -- rows feel selectable; non-interactive rows (headers, notifications)
+  -- omit it.
+  item:subscribe("mouse.entered", function()
+    open_popup()
+    if opts.highlightable then
+      item:set({ background = { color = Colors.pill_bg, drawing = "on" } })
+    end
+  end)
+  item:subscribe("mouse.exited", function()
+    schedule_close()
+    if opts.highlightable then
+      item:set({ background = { color = Colors.transparent, drawing = "off" } })
+    end
+  end)
   return item
 end
 
@@ -182,6 +204,32 @@ local function basename(path)
   return last or "?"
 end
 
+-- Map zmx-session-name → attached? (true when at least one client is
+-- connected). Sessions present in claude state but missing from the
+-- map are considered detached.
+local function read_zmx_attached()
+  local handle = io.popen("zmx list 2>/dev/null")
+  if not handle then return {} end
+  local m = {}
+  for line in handle:lines() do
+    local name = line:match("name=(%S+)")
+    local clients = line:match("clients=(%d+)")
+    if name and clients then
+      m[name] = tonumber(clients) > 0
+    end
+  end
+  handle:close()
+  return m
+end
+
+-- Wrap detached zmx session names in parens so the popup distinguishes
+-- a live attached session from one that's been detached.
+local function display_zmx(name, attached_map)
+  if not name or name == "" then return "" end
+  if attached_map[name] then return name end
+  return "(" .. name .. ")"
+end
+
 
 -- Highest-urgency state across all sessions. Drives the status dot
 -- color in the menu-bar pill. Returns the count for the label.
@@ -201,29 +249,29 @@ end
 local function rebuild_popup()
   clear_popup()
 
-  add_popup_item("claude_sessions._header", {
-    position = "popup." .. parent.name,
-    icon = {
-      string        = "AGENTS",
-      font          = "PragmataPro Mono Liga:Bold:13.0",
-      color         = Colors.dim,
-      padding_left  = 12,
-      padding_right = 12,
-    },
-    label = { string = "" },
-  })
+  -- Each row labels itself with its zmx session (preferred — detached
+  -- sessions wrapped in parens) or, when no zmx is persisted, the cwd
+  -- basename. Pad the chosen identifier to a single column width.
+  local zmx_attached = read_zmx_attached()
+  local function row_name(s)
+    if s.zmx_session and s.zmx_session ~= "" then
+      return display_zmx(s.zmx_session, zmx_attached)
+    end
+    return basename(s.cwd)
+  end
 
-  -- Compute longest project basename so all rows align in the mono font.
-  local max_proj = 0
+  local max_name = 0
   for _, item in pairs(state.sessions) do
-    local b = basename(item.cwd)
-    if #b > max_proj then max_proj = #b end
+    local n = row_name(item)
+    if #n > max_name then max_name = #n end
   end
 
   for _, entry in ipairs(sorted_sessions()) do
     local s = entry.session
-    local proj  = pad(basename(s.cwd), max_proj)
-    local label = "\u{E861}  " .. proj .. "    " .. tostring(s.workspace)
+    local ws_str = tostring(s.workspace)
+    local prefix = "\u{E861}  " .. pad(row_name(s), max_name)
+    local pad_count = math.max(2, TARGET_LABEL_CHARS - utf8.len(prefix) - utf8.len(ws_str))
+    local label = prefix .. string.rep(" ", pad_count) .. ws_str
     local short = entry.id:sub(1, 8)
     local child = "claude_sessions." .. short
     add_popup_item(child, {
@@ -240,7 +288,7 @@ local function rebuild_popup()
         font          = Fonts.popup,
         color         = Colors.fg,
         padding_left  = 18,
-        padding_right = 12,
+        padding_right = 4,
       },
       -- Prefer focusing the exact aerospace window for this session;
       -- fall back to a workspace switch if window-id wasn't captured
@@ -249,18 +297,58 @@ local function rebuild_popup()
         and ("aerospace focus --window-id " .. s.window_id)
         or  ("aerospace workspace " .. s.workspace))
         .. " && sketchybar --set claude_sessions popup.drawing=off",
-    })
+    }, { highlightable = true })
   end
+
+end
+
+local function aggregate_color()
+  local _, top_state = aggregate_state()
+  return STATE_COLORS[top_state] or Colors.dim_dark
+end
+
+-- Blink the status dot in `color` to call attention to a session
+-- state change. Runs for BLINK_DURATION_S, or until superseded by
+-- another state change, or until the user hovers the pill — whichever
+-- comes first. Each blink call increments a token; the deferred
+-- callbacks no-op if their token has been retired.
+local BLINK_DURATION_S = 300
+local BLINK_INTERVAL_S = 0.6
+local blink_token = 0
+
+local function settle_dot()
+  blink_token = blink_token + 1   -- stop any active blink
+  status_dot:set({ icon = { color = aggregate_color() } })
+end
+
+local function start_blink(color)
+  blink_token = blink_token + 1
+  local my_token = blink_token
+  local end_time = os.time() + BLINK_DURATION_S
+  local on = false  -- start with the "off" beat so the change is visible
+
+  local function tick()
+    if blink_token ~= my_token then return end
+    if os.time() >= end_time then
+      settle_dot()
+      return
+    end
+    on = not on
+    status_dot:set({
+      icon = { color = on and color or Colors.dim_dark },
+    })
+    sbar.exec(string.format("sleep %.2f", BLINK_INTERVAL_S), tick)
+  end
+
+  tick()
 end
 
 local function repaint_parent()
-  local count, top_state = aggregate_state()
+  local count = aggregate_state()
   count_item:set({
     label = { string = tostring(count) },
   })
-  status_dot:set({
-    icon = { color = STATE_COLORS[top_state] or Colors.dim_dark },
-  })
+  status_dot:set({ icon = { color = aggregate_color() } })
 end
 
 -- Subscribe to the helper-fired event. env contains the kv args from
@@ -277,16 +365,21 @@ parent:subscribe("claude_agent_state_change", function(env)
     return
   end
 
+  local prev = state.sessions[session_id] and state.sessions[session_id].state
+  local new_state = nil
+
   if action == "clear" then
     state.sessions[session_id] = nil
   elseif action == "write" then
     if not workspace or workspace == "" or not st or st == "" then return end
+    new_state = st
     state.sessions[session_id] = {
-      workspace  = workspace,
-      window_id  = env.window_id or "",
-      state      = st,
-      cwd        = cwd or "",
-      updated_at = os.time(),
+      workspace   = workspace,
+      window_id   = env.window_id or "",
+      state       = st,
+      cwd         = cwd or "",
+      zmx_session = env.zmx_session or "",
+      updated_at  = os.time(),
     }
   else
     return
@@ -296,13 +389,24 @@ parent:subscribe("claude_agent_state_change", function(env)
   repaint_parent()
   rebuild_popup()
 
+  -- A real state transition for any session triggers the attention
+  -- blink; pure metadata refreshes (e.g., a Notification firing while
+  -- already in needs-attention) don't.
+  if new_state and new_state ~= prev then
+    start_blink(STATE_COLORS[new_state] or Colors.dim_dark)
+  end
+
   -- Workspace pills depend on state.workspace_state — fire their event
   -- so they re-paint with the new aggregate.
   sbar.trigger("aerospace_workspace_change")
 end)
 
 for _, item in ipairs({ parent, status_dot, count_item }) do
-  item:subscribe("mouse.entered", open_popup)
+  item:subscribe("mouse.entered", function()
+    open_popup()
+    -- User saw the pill — drop any active attention blink.
+    settle_dot()
+  end)
   item:subscribe("mouse.exited", schedule_close)
 end
 
