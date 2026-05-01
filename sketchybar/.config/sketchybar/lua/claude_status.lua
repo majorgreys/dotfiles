@@ -167,6 +167,7 @@ local function rebuild_popup()
     elseif s.state == "idle"            then n_idle  = n_idle  + 1 end
   end
 
+  local summary = string.format("%d working · %d waiting · %d idle", n_run, n_needs, n_idle)
   add_popup_item("claude_sessions._header", {
     position = "popup." .. parent.name,
     icon = {
@@ -177,7 +178,7 @@ local function rebuild_popup()
       padding_right = 18,
     },
     label = {
-      string        = string.format("%d working · %d waiting · %d idle", n_run, n_needs, n_idle),
+      string        = summary,
       color         = Colors.fg,
       padding_right = 12,
     },
@@ -189,6 +190,13 @@ local function rebuild_popup()
     local b = basename(item.cwd)
     if #b > max_proj then max_proj = #b end
   end
+
+  -- Right-align workspace number to the same right-edge as the header.
+  -- Mono font: each char is one column. Header item chrome (icon
+  -- "AGENTS" + paddings) is roughly 5 chars wider than the row chrome
+  -- (icon "●" + paddings), so the row LABEL needs to be that much
+  -- longer to land at the same right edge.
+  local target_label_cols = utf8.len(summary) + 5
 
   local list = sorted_sessions()
   local groups = group_by_state(list)
@@ -215,6 +223,10 @@ local function rebuild_popup()
         local s = entry.session
         local proj  = pad(basename(s.cwd), max_proj)
         local word  = pad(STATE_WORDS[st], 7)
+        local ws    = string.format("%2s", s.workspace)
+        local left  = proj .. "  " .. word
+        local gap   = math.max(2, target_label_cols - utf8.len(left) - utf8.len(ws))
+        local label = left .. string.rep(" ", gap) .. ws
         local short = entry.id:sub(1, 8)
         local child = "claude_sessions." .. short
         add_popup_item(child, {
@@ -226,7 +238,7 @@ local function rebuild_popup()
             padding_right = 8,
           },
           label = {
-            string        = string.format("%s  %s  %s", proj, word, s.workspace),
+            string        = label,
             color         = Colors.fg,
             padding_right = 12,
           },
