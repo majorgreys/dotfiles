@@ -1,11 +1,11 @@
--- state.lua — shared mutable state between claude_status and workspaces.
+-- state.lua — shared mutable state between agent_status and workspaces.
 --
 -- Both modules `require("state")` and read/write its tables. The shared
--- module pattern decouples the writer (claude_status) from the reader
+-- module pattern decouples the writer (agent_status) from the reader
 -- (workspaces) without imposing a load-order constraint on sketchybarrc.
 --
 -- Tables are intentionally exposed for direct mutation. Helper functions
--- live in the modules that own the data flow (claude_status writes,
+-- live in the modules that own the data flow (agent_status writes,
 -- workspaces reads).
 
 local M = {}
@@ -19,7 +19,7 @@ local M = {}
 M.sessions = {}
 
 -- workspace string -> aggregate state (most-urgent state of any session
--- pinned to that workspace). Recomputed by claude_status whenever
+-- pinned to that workspace). Recomputed by agent_status whenever
 -- sessions changes.
 M.workspace_state = {}
 

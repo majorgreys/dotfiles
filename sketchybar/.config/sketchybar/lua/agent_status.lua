@@ -1,8 +1,8 @@
--- claude_status.lua — claude_sessions parent pill + popup, push-driven.
+-- agent_status.lua — agent_sessions parent pill + popup, push-driven.
 --
 -- The sketchybar-set-state shell helper is invoked from Claude Code
 -- hooks (UserPromptSubmit, Stop, Notification, SessionEnd). It triggers
--- the `claude_agent_state_change` sketchybar event with these args:
+-- the `agent_state_change` sketchybar event with these args:
 --   action       = "write" | "clear"
 --   session_id   = "<uuid>"
 --   state        = "running" | "needs-attention" | "idle"   (write only)
@@ -34,7 +34,7 @@ local STATE_COLORS = {
 -- Items added with position=right are prepended to the right group,
 -- so the LAST item added appears leftmost. Add right-to-left order:
 -- count first, then dot, then robot — yielding visual [robot dot count].
-local count_item = sbar.add("item", "claude_sessions_count", {
+local count_item = sbar.add("item", "agent_sessions_count", {
   position = "right",
   icon = { string = "" },
   label = {
@@ -46,7 +46,7 @@ local count_item = sbar.add("item", "claude_sessions_count", {
   },
 })
 
-local status_dot = sbar.add("item", "claude_sessions_status", {
+local status_dot = sbar.add("item", "agent_sessions_status", {
   position = "right",
   icon = {
     string        = "\u{25CF}",
@@ -58,7 +58,7 @@ local status_dot = sbar.add("item", "claude_sessions_status", {
   label = { string = "" },
 })
 
-local parent = sbar.add("item", "claude_sessions", {
+local parent = sbar.add("item", "agent_sessions", {
   position = "right",
   icon = {
     string        = "󰚩",
@@ -85,7 +85,7 @@ local parent = sbar.add("item", "claude_sessions", {
 -- workspace-pill focus-bar style (2px tall, offset below the text).
 -- Static magenta-cooler accent — distinct from the workspace blue
 -- focus underline while staying in the Modus Vivendi Tinted palette.
-sbar.add("bracket", "claude_sessions_pill", {
+sbar.add("bracket", "agent_sessions_pill", {
   parent.name, status_dot.name, count_item.name,
 }, {
   background = {
@@ -273,7 +273,7 @@ local function rebuild_popup()
     local pad_count = math.max(2, TARGET_LABEL_CHARS - utf8.len(prefix) - utf8.len(ws_str))
     local label = prefix .. string.rep(" ", pad_count) .. ws_str
     local short = entry.id:sub(1, 8)
-    local child = "claude_sessions." .. short
+    local child = "agent_sessions." .. short
     add_popup_item(child, {
       position = "popup." .. parent.name,
       icon = {
@@ -296,7 +296,7 @@ local function rebuild_popup()
       click_script = (s.window_id and s.window_id ~= ""
         and ("aerospace focus --window-id " .. s.window_id)
         or  ("aerospace workspace " .. s.workspace))
-        .. " && sketchybar --set claude_sessions popup.drawing=off",
+        .. " && sketchybar --set agent_sessions popup.drawing=off",
     }, { highlightable = true })
   end
 
@@ -352,8 +352,8 @@ local function repaint_parent()
 end
 
 -- Subscribe to the helper-fired event. env contains the kv args from
--- `sketchybar --trigger claude_agent_state_change action=write ...`.
-parent:subscribe("claude_agent_state_change", function(env)
+-- `sketchybar --trigger agent_state_change action=write ...`.
+parent:subscribe("agent_state_change", function(env)
   local action     = env.action
   local session_id = env.session_id
   local workspace  = env.workspace
@@ -415,7 +415,7 @@ end
 -- table starts empty, so old per-session items would otherwise become
 -- orphans (rendered, but not tracked or rebuilt).
 sbar.exec(
-  [[sketchybar --query bar 2>/dev/null | jq -r '.items[]? | select(startswith("claude_sessions."))']],
+  [[sketchybar --query bar 2>/dev/null | jq -r '.items[]? | select(startswith("agent_sessions."))']],
   function(out)
     for name in out:gmatch("[^\n]+") do
       sbar.remove(name)

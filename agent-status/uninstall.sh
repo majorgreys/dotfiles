@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Uninstall the Claude Code plugin and remove the local marketplace.
-# Symlinks created by stow are removed separately with `stow -D claude-status`.
+# Symlinks created by stow are removed separately with `stow -D agent-status`.
 
 set -euo pipefail
 
-MARKETPLACE_NAME="claude-status"
-PLUGIN_NAME="claude-status"
+MARKETPLACE_NAME="agent-status"
+PLUGIN_NAME="agent-status"
 
 if command -v claude >/dev/null 2>&1; then
   if claude plugin list 2>/dev/null | grep -q "${PLUGIN_NAME}@${MARKETPLACE_NAME}"; then
@@ -20,6 +20,6 @@ fi
 
 # Clear any leftover state files.
 rm -rf "$HOME/.local/state/sketchybar/agents/"* "$HOME/.local/state/sketchybar/sessions/"* 2>/dev/null
-sketchybar --trigger claude_agent_state_change >/dev/null 2>&1 || true
+sketchybar --trigger agent_state_change >/dev/null 2>&1 || true
 
 echo "done."

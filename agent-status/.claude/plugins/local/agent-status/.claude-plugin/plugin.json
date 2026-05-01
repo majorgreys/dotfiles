@@ -1,5 +1,5 @@
 {
-  "name": "claude-status",
+  "name": "agent-status",
   "version": "1.0.0",
   "description": "Lights up sketchybar workspace pills + dropdown based on Claude Code activity (yellow=running, red=needs-attention).",
   "author": {

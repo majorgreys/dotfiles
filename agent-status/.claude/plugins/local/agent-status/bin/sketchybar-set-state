@@ -11,9 +11,9 @@
 #   2. Resolve the session's workspace: if a per-session pin file exists
 #      under $STATE_ROOT/sessions/<id>.ws, reuse it; else query AeroSpace
 #      for the focused workspace and write the pin.
-#   3. Trigger `claude_agent_state_change` with kv args carrying the
+#   3. Trigger `agent_state_change` with kv args carrying the
 #      action, session_id, state, cwd, and workspace. The Lua handler in
-#      sketchybar's claude_status module owns the popup + workspace dot
+#      sketchybar's agent_status module owns the popup + workspace dot
 #      from there.
 #   4. On state=clear, remove the per-session pin file before triggering.
 #
@@ -125,14 +125,14 @@ fi
 if [ "$STATE" = "clear" ]; then
   [ -n "$PIN_FILE" ] && rm -f "$PIN_FILE"
   log "clear"
-  sketchybar --trigger claude_agent_state_change \
+  sketchybar --trigger agent_state_change \
     "action=clear" \
     "session_id=$SESSION_ID" \
     "workspace=$WS" \
     >/dev/null 2>&1 || true
 else
   log "write"
-  sketchybar --trigger claude_agent_state_change \
+  sketchybar --trigger agent_state_change \
     "action=write" \
     "session_id=$SESSION_ID" \
     "state=$STATE" \

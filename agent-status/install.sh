@@ -3,15 +3,15 @@
 # the bundled plugin. Idempotent — safe to re-run.
 #
 # Stow handles the symlinks (sketchybar drop-in, .local/bin alias, and the
-# plugin tree at ~/.claude/plugins/local/claude-status). This script handles
+# plugin tree at ~/.claude/plugins/local/agent-status). This script handles
 # the Claude Code side: registering the marketplace at that stowed path and
 # enabling the plugin so its hooks load on every session start.
 
 set -euo pipefail
 
-PLUGIN_DIR="$HOME/.claude/plugins/local/claude-status"
-MARKETPLACE_NAME="claude-status"
-PLUGIN_NAME="claude-status"
+PLUGIN_DIR="$HOME/.claude/plugins/local/agent-status"
+MARKETPLACE_NAME="agent-status"
+PLUGIN_NAME="agent-status"
 
 if ! command -v claude >/dev/null 2>&1; then
   echo "error: claude CLI not found in PATH" >&2
@@ -19,7 +19,7 @@ if ! command -v claude >/dev/null 2>&1; then
 fi
 
 if [ ! -d "$PLUGIN_DIR" ]; then
-  echo "error: $PLUGIN_DIR does not exist; run 'stow claude-status' first" >&2
+  echo "error: $PLUGIN_DIR does not exist; run 'stow agent-status' first" >&2
   exit 1
 fi
 
