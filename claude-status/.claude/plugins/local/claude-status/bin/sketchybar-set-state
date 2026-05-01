@@ -49,9 +49,19 @@ fi
 
 SESSION_ID=""
 CWD=""
+HOOK_EVENT=""
+NOTIF_MSG=""
+# Claude inherits the launching shell's env, so $ZMX_SESSION (e.g.
+# "d.dotfiles.0") is visible here when claude was started inside a zmx
+# session. Empty otherwise.
+ZMX_SESSION="${ZMX_SESSION:-}"
 if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
   SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
   CWD=$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
+  HOOK_EVENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null || true)
+  if [ "$HOOK_EVENT" = "Notification" ]; then
+    NOTIF_MSG=$(printf '%s' "$HOOK_INPUT" | jq -r '.message // empty' 2>/dev/null || true)
+  fi
 fi
 SID8="${SESSION_ID:0:8}"
 
@@ -61,16 +71,31 @@ SID8="${SESSION_ID:0:8}"
 #   line 2: aerospace window-id (so click-to-focus targets the exact
 #           terminal window, not just the workspace it lives on)
 # A one-line legacy pin (workspace only) is upgraded in place.
+#
+# The window-id is the source of truth — if we have a cached id, ask
+# aerospace where that window currently lives and overwrite the pinned
+# workspace. This means moving the terminal to another desktop updates
+# the popup on the next hook fire.
 WS=""
 WIN_ID=""
 PIN_FILE=""
 if [ -n "$SESSION_ID" ]; then
   PIN_FILE="$PIN_DIR/$SESSION_ID.ws"
   if [ -s "$PIN_FILE" ]; then
-    WS=$(sed -n '1p' "$PIN_FILE")
     WIN_ID=$(sed -n '2p' "$PIN_FILE")
   fi
 fi
+
+if [ -n "$WIN_ID" ]; then
+  WS=$(aerospace list-windows --all --format '%{window-id} %{workspace}' 2>/dev/null \
+    | awk -v wid="$WIN_ID" '$1 == wid { print $2; exit }')
+  if [ -z "$WS" ]; then
+    # Window-id no longer valid (closed/recreated). Drop it and fall
+    # through to the focused-window capture below.
+    WIN_ID=""
+  fi
+fi
+
 if [ -z "$WS" ]; then
   WS=$(aerospace list-workspaces --focused 2>/dev/null || true)
 fi
@@ -114,7 +139,29 @@ else
     "workspace=$WS" \
     "window_id=$WIN_ID" \
     "cwd=$CWD" \
+    "zmx_session=$ZMX_SESSION" \
     >/dev/null 2>&1 || true
+fi
+
+# Notification hook: append to a small jsonl ring buffer the lua side
+# reads when rebuilding the popup. Trim to last 100 lines.
+NOTIF_FILE="$STATE_ROOT/notifications.jsonl"
+if [ "$HOOK_EVENT" = "Notification" ] && [ -n "$NOTIF_MSG" ] && command -v jq >/dev/null 2>&1; then
+  NOW=$(date +%s)
+  jq -nc \
+    --arg sid "$SESSION_ID" \
+    --arg cwd "$CWD" \
+    --arg msg "$NOTIF_MSG" \
+    --arg ws  "$WS" \
+    --arg win "$WIN_ID" \
+    --arg zmx "$ZMX_SESSION" \
+    --argjson ts "$NOW" \
+    '{ts:$ts, session_id:$sid, cwd:$cwd, workspace:$ws, window_id:$win, zmx_session:$zmx, message:$msg}' \
+    >> "$NOTIF_FILE" 2>/dev/null || true
+  if [ -s "$NOTIF_FILE" ]; then
+    tail -n 100 "$NOTIF_FILE" > "$NOTIF_FILE.tmp" 2>/dev/null \
+      && mv "$NOTIF_FILE.tmp" "$NOTIF_FILE" 2>/dev/null || true
+  fi
 fi
 
 exit 0
