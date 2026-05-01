@@ -26,6 +26,7 @@ M.workspace_state = {}
 -- urgency rank — higher = more urgent. Used when collapsing multiple
 -- sessions in the same workspace down to a single dot color.
 M.urgency = {
+  ["error"]           = 4,
   ["needs-attention"] = 3,
   ["running"]         = 2,
   ["idle"]            = 1,

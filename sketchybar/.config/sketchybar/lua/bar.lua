@@ -21,6 +21,7 @@ Colors = {
   red         = 0xffff5f59,  -- regular red (urgent error tone)
   yellow      = 0xffd0bc00,  -- regular yellow (caution)
   green       = 0xff44bc44,  -- regular green (active)
+  magenta     = 0xffb6a0ff,  -- magenta-cooler (lavender accent)
   -- Pill / popup chrome — tinted dark elevations of the bg.
   pill_bg     = 0xff1d2235,  -- bg-dim equivalent (slight elevation)
   pill_border = 0xff4a4f69,  -- bright black, subtle outline
@@ -34,6 +35,12 @@ Fonts = {
   bold    = "PragmataPro Mono Liga:Bold:15.0",
   dot     = "PragmataPro Mono Liga:Bold:13.0",
   icon    = "FiraCode Nerd Font Mono:Regular:23.0",
+  -- PragmataPro variant whose U+E861 glyph is the Anthropic Claude
+  -- mark from Font Awesome 7 Brands (built by
+  -- scripts/build-claude-font.py). Used for popup labels so a single
+  -- font covers project text, circled-digit workspaces, and the
+  -- claude icon.
+  popup   = "PragmataPro Mono Liga Claude:Regular:15.0",
   small   = "PragmataPro Mono Liga:Bold:11.0",
 }
 
