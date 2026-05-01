@@ -64,6 +64,32 @@ test_helper_clear_removes_session_json() {
   assert_no_file "$XDG_STATE_HOME/sketchybar/agents/3"
 }
 
+test_helper_writes_helper_log() {
+  echo '{"session_id":"abcd1234efgh","cwd":"/Users/me/p"}' \
+    | "$PLUGIN_BIN/sketchybar-set-state" running
+
+  local log="$XDG_STATE_HOME/sketchybar/helper.log"
+  assert_file "$log"
+
+  # Last line is the invocation we just made: state=running, action=write,
+  # sid8=abcd1234, ws=3 (mock default), cwd=/Users/me/p.
+  local line
+  line="$(tail -n 1 "$log")"
+  case "$line" in
+    *$'\t'running$'\t'write$'\t'abcd1234$'\t'3$'\t'/Users/me/p) ;;
+    *) fail "log line did not match expected fields: $line" ;;
+  esac
+
+  echo '{"session_id":"abcd1234efgh"}' \
+    | "$PLUGIN_BIN/sketchybar-set-state" clear
+
+  line="$(tail -n 1 "$log")"
+  case "$line" in
+    *$'\t'clear$'\t'clear$'\t'abcd1234$'\t'3$'\t'*) ;;
+    *) fail "clear log line did not match expected fields: $line" ;;
+  esac
+}
+
 test_renderer_zero_sessions_dim_zero() {
   "$PLUGIN_BIN/claude-render-sessions"
 
@@ -211,6 +237,7 @@ TESTS=(
   test_helper_writes_json_with_cwd
   test_helper_purges_legacy_text_pins
   test_helper_clear_removes_session_json
+  test_helper_writes_helper_log
   test_renderer_zero_sessions_dim_zero
   test_renderer_aggregate_state_yellow
   test_renderer_aggregate_state_green

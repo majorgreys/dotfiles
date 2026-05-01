@@ -17,6 +17,14 @@
 #   5. On state=clear, remove both the per-workspace and per-session
 #      records.
 #   6. Trigger claude_agent_state_change so subscribers re-render.
+#
+# Logging:
+#   One tab-separated line per invocation appended to
+#   $STATE_ROOT/helper.log:
+#     <ISO time>  <state>  <action>  <sid8>  <ws>  <cwd>
+#   `action` is one of: write | clear | skip-no-ws. `sid8` is the first
+#   8 chars of session_id, or "-" if not provided. Tail with:
+#     tail -f ~/.local/state/sketchybar/helper.log
 
 set -euo pipefail
 
@@ -25,7 +33,20 @@ STATE="${1:?state required: running|needs-attention|idle|clear}"
 STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/sketchybar"
 SESS_DIR="$STATE_ROOT/sessions"
 WS_DIR="$STATE_ROOT/agents"
+LOG_FILE="$STATE_ROOT/helper.log"
 mkdir -p "$SESS_DIR" "$WS_DIR"
+
+log() {
+  # action=$1 sid8=$2 ws=$3 cwd=$4
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S')" \
+    "$STATE" \
+    "${1:--}" \
+    "${2:--}" \
+    "${3:--}" \
+    "${4:--}" \
+    >> "$LOG_FILE" 2>/dev/null || true
+}
 
 # Drop legacy bare-text pin files from earlier versions of this helper.
 # Runs every invocation — idempotent no-op after the first cleanup.
@@ -51,6 +72,7 @@ if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
   SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
   CWD=$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
 fi
+SID8="${SESSION_ID:0:8}"
 
 # Resolve the pinned workspace for this session.
 WS=""
@@ -64,11 +86,15 @@ fi
 if [ -z "$WS" ]; then
   WS=$(aerospace list-workspaces --focused 2>/dev/null || true)
 fi
-[ -z "$WS" ] && exit 0
+if [ -z "$WS" ]; then
+  log "skip-no-ws" "$SID8" "" "$CWD"
+  exit 0
+fi
 
 if [ "$STATE" = "clear" ]; then
   rm -f "$WS_DIR/$WS"
   [ -n "$SESS_FILE" ] && rm -f "$SESS_FILE"
+  log "clear" "$SID8" "$WS" "$CWD"
 else
   printf '%s' "$STATE" > "$WS_DIR/$WS"
 
@@ -85,6 +111,7 @@ else
       > "$TMP"
     mv "$TMP" "$SESS_FILE"
   fi
+  log "write" "$SID8" "$WS" "$CWD"
 fi
 
 sketchybar --trigger claude_agent_state_change >/dev/null 2>&1 || true
