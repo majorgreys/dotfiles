@@ -55,20 +55,30 @@ if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
 fi
 SID8="${SESSION_ID:0:8}"
 
-# Resolve the pinned workspace for this session.
+# Resolve the pinned workspace and window-id for this session. Pin
+# file is two-line bare text:
+#   line 1: aerospace workspace number
+#   line 2: aerospace window-id (so click-to-focus targets the exact
+#           terminal window, not just the workspace it lives on)
+# A one-line legacy pin (workspace only) is upgraded in place.
 WS=""
+WIN_ID=""
 PIN_FILE=""
 if [ -n "$SESSION_ID" ]; then
   PIN_FILE="$PIN_DIR/$SESSION_ID.ws"
   if [ -s "$PIN_FILE" ]; then
-    WS=$(< "$PIN_FILE")
+    WS=$(sed -n '1p' "$PIN_FILE")
+    WIN_ID=$(sed -n '2p' "$PIN_FILE")
   fi
 fi
 if [ -z "$WS" ]; then
   WS=$(aerospace list-workspaces --focused 2>/dev/null || true)
-  if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ]; then
-    printf '%s' "$WS" > "$PIN_FILE"
-  fi
+fi
+if [ -z "$WIN_ID" ]; then
+  WIN_ID=$(aerospace list-windows --focused --format '%{window-id}' 2>/dev/null || true)
+fi
+if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ]; then
+  printf '%s\n%s\n' "$WS" "$WIN_ID" > "$PIN_FILE"
 fi
 
 log() {
@@ -102,6 +112,7 @@ else
     "session_id=$SESSION_ID" \
     "state=$STATE" \
     "workspace=$WS" \
+    "window_id=$WIN_ID" \
     "cwd=$CWD" \
     >/dev/null 2>&1 || true
 fi
