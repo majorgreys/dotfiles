@@ -24,7 +24,7 @@ Colors = {
   -- Pill / popup chrome — tinted dark elevations of the bg.
   pill_bg     = 0xff1d2235,  -- bg-dim equivalent (slight elevation)
   pill_border = 0xff4a4f69,  -- bright black, subtle outline
-  popup_bg    = 0xff2a3148,  -- bg-alt (clearly elevated above the bar)
+  popup_bg    = 0xff13162a,  -- barely-elevated; border carries the edge
   popup_border= 0xff4a4f69,
   transparent = 0x00000000,
 }
