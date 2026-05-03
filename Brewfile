@@ -82,6 +82,7 @@ brew "felixkratz/formulae/sketchybar"
 # Fonts
 cask "font-fira-code"
 cask "font-fira-code-nerd-font"
+cask "font-fontawesome"
 cask "font-jetbrains-mono"
 cask "font-jetbrains-mono-nerd-font"
 cask "font-symbols-only-nerd-font"

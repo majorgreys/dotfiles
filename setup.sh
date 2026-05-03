@@ -231,6 +231,33 @@ else
     print_success "SbarLua already installed at $SBARLUA_SO"
 fi
 
+# ===================================
+# Build merged PragmataPro+Claude font for sketchybar popups
+# ===================================
+# scripts/build-claude-font.py copies the Anthropic Claude glyph from
+# Font Awesome 7 Brands (U+E861) into PragmataPro Mono Liga, producing
+# "PragmataPro Mono Liga Claude" used by claude_status popup labels.
+# Skipped silently when sources are missing — PragmataPro is commercial,
+# the user must drop the .otf into ~/Library/Fonts/ themselves. Font
+# Awesome comes from the font-fontawesome cask in Brewfile.
+CLAUDE_FONT="$HOME/Library/Fonts/PragmataProMonoLigaClaude-Regular.otf"
+PRAG_OTF="$HOME/Library/Fonts/PragmataPro_Mono_R_liga_0903.otf"
+FA_OTF="$HOME/Library/Fonts/Font Awesome 7 Brands-Regular-400.otf"
+if [[ ! -f "$CLAUDE_FONT" ]]; then
+    if [[ -f "$PRAG_OTF" && -f "$FA_OTF" ]]; then
+        print_warning "Building PragmataPro Mono Liga Claude font..."
+        if "$DOTFILES_DIR/sketchybar/.config/sketchybar/scripts/build-claude-font.py" >/dev/null; then
+            print_success "Claude font built at $CLAUDE_FONT"
+        else
+            print_warning "Claude font build failed — sketchybar popup glyphs will fall back"
+        fi
+    else
+        print_warning "Skipping Claude font build — missing $([[ ! -f "$PRAG_OTF" ]] && echo "PragmataPro_Mono_R_liga_0903.otf ")$([[ ! -f "$FA_OTF" ]] && echo "Font Awesome 7 Brands-Regular-400.otf")in ~/Library/Fonts/"
+    fi
+else
+    print_success "Claude font already built at $CLAUDE_FONT"
+fi
+
 # Setup fisher and fish plugins
 if command_exists fish; then
     print_warning "Setting up fisher and fish plugins..."
