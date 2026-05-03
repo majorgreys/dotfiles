@@ -6,7 +6,7 @@ require("bar")
 
 local battery = sbar.add("item", "battery", {
   position      = "right",
-  icon          = { font = Fonts.icon },
+  icon          = { font = "FiraCode Nerd Font Mono:Regular:16.0" },
   label         = { drawing = false },
   update_freq   = 60,
   padding_left  = 8,
