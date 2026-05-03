@@ -2,6 +2,7 @@
 
 local sbar = require("sketchybar")
 require("bar")
+local tooltip = require("tooltip")
 
 local volume = sbar.add("item", "volume", {
   position      = "right",
@@ -10,6 +11,8 @@ local volume = sbar.add("item", "volume", {
   padding_left  = 8,
   padding_right = 8,
 })
+
+local set_tooltip = tooltip.attach(volume, { initial = "Volume: ?" })
 
 local function pick(vol, muted)
   if muted or vol == 0 then return "󰝟", Colors.dim end
@@ -21,6 +24,11 @@ end
 local function paint(vol, muted)
   local icon, color = pick(vol, muted)
   volume:set({ icon = { string = icon, color = color } })
+  if muted then
+    set_tooltip("Volume: muted")
+  else
+    set_tooltip(string.format("Volume: %d%%", vol))
+  end
 end
 
 local function query_and_repaint(env)

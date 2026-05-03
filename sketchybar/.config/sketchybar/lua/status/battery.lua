@@ -3,6 +3,7 @@
 
 local sbar = require("sketchybar")
 require("bar")
+local tooltip = require("tooltip")
 
 local battery = sbar.add("item", "battery", {
   position      = "right",
@@ -13,6 +14,8 @@ local battery = sbar.add("item", "battery", {
   padding_right = 8,
 })
 
+local set_tooltip = tooltip.attach(battery, { initial = "Battery: ?" })
+
 local function pick(percent, charging)
   if charging then return "󰂄", Colors.green end
   if percent <= 20 then return "󰂃", Colors.red end
@@ -21,20 +24,34 @@ local function pick(percent, charging)
   return "󰁹", Colors.fg
 end
 
+-- pmset prints either "<n>:<m> remaining" or "(no estimate)"; we only
+-- show the time when it has converged to a real estimate.
+local function format_tooltip(percent, charging, out)
+  local prefix = charging and "Charging" or "On battery"
+  local time = out:match("(%d+:%d%d) remaining")
+  if time then
+    return string.format("%s: %d%% (%s)", prefix, percent, time)
+  end
+  return string.format("%s: %d%%", prefix, percent)
+end
+
 local function repaint()
   sbar.exec("pmset -g batt", function(out)
     if not out or out == "" then
       battery:set({ icon = { string = "󱉝", color = Colors.dim } })
+      set_tooltip("Battery: unavailable")
       return
     end
     local percent = tonumber(out:match("(%d+)%%"))
     local charging = out:find("AC Power", 1, true) ~= nil
     if not percent then
       battery:set({ icon = { string = "󱉝", color = Colors.dim } })
+      set_tooltip("Battery: unavailable")
       return
     end
     local icon, color = pick(percent, charging)
     battery:set({ icon = { string = icon, color = color } })
+    set_tooltip(format_tooltip(percent, charging, out))
   end)
 end
 
