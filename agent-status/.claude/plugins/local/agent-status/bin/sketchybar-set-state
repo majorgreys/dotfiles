@@ -32,12 +32,15 @@ PIN_DIR="$STATE_ROOT/sessions"
 LOG_FILE="$STATE_ROOT/helper.log"
 mkdir -p "$PIN_DIR"
 
-# Drop legacy .json records from the pre-Lua iteration of this helper.
-# Idempotent no-op after first cleanup. Files we still keep: <id>.ws.
+# Drop legacy .ws pin files (the pre-restore-on-startup iteration of
+# this helper). Files we now keep: <id>.json — single-line JSON with
+# the full session record so the Lua side can repopulate its in-memory
+# state on sketchybar reload without waiting for each session to fire
+# its next hook.
 for f in "$PIN_DIR"/*; do
   [ -e "$f" ] || continue
   case "$f" in
-    *.ws) ;;
+    *.json) ;;
     *) rm -f "$f" ;;
   esac
 done
@@ -53,8 +56,12 @@ HOOK_EVENT=""
 NOTIF_MSG=""
 # Claude inherits the launching shell's env, so $ZMX_SESSION (e.g.
 # "d.dotfiles.0") is visible here when claude was started inside a zmx
-# session. Empty otherwise.
+# session. Empty otherwise. ZMX_SESSION_PREFIX is the auto-prefix the
+# user's `zmx` CLI applies to short names — we strip it from
+# ZMX_SESSION to get the form `zmx a` accepts.
 ZMX_SESSION="${ZMX_SESSION:-}"
+ZMX_SESSION_PREFIX="${ZMX_SESSION_PREFIX:-}"
+ZMX_SHORT="${ZMX_SESSION#$ZMX_SESSION_PREFIX}"
 if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
   SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
   CWD=$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
@@ -66,11 +73,8 @@ fi
 SID8="${SESSION_ID:0:8}"
 
 # Resolve the pinned workspace and window-id for this session. Pin
-# file is two-line bare text:
-#   line 1: aerospace workspace number
-#   line 2: aerospace window-id (so click-to-focus targets the exact
-#           terminal window, not just the workspace it lives on)
-# A one-line legacy pin (workspace only) is upgraded in place.
+# file is a single-line JSON record carrying every field the Lua side
+# needs to repopulate state on sketchybar reload.
 #
 # The window-id is the source of truth — if we have a cached id, ask
 # aerospace where that window currently lives and overwrite the pinned
@@ -80,9 +84,9 @@ WS=""
 WIN_ID=""
 PIN_FILE=""
 if [ -n "$SESSION_ID" ]; then
-  PIN_FILE="$PIN_DIR/$SESSION_ID.ws"
-  if [ -s "$PIN_FILE" ]; then
-    WIN_ID=$(sed -n '2p' "$PIN_FILE")
+  PIN_FILE="$PIN_DIR/$SESSION_ID.json"
+  if [ -s "$PIN_FILE" ] && command -v jq >/dev/null 2>&1; then
+    WIN_ID=$(jq -r '.window_id // empty' "$PIN_FILE" 2>/dev/null || true)
   fi
 fi
 
@@ -102,8 +106,20 @@ fi
 if [ -z "$WIN_ID" ]; then
   WIN_ID=$(aerospace list-windows --focused --format '%{window-id}' 2>/dev/null || true)
 fi
-if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ]; then
-  printf '%s\n%s\n' "$WS" "$WIN_ID" > "$PIN_FILE"
+if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ] \
+    && command -v jq >/dev/null 2>&1; then
+  NOW=$(date +%s)
+  jq -nc \
+    --arg sid "$SESSION_ID" \
+    --arg ws  "$WS" \
+    --arg win "$WIN_ID" \
+    --arg st  "$STATE" \
+    --arg cwd "$CWD" \
+    --arg zmx "$ZMX_SESSION" \
+    --arg zsh "$ZMX_SHORT" \
+    --argjson ts "$NOW" \
+    '{session_id:$sid, workspace:$ws, window_id:$win, state:$st, cwd:$cwd, zmx_session:$zmx, zmx_short:$zsh, updated_at:$ts}' \
+    > "$PIN_FILE" 2>/dev/null || true
 fi
 
 log() {
@@ -140,6 +156,7 @@ else
     "window_id=$WIN_ID" \
     "cwd=$CWD" \
     "zmx_session=$ZMX_SESSION" \
+    "zmx_short=$ZMX_SHORT" \
     >/dev/null 2>&1 || true
 fi
 
