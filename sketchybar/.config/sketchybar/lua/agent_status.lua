@@ -81,21 +81,27 @@ local parent = sbar.add("item", "agent_sessions", {
   },
 })
 
--- Bracket renders an underline beneath the three items, matching the
--- workspace-pill focus-bar style (2px tall, offset below the text).
--- Static magenta-cooler accent — distinct from the workspace blue
--- focus underline while staying in the Modus Vivendi Tinted palette.
-sbar.add("bracket", "agent_sessions_pill", {
+-- Bracket renders the pill chrome. Two states:
+--   rest:  2px magenta-cooler underline (workspace-pill focus-bar style)
+--   hover: full-height fill in popup_bg so the pill visually merges
+--          with the popover that's about to open
+local PILL_REST_BG = {
+  color         = Colors.magenta,
+  corner_radius = 0,
+  height        = 2,
+  y_offset      = -14,
+  border_width  = 0,
+}
+local PILL_HOVER_BG = {
+  color         = Colors.popup_bg,
+  corner_radius = 6,
+  height        = 28,
+  y_offset      = 0,
+  border_width  = 0,
+}
+local pill = sbar.add("bracket", "agent_sessions_pill", {
   parent.name, status_dot.name, count_item.name,
-}, {
-  background = {
-    color         = Colors.magenta,
-    corner_radius = 0,
-    height        = 2,
-    y_offset      = -14,
-    border_width  = 0,
-  },
-})
+}, { background = PILL_REST_BG })
 
 -- Track current popup children so we can wipe them cleanly. Sketchybar
 -- has no "remove all from popup" primitive; we keep the names ourselves.
@@ -129,17 +135,9 @@ local function schedule_close()
   end)
 end
 
--- Fixed pixel width for every popup row so the popup doesn't jitter
--- as agents come and go. POPUP_WIDTH and TARGET_LABEL_CHARS are tuned
--- in lockstep so the right-justified workspace number sits flush
--- against the inside edge of the popup.
-local POPUP_WIDTH = 260
-local TARGET_LABEL_CHARS = 22
-
 local function add_popup_item(name, props, opts)
   opts = opts or {}
   table.insert(popup_children, name)
-  props.width = props.width or POPUP_WIDTH
   local item = sbar.add("item", name, props)
   -- Subscribing every popup child means cursor hovering anywhere in
   -- the popup keeps it open; leaving the last child schedules a close.
@@ -268,12 +266,47 @@ local function rebuild_popup()
 
   for _, entry in ipairs(sorted_sessions()) do
     local s = entry.session
-    local ws_str = tostring(s.workspace)
-    local prefix = "\u{E861}  " .. pad(row_name(s), max_name)
-    local pad_count = math.max(2, TARGET_LABEL_CHARS - utf8.len(prefix) - utf8.len(ws_str))
-    local label = prefix .. string.rep(" ", pad_count) .. ws_str
+    local zmx = s.zmx_session or ""
+    local detached = zmx ~= "" and not zmx_attached[zmx]
+
+    -- Detached sessions have no terminal window, so the workspace
+    -- column is meaningless; render an em-dash instead. Click opens
+    -- a fresh ghostty window and re-attaches to the persisted zmx
+    -- session on the current desktop.
+    local right_col = detached and "\u{2014}" or tostring(s.workspace)
+    local label = "\u{E861}  " .. pad(row_name(s), max_name) .. "    " .. right_col
     local short = entry.id:sub(1, 8)
     local child = "agent_sessions." .. short
+
+    local click_script
+    if detached then
+      -- Mirrors `wft term`'s ghostty invocation: --window-inherit-working-directory=false
+      -- avoids a duplicate default window. zmx takes the prefix-stripped
+      -- name (`smm.0`, not `d.smm.0`) — the prefix is auto-applied from
+      -- $ZMX_SESSION_PREFIX, which login won't carry, so we pass the
+      -- short form. Absolute zmx path because login's PATH doesn't
+      -- include /opt/homebrew/bin.
+      -- Helper now writes zmx_short directly. For pins from older helper
+      -- versions, strip up to the first dot as a heuristic — matches
+      -- the "<prefix>.<name>" convention zmx uses (e.g. "d.smm.0" →
+      -- "smm.0"). Refreshes properly on next hook fire.
+      local zmx_arg = s.zmx_short
+      if not zmx_arg or zmx_arg == "" then
+        zmx_arg = zmx:match("^[^.]+%.(.+)$") or zmx
+      end
+      click_script = string.format(
+        "open -na Ghostty.app --args --window-inherit-working-directory=false "
+        .. "-e /opt/homebrew/bin/zmx a %s",
+        zmx_arg
+      ) .. " && sketchybar --set agent_sessions popup.drawing=off"
+    elseif s.window_id and s.window_id ~= "" then
+      click_script = "aerospace focus --window-id " .. s.window_id
+        .. " && sketchybar --set agent_sessions popup.drawing=off"
+    else
+      click_script = "aerospace workspace " .. s.workspace
+        .. " && sketchybar --set agent_sessions popup.drawing=off"
+    end
+
     add_popup_item(child, {
       position = "popup." .. parent.name,
       icon = {
@@ -290,13 +323,7 @@ local function rebuild_popup()
         padding_left  = 18,
         padding_right = 4,
       },
-      -- Prefer focusing the exact aerospace window for this session;
-      -- fall back to a workspace switch if window-id wasn't captured
-      -- (e.g., a session pinned by an older helper version).
-      click_script = (s.window_id and s.window_id ~= ""
-        and ("aerospace focus --window-id " .. s.window_id)
-        or  ("aerospace workspace " .. s.workspace))
-        .. " && sketchybar --set agent_sessions popup.drawing=off",
+      click_script = click_script,
     }, { highlightable = true })
   end
 
@@ -351,6 +378,51 @@ local function repaint_parent()
   status_dot:set({ icon = { color = aggregate_color() } })
 end
 
+-- Pulse loop for popup rows whose session is in `running` state. The
+-- dot icon alternates between full state color and dim_dark so the row
+-- visibly "breathes" while the agent is working. Loop runs only while
+-- at least one running session exists; tick checks state.sessions
+-- on every iteration so dynamic state changes are reflected without
+-- a separate restart path.
+local PULSE_INTERVAL_S = 0.7
+local pulse_alive = false
+
+local function any_running()
+  for _, s in pairs(state.sessions) do
+    if s.state == "running" then return true end
+  end
+  return false
+end
+
+local function paint_running_rows(on)
+  for id, s in pairs(state.sessions) do
+    if s.state == "running" then
+      local short = id:sub(1, 8)
+      sbar.set("agent_sessions." .. short, {
+        icon = { color = on and STATE_COLORS.running or Colors.dim_dark },
+      })
+    end
+  end
+end
+
+local function start_pulse_if_needed()
+  if pulse_alive or not any_running() then return end
+  pulse_alive = true
+  local on = true
+
+  local function tick()
+    if not any_running() then
+      pulse_alive = false
+      return
+    end
+    on = not on
+    paint_running_rows(on)
+    sbar.exec(string.format("sleep %.2f", PULSE_INTERVAL_S), tick)
+  end
+
+  tick()
+end
+
 -- Subscribe to the helper-fired event. env contains the kv args from
 -- `sketchybar --trigger agent_state_change action=write ...`.
 parent:subscribe("agent_state_change", function(env)
@@ -379,6 +451,7 @@ parent:subscribe("agent_state_change", function(env)
       state       = st,
       cwd         = cwd or "",
       zmx_session = env.zmx_session or "",
+      zmx_short   = env.zmx_short or "",
       updated_at  = os.time(),
     }
   else
@@ -396,6 +469,9 @@ parent:subscribe("agent_state_change", function(env)
     start_blink(STATE_COLORS[new_state] or Colors.dim_dark)
   end
 
+  -- Wake (or keep alive) the popup-row pulse for any running sessions.
+  start_pulse_if_needed()
+
   -- Workspace pills depend on state.workspace_state — fire their event
   -- so they re-paint with the new aggregate.
   sbar.trigger("aerospace_workspace_change")
@@ -406,22 +482,68 @@ for _, item in ipairs({ parent, status_dot, count_item }) do
     open_popup()
     -- User saw the pill — drop any active attention blink.
     settle_dot()
+    pill:set({ background = PILL_HOVER_BG })
   end)
-  item:subscribe("mouse.exited", schedule_close)
+  item:subscribe("mouse.exited", function()
+    schedule_close()
+    pill:set({ background = PILL_REST_BG })
+  end)
 end
 
 -- Remove any popup children left over from a prior run. Sketchybar's
 -- hotload preserves items across reloads, but our `popup_children`
 -- table starts empty, so old per-session items would otherwise become
--- orphans (rendered, but not tracked or rebuilt).
+-- orphans (rendered, but not tracked or rebuilt). After cleanup,
+-- restore state.sessions from on-disk pin files (written by the helper
+-- on every hook fire) so the popup shows the previously-known agents
+-- immediately after a sketchybar reload — rather than starting empty
+-- and waiting for each session to fire its next hook.
+local PIN_DIR = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state"))
+  .. "/sketchybar/sessions"
+
+local function restore_sessions()
+  local cmd = string.format(
+    "find %q -maxdepth 1 -name '*.json' -print0 2>/dev/null | "
+    .. "xargs -0 jq -r '[.session_id, (.workspace // \"\"), (.window_id // \"\"), "
+    .. "(.state // \"\"), (.cwd // \"\"), (.zmx_session // \"\"), "
+    .. "(.zmx_short // \"\"), ((.updated_at // 0)|tostring)] | @tsv' 2>/dev/null",
+    PIN_DIR
+  )
+  local handle = io.popen(cmd)
+  if not handle then return end
+  for line in handle:lines() do
+    local sid, ws, win, st, cwd, zmx, zsh, ts =
+      line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
+    if sid and sid ~= "" and ws ~= "" and st ~= "" then
+      state.sessions[sid] = {
+        workspace   = ws,
+        window_id   = win,
+        state       = st,
+        cwd         = cwd,
+        zmx_session = zmx,
+        zmx_short   = zsh,
+        updated_at  = tonumber(ts) or 0,
+      }
+    end
+  end
+  handle:close()
+end
+
 sbar.exec(
   [[sketchybar --query bar 2>/dev/null | jq -r '.items[]? | select(startswith("agent_sessions."))']],
   function(out)
     for name in out:gmatch("[^\n]+") do
       sbar.remove(name)
     end
+    restore_sessions()
+    recompute_workspace_state()
+    repaint_parent()
+    rebuild_popup()
+    start_pulse_if_needed()
+    sbar.trigger("aerospace_workspace_change")
   end
 )
 
--- Initial paint so the pill shows "0" dim grey on startup.
+-- Initial paint so the pill shows "0" dim grey before the async
+-- restore above completes.
 repaint_parent()
