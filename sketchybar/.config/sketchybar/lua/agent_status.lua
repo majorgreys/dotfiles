@@ -289,24 +289,29 @@ local function rebuild_popup()
 
     local click_script
     if detached then
-      -- Mirrors `wft term`'s ghostty invocation: --window-inherit-working-directory=false
-      -- avoids a duplicate default window. zmx takes the prefix-stripped
-      -- name (`smm.0`, not `d.smm.0`) — the prefix is auto-applied from
-      -- $ZMX_SESSION_PREFIX, which login won't carry, so we pass the
-      -- short form. Absolute zmx path because login's PATH doesn't
-      -- include /opt/homebrew/bin.
-      -- Helper now writes zmx_short directly. For pins from older helper
-      -- versions, strip up to the first dot as a heuristic — matches
-      -- the "<prefix>.<name>" convention zmx uses (e.g. "d.smm.0" →
-      -- "smm.0"). Refreshes properly on next hook fire.
+      -- Mirrors `wft term` / `ghostty::spawn_window`: open a fresh Ghostty
+      -- window attached to the session's zmx. Key flags:
+      --   --window-inherit-working-directory=false  so --working-directory wins
+      --   --working-directory=<cwd>                 land in the project dir
+      --   -e zmx attach <session>                   reattach to the persisted zmx
+      -- zmx_short is the prefix-stripped name (`smm.0`, not `d.smm.0`);
+      -- the shell spawned by `open` won't have $ZMX_SESSION_PREFIX so we
+      -- pass the short form. For older pins missing zmx_short, strip the
+      -- first dot-segment as a fallback.
       local zmx_arg = s.zmx_short
       if not zmx_arg or zmx_arg == "" then
         zmx_arg = zmx:match("^[^.]+%.(.+)$") or zmx
       end
+      local cwd = s.cwd ~= "" and s.cwd or os.getenv("HOME") or "/tmp"
+      -- Shell-escape cwd in case it contains spaces; click_script is
+      -- executed by sketchybar via /bin/sh -c.
+      local esc_cwd = cwd:gsub("'", "'\\''")
       click_script = string.format(
-        "open -na Ghostty.app --args --window-inherit-working-directory=false "
-        .. "-e /opt/homebrew/bin/zmx a %s",
-        zmx_arg
+        "open -n -a Ghostty --args"
+        .. " --window-inherit-working-directory=false"
+        .. " --working-directory='%s'"
+        .. " -e zmx attach %s",
+        esc_cwd, zmx_arg
       ) .. " && sketchybar --set agent_sessions popup.drawing=off"
     elseif s.window_id and s.window_id ~= "" then
       click_script = "aerospace focus --window-id " .. s.window_id
