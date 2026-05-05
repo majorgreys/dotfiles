@@ -27,6 +27,14 @@ local STATE_COLORS = {
   idle                = Colors.dim_dark,
 }
 
+-- Per-agent icon for popup rows. Claude uses the custom U+E861 glyph
+-- baked into the PragmataPro Claude font; pi uses Greek lowercase π.
+local AGENT_ICONS = {
+  pi    = "\u{03C0}",   -- π
+  claude = "\u{E861}",  -- Anthropic Claude mark
+}
+local DEFAULT_AGENT_ICON = AGENT_ICONS.claude
+
 -- Pill is a bracket of three items: robot icon, status dot, count.
 -- Splitting them lets each carry its own font/color and lets the dot
 -- sit between robot and count. The popup attaches to the robot item.
@@ -274,7 +282,8 @@ local function rebuild_popup()
     -- a fresh ghostty window and re-attaches to the persisted zmx
     -- session on the current desktop.
     local right_col = detached and "\u{2014}" or tostring(s.workspace)
-    local label = "\u{E861}  " .. pad(row_name(s), max_name) .. "    " .. right_col
+    local agent_icon = AGENT_ICONS[s.agent] or DEFAULT_AGENT_ICON
+    local label = agent_icon .. "  " .. pad(row_name(s), max_name) .. "    " .. right_col
     local short = entry.id:sub(1, 8)
     local child = "agent_sessions." .. short
 
@@ -452,6 +461,7 @@ parent:subscribe("agent_state_change", function(env)
       cwd         = cwd or "",
       zmx_session = env.zmx_session or "",
       zmx_short   = env.zmx_short or "",
+      agent       = env.agent or "",
       updated_at  = os.time(),
     }
   else
@@ -506,14 +516,14 @@ local function restore_sessions()
     "find %q -maxdepth 1 -name '*.json' -print0 2>/dev/null | "
     .. "xargs -0 jq -r '[.session_id, (.workspace // \"\"), (.window_id // \"\"), "
     .. "(.state // \"\"), (.cwd // \"\"), (.zmx_session // \"\"), "
-    .. "(.zmx_short // \"\"), ((.updated_at // 0)|tostring)] | @tsv' 2>/dev/null",
+    .. "(.zmx_short // \"\"), (.agent // \"\"), ((.updated_at // 0)|tostring)] | @tsv' 2>/dev/null",
     PIN_DIR
   )
   local handle = io.popen(cmd)
   if not handle then return end
   for line in handle:lines() do
-    local sid, ws, win, st, cwd, zmx, zsh, ts =
-      line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
+    local sid, ws, win, st, cwd, zmx, zsh, agent, ts =
+      line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
     if sid and sid ~= "" and ws ~= "" and st ~= "" then
       state.sessions[sid] = {
         workspace   = ws,
@@ -522,6 +532,7 @@ local function restore_sessions()
         cwd         = cwd,
         zmx_session = zmx,
         zmx_short   = zsh,
+        agent       = agent,
         updated_at  = tonumber(ts) or 0,
       }
     end
