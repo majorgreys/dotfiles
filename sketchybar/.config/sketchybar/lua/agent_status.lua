@@ -294,14 +294,10 @@ local function rebuild_popup()
       --   --window-inherit-working-directory=false  so --working-directory wins
       --   --working-directory=<cwd>                 land in the project dir
       --   -e zmx attach <session>                   reattach to the persisted zmx
-      -- zmx_short is the prefix-stripped name (`smm.0`, not `d.smm.0`);
-      -- the shell spawned by `open` won't have $ZMX_SESSION_PREFIX so we
-      -- pass the short form. For older pins missing zmx_short, strip the
-      -- first dot-segment as a fallback.
-      local zmx_arg = s.zmx_short
-      if not zmx_arg or zmx_arg == "" then
-        zmx_arg = zmx:match("^[^.]+%.(.+)$") or zmx
-      end
+      -- Use the FULL zmx session name (e.g. "d.dotfiles.0") because the
+      -- Ghostty login shell won't have $ZMX_SESSION_PREFIX set. Using the
+      -- short name would create a new empty session instead of reattaching.
+      local zmx_arg = zmx
       local cwd = s.cwd ~= "" and s.cwd or os.getenv("HOME") or "/tmp"
       -- Shell-escape cwd in case it contains spaces; click_script is
       -- executed by sketchybar via /bin/sh -c.
