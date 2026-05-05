@@ -54,6 +54,7 @@ SESSION_ID=""
 CWD=""
 HOOK_EVENT=""
 NOTIF_MSG=""
+AGENT=""
 # Claude inherits the launching shell's env, so $ZMX_SESSION (e.g.
 # "d.dotfiles.0") is visible here when claude was started inside a zmx
 # session. Empty otherwise. ZMX_SESSION_PREFIX is the auto-prefix the
@@ -66,6 +67,7 @@ if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
   SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
   CWD=$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
   HOOK_EVENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null || true)
+  AGENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.agent // empty' 2>/dev/null || true)
   if [ "$HOOK_EVENT" = "Notification" ]; then
     NOTIF_MSG=$(printf '%s' "$HOOK_INPUT" | jq -r '.message // empty' 2>/dev/null || true)
   fi
@@ -118,7 +120,8 @@ if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ] \
     --arg zmx "$ZMX_SESSION" \
     --arg zsh "$ZMX_SHORT" \
     --argjson ts "$NOW" \
-    '{session_id:$sid, workspace:$ws, window_id:$win, state:$st, cwd:$cwd, zmx_session:$zmx, zmx_short:$zsh, updated_at:$ts}' \
+    --arg agent "$AGENT" \
+    '{session_id:$sid, workspace:$ws, window_id:$win, state:$st, cwd:$cwd, zmx_session:$zmx, zmx_short:$zsh, agent:$agent, updated_at:$ts}' \
     > "$PIN_FILE" 2>/dev/null || true
 fi
 
@@ -157,6 +160,7 @@ else
     "cwd=$CWD" \
     "zmx_session=$ZMX_SESSION" \
     "zmx_short=$ZMX_SHORT" \
+    "agent=$AGENT" \
     >/dev/null 2>&1 || true
 fi
 
