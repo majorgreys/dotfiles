@@ -12,22 +12,31 @@ SbarLua-driven sketchybar config.
 
 ## Layout
 
+This package is **not stowed**. The directory itself is registered as a
+Claude Code marketplace; Claude resolves `${CLAUDE_PLUGIN_ROOT}` to the
+plugin tree in this repo.
+
 ```
-~/.dotfiles/agent-status/                           # stow package source
-├── .claude/plugins/local/agent-status/             # → ~/.claude/plugins/local/agent-status/
-│   ├── .claude-plugin/                              # plugin + marketplace manifest
-│   │   ├── marketplace.json                         # local marketplace (source.source: "directory")
+~/.dotfiles/agent-status/                           # marketplace root
+├── .claude-plugin/
+│   └── marketplace.json                             # one marketplace, one plugin
+├── plugins/agent-status/                            # the plugin tree
+│   ├── .claude-plugin/
 │   │   └── plugin.json                              # hooks (UserPromptSubmit, Stop, Notification, SessionEnd)
-│   └── bin/sketchybar-set-state                     # the canonical helper, on PATH when plugin enabled
-├── .local/bin/                                      # → ~/.local/bin/
-│   └── sketchybar-set-state                         # → ../../.claude/plugins/local/agent-status/bin/sketchybar-set-state
-├── tests/                                           # smoke tests (NOT stowed)
+│   └── bin/sketchybar-set-state                     # the canonical helper
+├── tests/                                           # smoke tests
 │   ├── smoke.sh
 │   └── test-helpers.sh
 ├── README.md
-├── install.sh                                       # marketplace add + plugin install
-└── uninstall.sh                                     # plugin uninstall + marketplace remove
+├── install.sh                                       # marketplace add + plugin install + ~/.local/bin alias
+└── uninstall.sh                                     # plugin uninstall + marketplace remove + alias rm
 ```
+
+`install.sh` also creates `~/.local/bin/sketchybar-set-state` as a
+symlink into the plugin tree, so manual nudging works without typing
+the full path. The Claude hooks invoke
+`${CLAUDE_PLUGIN_ROOT}/bin/sketchybar-set-state` directly and don't
+need the alias.
 
 The bar config lives in the sibling `sketchybar` stow package, written
 in Lua against [SbarLua](https://github.com/FelixKratz/SbarLua):
@@ -50,7 +59,6 @@ in Lua against [SbarLua](https://github.com/FelixKratz/SbarLua):
 ## Install
 
 ```bash
-cd ~/.dotfiles && stow agent-status
 ~/.dotfiles/agent-status/install.sh
 ```
 
@@ -63,10 +71,10 @@ Prereqs (handled by the dotfiles' `setup.sh`):
 
 `install.sh`:
 
-1. Verifies `~/.claude/plugins/local/agent-status` exists (the stowed
-   plugin tree).
-2. Registers it as a Claude Code marketplace (`directory` source).
-3. Installs the bundled plugin (`agent-status@agent-status`).
+1. Registers `~/.dotfiles/agent-status` as a Claude Code marketplace
+   (`agent-status-marketplace`).
+2. Installs the bundled plugin (`agent-status@agent-status-marketplace`).
+3. Symlinks `~/.local/bin/sketchybar-set-state` to the in-tree helper.
 4. Reloads sketchybar.
 
 Idempotent — safe to re-run after edits. Hooks come from the plugin's
@@ -77,14 +85,13 @@ After editing the plugin source in dotfiles, refresh Claude Code's
 loaded copy with:
 
 ```bash
-claude plugin marketplace update agent-status
+claude plugin marketplace update agent-status-marketplace
 ```
 
 ## Uninstall
 
 ```bash
 ~/.dotfiles/agent-status/uninstall.sh
-cd ~/.dotfiles && stow -D agent-status
 ```
 
 ## Push protocol
