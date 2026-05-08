@@ -9,7 +9,7 @@
 set -euo pipefail
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$TESTS_DIR/../.claude/plugins/local/agent-status"
+PLUGIN_ROOT="$TESTS_DIR/../plugins/agent-status"
 PLUGIN_BIN="$PLUGIN_ROOT/bin"
 
 setup() {
