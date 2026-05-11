@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# migrate-pins — backfill the `tool` and `agent` fields on existing
+# session pin files written before the multi-tool refactor.
+#
+# Pre-refactor pin files looked like:
+#   { session_id, workspace, window_id, state, cwd, zmx_session,
+#     zmx_short, agent: "", updated_at }
+# The TUI displays "?" for any record with empty/missing agent and tool.
+# This script sets agent and tool to "claude" wherever they're missing
+# or empty, leaving everything else untouched.
+#
+# Idempotent — files already carrying tool: "pi" / agent: "pi" stay
+# as-is. Records with state=clear are skipped (the helper deletes them
+# directly; nothing to migrate).
+#
+# Usage:
+#   migrate-pins
+#   STATE_DIR=/custom/path migrate-pins
+
+set -euo pipefail
+
+STATE_DIR="${STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/sketchybar/sessions}"
+
+if [ ! -d "$STATE_DIR" ]; then
+  echo "migrate-pins: no pin dir at $STATE_DIR — nothing to do"
+  exit 0
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "migrate-pins: jq required" >&2
+  exit 127
+fi
+
+migrated=0
+skipped=0
+for f in "$STATE_DIR"/*.json; do
+  [ -e "$f" ] || continue
+  if ! jq -e . "$f" >/dev/null 2>&1; then
+    echo "skip (invalid json): $(basename "$f")"
+    skipped=$((skipped + 1))
+    continue
+  fi
+  # Only migrate records missing both fields, or with empty agent.
+  needs_migration=$(jq -r '
+    if (.tool // "") == "" or (.agent // "") == ""
+    then "yes" else "no" end
+  ' "$f")
+  if [ "$needs_migration" != "yes" ]; then
+    skipped=$((skipped + 1))
+    continue
+  fi
+  jq -c '
+    . as $orig
+    | $orig
+      + (if (($orig.tool // "") == "") then {tool: "claude"} else {} end)
+      + (if (($orig.agent // "") == "") then {agent: "claude"} else {} end)
+  ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  migrated=$((migrated + 1))
+  echo "migrated: $(basename "$f")"
+done
+
+echo ""
+echo "done: migrated=$migrated  skipped=$skipped"

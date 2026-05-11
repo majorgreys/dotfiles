@@ -7,6 +7,10 @@ set -euo pipefail
 MARKETPLACE_NAME="agent-status-marketplace"
 PLUGIN_NAME="agent-status"
 USER_BIN_LINK="$HOME/.local/bin/sketchybar-set-state"
+PI_EXT_DST="$HOME/.pi/agent/extensions/sketchybar-agent-status.ts"
+CLAUDE_Z_DST="$HOME/.local/bin/claude-z"
+PI_Z_DST="$HOME/.local/bin/pi-z"
+MIGRATE_DST="$HOME/.local/bin/migrate-pins"
 
 if command -v claude >/dev/null 2>&1; then
   if claude plugin list 2>/dev/null | grep -q "${PLUGIN_NAME}@${MARKETPLACE_NAME}"; then
@@ -19,10 +23,12 @@ if command -v claude >/dev/null 2>&1; then
   fi
 fi
 
-if [ -L "$USER_BIN_LINK" ]; then
-  rm -f "$USER_BIN_LINK"
-  echo "unlinked $USER_BIN_LINK"
-fi
+for link in "$USER_BIN_LINK" "$PI_EXT_DST" "$CLAUDE_Z_DST" "$PI_Z_DST" "$MIGRATE_DST"; do
+  if [ -L "$link" ]; then
+    rm -f "$link"
+    echo "unlinked $link"
+  fi
+done
 
 # Clear any leftover state files.
 rm -rf "$HOME/.local/state/sketchybar/agents/"* "$HOME/.local/state/sketchybar/sessions/"* 2>/dev/null

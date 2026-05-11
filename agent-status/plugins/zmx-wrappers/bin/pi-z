@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# pi-z — launch pi inside a zmx session so agent-panel can attach.
+#
+# Mirror of claude-z. See that file for design notes.
+#
+# Usage:
+#   pi-z [-n NAME] [pi args...]
+#
+# Default session name: pi.<basename-of-cwd>.<rand4>
+
+set -euo pipefail
+
+NAME=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n|--name)
+      NAME="${2:?--name requires a value}"
+      shift 2
+      ;;
+    -n=*|--name=*)
+      NAME="${1#*=}"
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [ -z "$NAME" ]; then
+  CWD_BASE="$(basename "$PWD" 2>/dev/null || echo proj)"
+  RAND="$(od -An -N2 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' | head -c4)"
+  NAME="pi.${CWD_BASE}.${RAND}"
+fi
+
+if ! command -v zmx >/dev/null 2>&1; then
+  echo "pi-z: zmx not found in PATH" >&2
+  exit 127
+fi
+if ! command -v pi >/dev/null 2>&1; then
+  echo "pi-z: pi not found in PATH" >&2
+  exit 127
+fi
+
+# Don't pass `--`: zmx attach takes the rest of argv as the command
+# verbatim and would try to exec `--`. See claude-z for the writeup.
+exec zmx attach "$NAME" pi "$@"
