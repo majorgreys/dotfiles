@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# claude-z — launch claude inside a zmx session so agent-panel can attach.
+#
+# Usage:
+#   claude-z [-n NAME] [claude args...]
+#
+# If -n NAME is omitted, the session is named
+#   claude.<basename-of-cwd>.<rand4>
+# (e.g. claude.dotfiles.a3f7) so the panel groups things sensibly. The
+# zmx session name is exported into the child env via $ZMX_SESSION,
+# which the agent-status claude plugin reads on every hook fire and
+# stamps into the session pin file.
+#
+# zmx attach is upsert-style, so re-running with the same -n NAME
+# re-attaches an existing session; this is intentional for "reopen the
+# panel row" workflows.
+#
+# Exit codes pass through from claude. Detaching from zmx (ctrl+\\)
+# leaves claude running; rerun this with the same -n NAME, or click
+# the panel row, to reattach.
+
+set -euo pipefail
+
+NAME=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -n|--name)
+      NAME="${2:?--name requires a value}"
+      shift 2
+      ;;
+    -n=*|--name=*)
+      NAME="${1#*=}"
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [ -z "$NAME" ]; then
+  CWD_BASE="$(basename "$PWD" 2>/dev/null || echo proj)"
+  # 4 hex chars from /dev/urandom — collision-resistant enough for one user.
+  RAND="$(od -An -N2 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' | head -c4)"
+  NAME="claude.${CWD_BASE}.${RAND}"
+fi
+
+if ! command -v zmx >/dev/null 2>&1; then
+  echo "claude-z: zmx not found in PATH" >&2
+  exit 127
+fi
+if ! command -v claude >/dev/null 2>&1; then
+  echo "claude-z: claude not found in PATH" >&2
+  exit 127
+fi
+
+# zmx attach <name> [command...]: do NOT pass `--` as a separator;
+# zmx takes everything after the name as the command verbatim, so a
+# literal `--` would become argv[0] and fail to exec. (See zmx
+# main.zig:127 and the `d.--fish` / `d.--help` zombie sessions.)
+exec zmx attach "$NAME" claude "$@"
