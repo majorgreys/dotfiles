@@ -13,12 +13,14 @@ exec-on-workspace-change = ['/bin/bash', '-c',
 ]
 
 # No gaps — matching sway's default_border pixel 3 / hide_edge_borders smart
+# outer.top reserves space for sketchybar (height = 38 in bar.lua) so
+# tiled windows don't overlap the bar.
 [gaps]
     inner.horizontal = 0
     inner.vertical = 0
     outer.left = 0
     outer.bottom = 0
-    outer.top = 0
+    outer.top = 38
     outer.right = 0
 
 [key-mapping]
