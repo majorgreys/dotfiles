@@ -46,6 +46,12 @@ local count_item = sbar.add("item", "agent_sessions_count", {
   },
 })
 
+-- The parent pill (robot icon + count) doubles as the trigger for the
+-- overflow popup. Hovering anywhere on the parent or count_item opens
+-- a vertical dropdown listing every session that isn't shown inline
+-- (idle, detached, stale needs-attention). MacBooks with a camera
+-- notch have limited horizontal bar real estate; the popup keeps the
+-- full list available without claiming inline space.
 local parent = sbar.add("item", "agent_sessions", {
   position = "right",
   icon = {
@@ -56,27 +62,6 @@ local parent = sbar.add("item", "agent_sessions", {
     padding_right = 6,
   },
   label = { string = "" },
-})
-
--- Overflow pill sits to the left of the parent (added after `parent`,
--- so position=right prepend semantics put it left). It holds a
--- vertical popup listing all sessions that *aren't* shown inline
--- (idle, detached, stale needs-attention). Label is "+N" — N matches
--- the popup item count. `drawing=off` when there's nothing to overflow.
--- MacBooks with a camera notch have limited horizontal real estate;
--- filtering inline pills to only running + attached-needs-attention
--- keeps the bar from running into the notch.
-local overflow_item = sbar.add("item", "agent_sessions_overflow", {
-  position = "right",
-  drawing  = "off",
-  icon     = { drawing = false },
-  label = {
-    string        = "",
-    font          = Fonts.popup,
-    color         = Colors.dim,
-    padding_left  = 6,
-    padding_right = 10,
-  },
   popup = {
     background = {
       color         = Colors.popup_bg,
@@ -132,6 +117,23 @@ local REST_BG_NONE = {
 -- user's eye.
 local NEEDS_ATTENTION_TTL_S = 300
 
+-- 2px green underline for sessions in `running` state. The pulse loop
+-- (start_pulse_if_needed) fades the alpha between BRIGHT and DIM with
+-- sketchybar's `--animate sin` interpolation — the line never fully
+-- disappears, just breathes in intensity. Slower + never-off = more
+-- calming than a hard on/off blink.
+local RUNNING_BG_BRIGHT_HEX = "0xff44bc44"  -- Colors.green, full alpha
+local RUNNING_BG_DIM_HEX    = "0x4044bc44"  -- ~25% alpha
+local RUNNING_BG = {
+  color         = Colors.green,
+  corner_radius = 0,
+  height        = 2,
+  y_offset      = -14,
+  border_width  = 0,
+}
+-- One direction of the fade, in seconds. Total cycle = 2 * this.
+local PULSE_HALF_S = 1.2
+
 -- Cache of the currently-focused aerospace workspace, kept in sync via
 -- aerospace_workspace_change. Used in agent_state_change to suppress
 -- the needs-attention underline when a session transitions while its
@@ -169,13 +171,13 @@ local function add_overflow_child(name, props)
 end
 
 -- Hover-driven popup with a small close grace so a cursor sweep from
--- the overflow pill into the popup doesn't slam it shut mid-traversal.
+-- the parent pill into the popup doesn't slam it shut mid-traversal.
 local OVERFLOW_CLOSE_DELAY_S = 0.6
 local overflow_close_token = 0
 
 local function open_overflow_popup()
   overflow_close_token = overflow_close_token + 1
-  overflow_item:set({ popup = { drawing = "on" } })
+  parent:set({ popup = { drawing = "on" } })
 end
 
 local function schedule_close_overflow_popup()
@@ -183,13 +185,19 @@ local function schedule_close_overflow_popup()
   local my = overflow_close_token
   sbar.exec(string.format("sleep %.2f", OVERFLOW_CLOSE_DELAY_S), function()
     if overflow_close_token == my then
-      overflow_item:set({ popup = { drawing = "off" } })
+      parent:set({ popup = { drawing = "off" } })
     end
   end)
 end
 
-overflow_item:subscribe("mouse.entered", open_overflow_popup)
-overflow_item:subscribe("mouse.exited", schedule_close_overflow_popup)
+-- Hovering the robot icon or the count both open the popup. The
+-- in-popup rows also subscribe to mouse.entered/exited in
+-- rebuild_session_items so a cursor sweep across rows keeps the popup
+-- open.
+for _, item in ipairs({ parent, count_item }) do
+  item:subscribe("mouse.entered", open_overflow_popup)
+  item:subscribe("mouse.exited", schedule_close_overflow_popup)
+end
 
 -- Pin file directory; declared early so dedupe_sessions can remove
 -- loser files. restore_sessions further down references the same path.
@@ -428,7 +436,17 @@ local function rebuild_session_items()
     local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
     local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
     local attention_active = s.state == "needs-attention" and fresh and unviewed
-    local rest_bg = attention_active and NEEDS_ATTENTION_BG or REST_BG_NONE
+    -- Running sessions get the green underline as their rest bg so the
+    -- pulse loop only animates color (geometry stays put). Hover/exit
+    -- still swap to/from HOVER_BG and back to this.
+    local rest_bg
+    if attention_active then
+      rest_bg = NEEDS_ATTENTION_BG
+    elseif s.state == "running" then
+      rest_bg = RUNNING_BG
+    else
+      rest_bg = REST_BG_NONE
+    end
 
     local item = add_session_item(child, {
       position = "right",
@@ -452,16 +470,16 @@ local function rebuild_session_items()
     end)
   end
 
-  -- Overflow popup children (vertical list). Each row clicks through to
-  -- the same workspace/spawn action as an inline pill. Detached rows
-  -- get parens via display_zmx in row_name.
+  -- Overflow popup children (vertical list under the parent pill). Each
+  -- row clicks through to the same workspace/spawn action as an inline
+  -- pill. Detached rows get parens via display_zmx in row_name.
   for _, r in ipairs(overflow) do
     local s = r.s
     local short = r.entry.id:sub(1, 8)
     local child = "agent_sessions_overflow." .. short
     local row_label = row_name(s)
     local row = add_overflow_child(child, {
-      position = "popup." .. overflow_item.name,
+      position = "popup." .. parent.name,
       icon = { drawing = false },
       label = {
         string        = row_label,
@@ -484,17 +502,10 @@ local function rebuild_session_items()
     end)
   end
 
-  -- Show / hide the overflow pill based on whether anything overflowed.
-  if #overflow > 0 then
-    overflow_item:set({
-      drawing = "on",
-      label   = { string = "+" .. #overflow },
-    })
-  else
-    overflow_item:set({
-      drawing = "off",
-      popup   = { drawing = "off" },
-    })
+  -- If there's nothing to overflow, make sure the popup isn't held
+  -- open by a stale draw flag.
+  if #overflow == 0 then
+    parent:set({ popup = { drawing = "off" } })
   end
 end
 
@@ -503,6 +514,67 @@ local function repaint_parent()
   count_item:set({
     label = { string = tostring(count) },
   })
+end
+
+-- Calm heartbeat for inline `running` sessions. Each tick uses
+-- sketchybar's --animate sin to smoothly fade the underline alpha
+-- toward the next target color over PULSE_HALF_S, then schedules
+-- itself for another tick after the fade finishes. The bg geometry
+-- stays constant (set by rebuild_session_items); only color is
+-- animated, so the underline never disappears — it just breathes.
+local pulse_alive = false
+
+local function any_running_inline(zmx_attached)
+  for _, s in pairs(state.sessions) do
+    if s.state == "running" then
+      local zmx = s.zmx_session or ""
+      local detached = zmx ~= "" and not zmx_attached[zmx]
+      if not detached then return true end
+    end
+  end
+  return false
+end
+
+local function animate_pulse_color(name, hex, frames)
+  sbar.exec(string.format(
+    "sketchybar --animate sin %d --set %s background.color=%s",
+    frames, name, hex
+  ))
+end
+
+local function paint_running_pulse(target_hex, frames)
+  local zmx_attached = read_zmx_attached()
+  for id, s in pairs(state.sessions) do
+    if s.state == "running" then
+      local zmx = s.zmx_session or ""
+      local detached = zmx ~= "" and not zmx_attached[zmx]
+      if not detached then
+        local name = "agent_sessions." .. id:sub(1, 8)
+        animate_pulse_color(name, target_hex, frames)
+      end
+    end
+  end
+end
+
+local function start_pulse_if_needed()
+  if pulse_alive then return end
+  if not any_running_inline(read_zmx_attached()) then return end
+  pulse_alive = true
+  -- rebuild_session_items leaves running pills at full BRIGHT alpha,
+  -- so the first tick should fade toward DIM (bright=true → not bright
+  -- = false → DIM).
+  local bright = true
+  local frames = math.floor(PULSE_HALF_S * 60)
+  local function tick()
+    if not any_running_inline(read_zmx_attached()) then
+      pulse_alive = false
+      return
+    end
+    bright = not bright
+    paint_running_pulse(bright and RUNNING_BG_BRIGHT_HEX or RUNNING_BG_DIM_HEX, frames)
+    sbar.exec(string.format("sleep %.2f", PULSE_HALF_S), tick)
+  end
+  tick()
 end
 
 -- Subscribe to the helper-fired event. env contains the kv args from
@@ -564,6 +636,7 @@ parent:subscribe("agent_state_change", function(env)
   recompute_workspace_state()
   repaint_parent()
   rebuild_session_items()
+  start_pulse_if_needed()
 
   -- Workspace pills no longer subscribe to agent_state_change, but the
   -- focus-state repaint still keys off this trigger.
@@ -665,6 +738,7 @@ sbar.exec(
     recompute_workspace_state()
     repaint_parent()
     rebuild_session_items()
+    start_pulse_if_needed()
     sbar.trigger("aerospace_workspace_change")
   end
 )
