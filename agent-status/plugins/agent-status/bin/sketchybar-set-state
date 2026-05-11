@@ -2,20 +2,26 @@
 # sketchybar-set-state — push agent state into sketchybar.
 #
 # Usage:
-#   sketchybar-set-state <state>
-#     state: running | needs-attention | idle | clear
-#     stdin (optional): Claude Code hook JSON; .session_id and .cwd are read.
+#   sketchybar-set-state [--tool <name>] <state>
+#     --tool   Agent tool name (claude | pi). Default: claude.
+#     state    running | needs-attention | idle | clear
+#     stdin (optional): hook JSON. Recognised fields:
+#       .session_id .cwd .hook_event_name .agent .message
+#       .prompt           — last user prompt text (UserPromptSubmit / pi input)
+#       .transcript_path  — path to claude's session jsonl (Stop hook)
+#       .last_assistant   — assistant text passed directly (pi turn_end)
 #
 # Behavior:
-#   1. Read .session_id and .cwd from stdin JSON if present.
-#   2. Resolve the session's workspace: if a per-session pin file exists
-#      under $STATE_ROOT/sessions/<id>.ws, reuse it; else query AeroSpace
-#      for the focused workspace and write the pin.
-#   3. Trigger `agent_state_change` with kv args carrying the
-#      action, session_id, state, cwd, and workspace. The Lua handler in
-#      sketchybar's agent_status module owns the popup + workspace dot
-#      from there.
-#   4. On state=clear, remove the per-session pin file before triggering.
+#   1. Read fields from stdin JSON if present.
+#   2. Resolve the session's workspace via window-id pin (or focused ws).
+#   3. Merge captured fields into the per-session pin file at
+#      $STATE_ROOT/sessions/<id>.json. New fields override; absent fields
+#      preserve previous values (so Stop preserves last_prompt, etc.).
+#   4. Trigger `agent_state_change` with kv args carrying the
+#      action, session_id, state, cwd, workspace, zmx_session, agent, and
+#      now also tool, last_prompt, last_assistant. The Lua handler can
+#      ignore the new fields; agent-panel reads the pin file directly.
+#   5. On state=clear, remove the per-session pin file before triggering.
 #
 # Logging:
 #   One tab-separated line per invocation appended to
@@ -25,12 +31,59 @@
 
 set -euo pipefail
 
+TOOL="claude"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --tool)
+      TOOL="${2:?--tool requires a value}"
+      shift 2
+      ;;
+    --tool=*)
+      TOOL="${1#--tool=}"
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 STATE="${1:?state required: running|needs-attention|idle|clear}"
 
 STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/sketchybar"
 PIN_DIR="$STATE_ROOT/sessions"
 LOG_FILE="$STATE_ROOT/helper.log"
 mkdir -p "$PIN_DIR"
+
+# Walk ancestor PIDs looking for the agent process whose argv starts
+# with (or is) $TOOL — usually 1–2 levels up from this helper. Returns
+# the PID on stdout, or empty string if no match within a bounded depth.
+# Used to record agent_pid in the pin file so the lua side can check
+# liveness with `kill -0` and prune sessions whose claude was killed
+# without firing SessionEnd.
+find_agent_pid() {
+  local target="$1"
+  local pid=$$
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' \n')
+    if [ -z "$pid" ] || [ "$pid" = "0" ] || [ "$pid" = "1" ]; then
+      return
+    fi
+    local args
+    args=$(ps -o args= -p "$pid" 2>/dev/null) || continue
+    case "$args" in
+      $target|$target\ *|*/$target|*/$target\ *)
+        printf '%s' "$pid"
+        return
+        ;;
+    esac
+  done
+}
 
 # Drop legacy .ws pin files (the pre-restore-on-startup iteration of
 # this helper). Files we now keep: <id>.json — single-line JSON with
@@ -54,7 +107,10 @@ SESSION_ID=""
 CWD=""
 HOOK_EVENT=""
 NOTIF_MSG=""
-AGENT=""
+AGENT="$TOOL"
+PROMPT=""
+LAST_ASSISTANT=""
+TRANSCRIPT_PATH=""
 # Claude inherits the launching shell's env, so $ZMX_SESSION (e.g.
 # "d.dotfiles.0") is visible here when claude was started inside a zmx
 # session. Empty otherwise. ZMX_SESSION_PREFIX is the auto-prefix the
@@ -67,12 +123,46 @@ if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
   SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
   CWD=$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
   HOOK_EVENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null || true)
-  AGENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.agent // empty' 2>/dev/null || true)
+  PAYLOAD_AGENT=$(printf '%s' "$HOOK_INPUT" | jq -r '.agent // empty' 2>/dev/null || true)
+  PROMPT=$(printf '%s' "$HOOK_INPUT" | jq -r '.prompt // empty' 2>/dev/null || true)
+  TRANSCRIPT_PATH=$(printf '%s' "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+  LAST_ASSISTANT=$(printf '%s' "$HOOK_INPUT" | jq -r '.last_assistant // empty' 2>/dev/null || true)
+  if [ -n "$PAYLOAD_AGENT" ]; then
+    AGENT="$PAYLOAD_AGENT"
+  fi
   if [ "$HOOK_EVENT" = "Notification" ]; then
     NOTIF_MSG=$(printf '%s' "$HOOK_INPUT" | jq -r '.message // empty' 2>/dev/null || true)
   fi
 fi
 SID8="${SESSION_ID:0:8}"
+
+# Best-effort resolve the agent process PID. Empty if we can't find it
+# (older bash setups, sandboxed envs, etc.). The pin file stores 0 in
+# that case; lua treats 0 as "unknown" and skips liveness pruning for
+# the session.
+AGENT_PID="$(find_agent_pid "$TOOL")"
+AGENT_PID="${AGENT_PID:-0}"
+
+# Best-effort: tail the claude transcript for the most recent
+# `away_summary` (preferred — short, agent-authored summary) or the
+# last `assistant` message text. Bounded to the last ~400 lines so we
+# don't scan huge sessions; agent leaves the away_summary near EOF.
+if [ -z "$LAST_ASSISTANT" ] && [ -n "$TRANSCRIPT_PATH" ] \
+    && [ -s "$TRANSCRIPT_PATH" ] && command -v jq >/dev/null 2>&1; then
+  LAST_ASSISTANT=$(tail -n 400 "$TRANSCRIPT_PATH" 2>/dev/null \
+    | jq -rs '
+        . as $rows
+        | ([$rows[] | select(.type=="system" and .subtype=="away_summary") | .content] | last)
+          // ([$rows[]
+               | select(.type=="assistant")
+               | (.message.content // [])
+               | (if type=="array"
+                    then map(select(.type=="text") | .text) | join("\n")
+                    else tostring end)
+             ] | last)
+          // empty
+      ' 2>/dev/null || true)
+fi
 
 # Resolve the pinned workspace and window-id for this session. Pin
 # file is a single-line JSON record carrying every field the Lua side
@@ -111,7 +201,18 @@ fi
 if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ] \
     && command -v jq >/dev/null 2>&1; then
   NOW=$(date +%s)
-  jq -nc \
+  PREV="{}"
+  if [ -s "$PIN_FILE" ]; then
+    PREV=$(cat "$PIN_FILE" 2>/dev/null || echo "{}")
+    # Defensive: ensure it parses; if not, start fresh.
+    if ! printf '%s' "$PREV" | jq -e . >/dev/null 2>&1; then
+      PREV="{}"
+    fi
+  fi
+  # Build the patch: only fields we actually have data for. Then merge
+  # over the previous record so absent fields (e.g. last_prompt on a
+  # Stop hook) survive.
+  PATCH=$(jq -nc \
     --arg sid "$SESSION_ID" \
     --arg ws  "$WS" \
     --arg win "$WIN_ID" \
@@ -119,10 +220,23 @@ if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ] \
     --arg cwd "$CWD" \
     --arg zmx "$ZMX_SESSION" \
     --arg zsh "$ZMX_SHORT" \
-    --argjson ts "$NOW" \
     --arg agent "$AGENT" \
-    '{session_id:$sid, workspace:$ws, window_id:$win, state:$st, cwd:$cwd, zmx_session:$zmx, zmx_short:$zsh, agent:$agent, updated_at:$ts}' \
-    > "$PIN_FILE" 2>/dev/null || true
+    --arg tool  "$TOOL" \
+    --arg prompt "$PROMPT" \
+    --arg last_assistant "$LAST_ASSISTANT" \
+    --argjson ts "$NOW" \
+    --argjson agent_pid "$AGENT_PID" \
+    '
+      {session_id:$sid, workspace:$ws, window_id:$win, state:$st,
+       cwd:$cwd, zmx_session:$zmx, zmx_short:$zsh, agent:$agent,
+       tool:$tool, agent_pid:$agent_pid, updated_at:$ts}
+      + (if $prompt != "" then {last_prompt:$prompt, last_prompt_at:$ts} else {} end)
+      + (if $last_assistant != "" then {last_assistant:$last_assistant, last_assistant_at:$ts} else {} end)
+    ')
+  printf '%s' "$PREV" \
+    | jq -c --argjson patch "$PATCH" '. + $patch' \
+    > "$PIN_FILE.tmp" 2>/dev/null \
+    && mv "$PIN_FILE.tmp" "$PIN_FILE" 2>/dev/null || true
 fi
 
 log() {
@@ -136,33 +250,39 @@ log() {
     >> "$LOG_FILE" 2>/dev/null || true
 }
 
-if [ -z "$WS" ]; then
-  log "skip-no-ws"
-  exit 0
-fi
-
+# Clear must run unconditionally — SessionEnd's whole job is to drop
+# the pin file and tell lua to forget this session. Skipping it when
+# WS is unresolvable (e.g. the agent's terminal closed before the hook
+# could query aerospace) leaves a stale pill in the bar forever.
 if [ "$STATE" = "clear" ]; then
   [ -n "$PIN_FILE" ] && rm -f "$PIN_FILE"
   log "clear"
   sketchybar --trigger agent_state_change \
     "action=clear" \
     "session_id=$SESSION_ID" \
-    "workspace=$WS" \
+    "workspace=${WS:-}" \
     >/dev/null 2>&1 || true
-else
-  log "write"
-  sketchybar --trigger agent_state_change \
-    "action=write" \
-    "session_id=$SESSION_ID" \
-    "state=$STATE" \
-    "workspace=$WS" \
-    "window_id=$WIN_ID" \
-    "cwd=$CWD" \
-    "zmx_session=$ZMX_SESSION" \
-    "zmx_short=$ZMX_SHORT" \
-    "agent=$AGENT" \
-    >/dev/null 2>&1 || true
+  exit 0
 fi
+
+if [ -z "$WS" ]; then
+  log "skip-no-ws"
+  exit 0
+fi
+
+log "write"
+sketchybar --trigger agent_state_change \
+  "action=write" \
+  "session_id=$SESSION_ID" \
+  "state=$STATE" \
+  "workspace=$WS" \
+  "window_id=$WIN_ID" \
+  "cwd=$CWD" \
+  "zmx_session=$ZMX_SESSION" \
+  "zmx_short=$ZMX_SHORT" \
+  "agent=$AGENT" \
+  "agent_pid=$AGENT_PID" \
+  >/dev/null 2>&1 || true
 
 # Notification hook: append to a small jsonl ring buffer the lua side
 # reads when rebuilding the popup. Trim to last 100 lines.
