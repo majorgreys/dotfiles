@@ -27,14 +27,6 @@ local STATE_COLORS = {
   idle                = Colors.dim_dark,
 }
 
--- Per-agent icon for popup rows. Claude uses the custom U+E861 glyph
--- baked into the PragmataPro Claude font; pi uses Greek lowercase π.
-local AGENT_ICONS = {
-  pi    = "\u{03C0}",   -- π
-  claude = "\u{E861}",  -- Anthropic Claude mark
-}
-local DEFAULT_AGENT_ICON = AGENT_ICONS.claude
-
 -- Pill is a bracket of three items: robot icon, status dot, count.
 -- Splitting them lets each carry its own font/color and lets the dot
 -- sit between robot and count. The popup attaches to the robot item.
@@ -54,18 +46,6 @@ local count_item = sbar.add("item", "agent_sessions_count", {
   },
 })
 
-local status_dot = sbar.add("item", "agent_sessions_status", {
-  position = "right",
-  icon = {
-    string        = "\u{25CF}",
-    font          = Fonts.regular,
-    color         = Colors.dim_dark,
-    padding_left  = 0,
-    padding_right = 4,
-  },
-  label = { string = "" },
-})
-
 local parent = sbar.add("item", "agent_sessions", {
   position = "right",
   icon = {
@@ -76,95 +56,112 @@ local parent = sbar.add("item", "agent_sessions", {
     padding_right = 6,
   },
   label = { string = "" },
-  popup = {
-    background = {
-      color         = Colors.popup_bg,
-      corner_radius = 8,
-      border_width  = 1,
-      border_color  = Colors.popup_border,
-    },
-    horizontal = false,
-    align      = "right",
-    y_offset   = 4,
-  },
 })
 
--- Bracket renders the pill chrome. Two states:
---   rest:  2px magenta-cooler underline (workspace-pill focus-bar style)
---   hover: full-height fill in popup_bg so the pill visually merges
---          with the popover that's about to open
-local PILL_REST_BG = {
+-- 2px magenta underline applied to session bar items in `needs-attention`
+-- state. Marks the agent that is waiting for a response; replaces the
+-- former parent-pill bracket underline.
+local NEEDS_ATTENTION_BG = {
   color         = Colors.magenta,
   corner_radius = 0,
   height        = 2,
   y_offset      = -14,
   border_width  = 0,
 }
-local PILL_HOVER_BG = {
-  color         = Colors.popup_bg,
-  corner_radius = 6,
-  height        = 28,
-  y_offset      = 0,
+
+-- 2px yellow underline applied while the cursor is over a session.
+-- Same shape as NEEDS_ATTENTION_BG so hover and rest-attention states
+-- coexist visually (single bg slot — exit restores the rest state).
+local HOVER_BG = {
+  color         = Colors.yellow,
+  corner_radius = 0,
+  height        = 2,
+  y_offset      = -14,
   border_width  = 0,
 }
-local pill = sbar.add("bracket", "agent_sessions_pill", {
-  parent.name, status_dot.name, count_item.name,
-}, { background = PILL_REST_BG })
 
--- Track current popup children so we can wipe them cleanly. Sketchybar
--- has no "remove all from popup" primitive; we keep the names ourselves.
-local popup_children = {}
+-- Rest-state bg for sessions without a needs-attention underline.
+-- Transparent + full-height so the entire pill column is a hover
+-- surface (sketchybar uses the drawn bg rect for mouse hit-testing
+-- when drawing=on — a 2px underline alone has only a 2px hover zone).
+local REST_BG_NONE = {
+  drawing       = true,
+  color         = Colors.transparent,
+  height        = 28,
+  y_offset      = 0,
+  corner_radius = 0,
+  border_width  = 0,
+}
 
-local function clear_popup()
-  for _, name in ipairs(popup_children) do
+-- needs-attention underline is suppressed for sessions whose last
+-- recorded state-change is older than this. State files persist the
+-- LAST hook fire, so abandoned sessions sit in `needs-attention`
+-- indefinitely; the TTL stops every dormant session from drawing the
+-- user's eye.
+local NEEDS_ATTENTION_TTL_S = 300
+
+-- Cache of the currently-focused aerospace workspace, kept in sync via
+-- aerospace_workspace_change. Used in agent_state_change to suppress
+-- the needs-attention underline when a session transitions while its
+-- workspace is already in focus (the user is already there, no
+-- attention prompt needed).
+local focused_workspace = nil
+
+-- Track current per-session bar items so we can wipe them cleanly on
+-- rebuild. sketchybar has no "remove by prefix" lua primitive.
+local session_items = {}
+
+local function clear_session_items()
+  for _, name in ipairs(session_items) do
     sbar.remove(name)
   end
-  popup_children = {}
+  session_items = {}
 end
 
--- Hover-driven popup with a grace period. Closing happens via a
--- token-checked deferred callback so a cursor sweep from pill to row
--- doesn't slam the popup shut mid-traversal.
-local CLOSE_DELAY_S = 0.8
-local close_token = 0
-
-local function open_popup()
-  close_token = close_token + 1   -- cancel any pending close
-  parent:set({ popup = { drawing = "on" } })
+local function add_session_item(name, props)
+  table.insert(session_items, name)
+  return sbar.add("item", name, props)
 end
 
-local function schedule_close()
-  close_token = close_token + 1
-  local my_token = close_token
-  sbar.exec(string.format("sleep %.2f", CLOSE_DELAY_S), function()
-    if close_token == my_token then
-      parent:set({ popup = { drawing = "off" } })
-    end
-  end)
+-- Pin file directory; declared early so dedupe_sessions can remove
+-- loser files. restore_sessions further down references the same path.
+local PIN_DIR = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state"))
+  .. "/sketchybar/sessions"
+
+-- Group key for dedupe: zmx session if present, else cwd. Multiple
+-- claude processes in the same zmx all share the same key, so the
+-- newest one supersedes the rest. Different cwds in the same zmx still
+-- collapse — assumption: one claude per terminal at a time. If you
+-- ever want parallel claudes in one zmx to coexist, swap to a
+-- (zmx, cwd) tuple key.
+local function group_key(s)
+  if s.zmx_session and s.zmx_session ~= "" then
+    return "zmx:" .. s.zmx_session
+  end
+  return "cwd:" .. (s.cwd or "")
 end
 
-local function add_popup_item(name, props, opts)
-  opts = opts or {}
-  table.insert(popup_children, name)
-  local item = sbar.add("item", name, props)
-  -- Subscribing every popup child means cursor hovering anywhere in
-  -- the popup keeps it open; leaving the last child schedules a close.
-  -- `opts.highlightable` adds a subtle bg fill on hover so clickable
-  -- rows feel selectable; non-interactive rows (headers, notifications)
-  -- omit it.
-  item:subscribe("mouse.entered", function()
-    open_popup()
-    if opts.highlightable then
-      item:set({ background = { color = Colors.pill_bg, drawing = "on" } })
+-- Drop pin files for sessions that lose to a sibling in the same group.
+-- Mutates state.sessions in place. Called after restore and after every
+-- agent_state_change write.
+local function dedupe_sessions()
+  local winner = {}
+  for id, s in pairs(state.sessions) do
+    local key = group_key(s)
+    local t = s.updated_at or 0
+    local cur = winner[key]
+    if not cur or t > cur.updated_at then
+      winner[key] = { id = id, updated_at = t }
     end
-  end)
-  item:subscribe("mouse.exited", function()
-    schedule_close()
-    if opts.highlightable then
-      item:set({ background = { color = Colors.transparent, drawing = "off" } })
+  end
+  local keep = {}
+  for _, w in pairs(winner) do keep[w.id] = true end
+  for id, _ in pairs(state.sessions) do
+    if not keep[id] then
+      state.sessions[id] = nil
+      os.remove(PIN_DIR .. "/" .. id .. ".json")
     end
-  end)
-  return item
+  end
 end
 
 -- Recompute state.workspace_state from state.sessions.
@@ -179,27 +176,30 @@ local function recompute_workspace_state()
   state.workspace_state = ws_state
 end
 
--- Sort sessions for popup render: state urgency desc → workspace asc → updated_at desc.
+-- Sort key: zmx session name, else cwd basename, lowercased so
+-- "Aerospace" sorts next to "aerospace". Stable across state changes
+-- so pills don't shuffle position when an agent transitions
+-- running/needs-attention/idle.
+local function sort_key(s)
+  local name = (s.zmx_session and s.zmx_session ~= "" and s.zmx_session)
+    or (s.cwd or "")
+  return string.lower(name)
+end
+
+-- Sort sessions descending by name so the bar reads alphabetically
+-- left-to-right (sketchybar prepends right-positioned items, so the
+-- FIRST added lands rightmost).
 local function sorted_sessions()
   local list = {}
   for id, s in pairs(state.sessions) do
     table.insert(list, { id = id, session = s })
   end
   table.sort(list, function(a, b)
-    local ua, ub = state.urgency[a.session.state] or 0, state.urgency[b.session.state] or 0
-    if ua ~= ub then return ua > ub end
-    local wa = tonumber(a.session.workspace) or 999
-    local wb = tonumber(b.session.workspace) or 999
-    if wa ~= wb then return wa < wb end
-    return (a.session.updated_at or 0) > (b.session.updated_at or 0)
+    local ka, kb = sort_key(a.session), sort_key(b.session)
+    if ka ~= kb then return ka > kb end
+    return a.id > b.id
   end)
   return list
-end
-
--- Pad a string with trailing spaces to a target length (mono-font column align).
-local function pad(s, len)
-  while #s < len do s = s .. " " end
-  return s
 end
 
 -- Strip trailing slash and return basename of a unix path. Empty path → "?".
@@ -252,12 +252,12 @@ local function aggregate_state()
   return count, top_state
 end
 
-local function rebuild_popup()
-  clear_popup()
+local function rebuild_session_items()
+  clear_session_items()
 
-  -- Each row labels itself with its zmx session (preferred — detached
-  -- sessions wrapped in parens) or, when no zmx is persisted, the cwd
-  -- basename. Pad the chosen identifier to a single column width.
+  -- Each session labels itself with its zmx session (preferred —
+  -- detached sessions wrapped in parens) or, when no zmx is persisted,
+  -- the cwd basename.
   local zmx_attached = read_zmx_attached()
   local function row_name(s)
     if s.zmx_session and s.zmx_session ~= "" then
@@ -266,26 +266,25 @@ local function rebuild_popup()
     return basename(s.cwd)
   end
 
-  local max_name = 0
-  for _, item in pairs(state.sessions) do
-    local n = row_name(item)
-    if #n > max_name then max_name = #n end
-  end
-
-  for _, entry in ipairs(sorted_sessions()) do
+  -- Order matters: sketchybar prepends position=right items, so the
+  -- FIRST add ends up rightmost (closest to the parent pill). Iterate
+  -- in sorted order (most-urgent first) so most-urgent sits adjacent
+  -- to the parent.
+  local sessions = sorted_sessions()
+  for i, entry in ipairs(sessions) do
     local s = entry.session
     local zmx = s.zmx_session or ""
     local detached = zmx ~= "" and not zmx_attached[zmx]
 
-    -- Detached sessions have no terminal window, so the workspace
-    -- column is meaningless; render an em-dash instead. Click opens
-    -- a fresh ghostty window and re-attaches to the persisted zmx
-    -- session on the current desktop.
-    local right_col = detached and "\u{2014}" or tostring(s.workspace)
-    local agent_icon = AGENT_ICONS[s.agent] or DEFAULT_AGENT_ICON
-    local label = agent_icon .. "  " .. pad(row_name(s), max_name) .. "    " .. right_col
+    local label = row_name(s)
     local short = entry.id:sub(1, 8)
     local child = "agent_sessions." .. short
+
+    -- The rightmost session (first in sorted order, sitting next to
+    -- the parent pill) gets extra label padding so there's a visible
+    -- gap before the robot icon.
+    local is_rightmost = i == 1
+    local label_right_pad = is_rightmost and 16 or 8
 
     local click_script
     if detached then
@@ -308,76 +307,50 @@ local function rebuild_popup()
         .. " --working-directory='%s'"
         .. " -e zmx attach %s",
         esc_cwd, zmx_arg
-      ) .. " && sketchybar --set agent_sessions popup.drawing=off"
+      )
     elseif s.window_id and s.window_id ~= "" then
       click_script = "aerospace focus --window-id " .. s.window_id
-        .. " && sketchybar --set agent_sessions popup.drawing=off"
     else
       click_script = "aerospace workspace " .. s.workspace
-        .. " && sketchybar --set agent_sessions popup.drawing=off"
     end
 
-    add_popup_item(child, {
-      position = "popup." .. parent.name,
-      icon = {
-        string        = "\u{25CF}",
-        font          = Fonts.regular,
-        color         = STATE_COLORS[s.state],
-        padding_left  = 12,
-        padding_right = 10,
-      },
+    -- needs-attention underline applies only when:
+    --   1. session state is needs-attention,
+    --   2. terminal is attached (zmx connected),
+    --   3. last state-change is within NEEDS_ATTENTION_TTL_S, and
+    --   4. user hasn't focused this session's workspace since the
+    --      state-change (viewed_at < updated_at).
+    -- (4) clears the underline as soon as the user switches into the
+    -- agent's workspace; the next Stop hook re-arms it.
+    local now = os.time()
+    local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
+    local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
+    local attention_active = s.state == "needs-attention"
+      and not detached and fresh and unviewed
+    local rest_bg = attention_active and NEEDS_ATTENTION_BG or REST_BG_NONE
+
+    local item = add_session_item(child, {
+      position = "right",
+      icon = { drawing = false },
       label = {
         string        = label,
         font          = Fonts.popup,
         color         = Colors.fg,
-        padding_left  = 18,
-        padding_right = 4,
+        padding_left  = 6,
+        padding_right = label_right_pad,
       },
+      background   = rest_bg,
       click_script = click_script,
-    }, { highlightable = true })
-  end
-
-end
-
-local function aggregate_color()
-  local _, top_state = aggregate_state()
-  return STATE_COLORS[top_state] or Colors.dim_dark
-end
-
--- Blink the status dot in `color` to call attention to a session
--- state change. Runs for BLINK_DURATION_S, or until superseded by
--- another state change, or until the user hovers the pill — whichever
--- comes first. Each blink call increments a token; the deferred
--- callbacks no-op if their token has been retired.
-local BLINK_DURATION_S = 300
-local BLINK_INTERVAL_S = 0.6
-local blink_token = 0
-
-local function settle_dot()
-  blink_token = blink_token + 1   -- stop any active blink
-  status_dot:set({ icon = { color = aggregate_color() } })
-end
-
-local function start_blink(color)
-  blink_token = blink_token + 1
-  local my_token = blink_token
-  local end_time = os.time() + BLINK_DURATION_S
-  local on = false  -- start with the "off" beat so the change is visible
-
-  local function tick()
-    if blink_token ~= my_token then return end
-    if os.time() >= end_time then
-      settle_dot()
-      return
-    end
-    on = not on
-    status_dot:set({
-      icon = { color = on and color or Colors.dim_dark },
     })
-    sbar.exec(string.format("sleep %.2f", BLINK_INTERVAL_S), tick)
+
+    item:subscribe("mouse.entered", function()
+      item:set({ background = HOVER_BG })
+    end)
+    item:subscribe("mouse.exited", function()
+      item:set({ background = rest_bg })
+    end)
   end
 
-  tick()
 end
 
 local function repaint_parent()
@@ -385,52 +358,6 @@ local function repaint_parent()
   count_item:set({
     label = { string = tostring(count) },
   })
-  status_dot:set({ icon = { color = aggregate_color() } })
-end
-
--- Pulse loop for popup rows whose session is in `running` state. The
--- dot icon alternates between full state color and dim_dark so the row
--- visibly "breathes" while the agent is working. Loop runs only while
--- at least one running session exists; tick checks state.sessions
--- on every iteration so dynamic state changes are reflected without
--- a separate restart path.
-local PULSE_INTERVAL_S = 0.7
-local pulse_alive = false
-
-local function any_running()
-  for _, s in pairs(state.sessions) do
-    if s.state == "running" then return true end
-  end
-  return false
-end
-
-local function paint_running_rows(on)
-  for id, s in pairs(state.sessions) do
-    if s.state == "running" then
-      local short = id:sub(1, 8)
-      sbar.set("agent_sessions." .. short, {
-        icon = { color = on and STATE_COLORS.running or Colors.dim_dark },
-      })
-    end
-  end
-end
-
-local function start_pulse_if_needed()
-  if pulse_alive or not any_running() then return end
-  pulse_alive = true
-  local on = true
-
-  local function tick()
-    if not any_running() then
-      pulse_alive = false
-      return
-    end
-    on = not on
-    paint_running_rows(on)
-    sbar.exec(string.format("sleep %.2f", PULSE_INTERVAL_S), tick)
-  end
-
-  tick()
 end
 
 -- Subscribe to the helper-fired event. env contains the kv args from
@@ -455,6 +382,20 @@ parent:subscribe("agent_state_change", function(env)
   elseif action == "write" then
     if not workspace or workspace == "" or not st or st == "" then return end
     new_state = st
+    -- Preserve viewed_at across hook updates. The aerospace handler
+    -- below sets it when the user focuses a workspace; resetting it
+    -- here would make the needs-attention underline never clear.
+    -- Bonus rule: if the session is on the workspace currently in
+    -- focus, treat the new state as already viewed so a transition
+    -- to needs-attention doesn't flash an underline at the user when
+    -- they're already looking at that workspace.
+    local prev_session = state.sessions[session_id]
+    local now = os.time()
+    local prior_viewed = prev_session and prev_session.viewed_at or 0
+    local viewed_at = prior_viewed
+    if focused_workspace and tostring(workspace) == tostring(focused_workspace) then
+      viewed_at = now
+    end
     state.sessions[session_id] = {
       workspace   = workspace,
       window_id   = env.window_id or "",
@@ -463,82 +404,110 @@ parent:subscribe("agent_state_change", function(env)
       zmx_session = env.zmx_session or "",
       zmx_short   = env.zmx_short or "",
       agent       = env.agent or "",
-      updated_at  = os.time(),
+      agent_pid   = tonumber(env.agent_pid) or 0,
+      updated_at  = now,
+      viewed_at   = viewed_at,
     }
   else
     return
   end
 
+  -- Any newer hook fire from a sibling in the same zmx/cwd group means
+  -- the older session is dead — its claude process never reported back.
+  -- Evict losers and delete their pin files.
+  dedupe_sessions()
   recompute_workspace_state()
   repaint_parent()
-  rebuild_popup()
+  rebuild_session_items()
 
-  -- A real state transition for any session triggers the attention
-  -- blink; pure metadata refreshes (e.g., a Notification firing while
-  -- already in needs-attention) don't.
-  if new_state and new_state ~= prev then
-    start_blink(STATE_COLORS[new_state] or Colors.dim_dark)
-  end
-
-  -- Wake (or keep alive) the popup-row pulse for any running sessions.
-  start_pulse_if_needed()
-
-  -- Workspace pills depend on state.workspace_state — fire their event
-  -- so they re-paint with the new aggregate.
+  -- Workspace pills no longer subscribe to agent_state_change, but the
+  -- focus-state repaint still keys off this trigger.
   sbar.trigger("aerospace_workspace_change")
 end)
 
-for _, item in ipairs({ parent, status_dot, count_item }) do
-  item:subscribe("mouse.entered", function()
-    open_popup()
-    -- User saw the pill — drop any active attention blink.
-    settle_dot()
-    pill:set({ background = PILL_HOVER_BG })
-  end)
-  item:subscribe("mouse.exited", function()
-    schedule_close()
-    pill:set({ background = PILL_REST_BG })
-  end)
-end
+-- Mark sessions on the focused workspace as viewed so their
+-- needs-attention underline disappears. AeroSpace's
+-- exec-on-workspace-change supplies env.FOCUSED_WORKSPACE; the internal
+-- triggers fired from agent_state_change above don't, so we filter to
+-- real focus changes only.
+parent:subscribe("aerospace_workspace_change", function(env)
+  local ws = env.FOCUSED_WORKSPACE
+  if not ws or ws == "" then return end
+  focused_workspace = ws
+  local now = os.time()
+  local touched = false
+  for _, s in pairs(state.sessions) do
+    if tostring(s.workspace) == tostring(ws)
+        and s.state == "needs-attention"
+        and (s.viewed_at or 0) < (s.updated_at or 0) then
+      s.viewed_at = now
+      touched = true
+    end
+  end
+  if touched then
+    rebuild_session_items()
+  end
+end)
 
--- Remove any popup children left over from a prior run. Sketchybar's
--- hotload preserves items across reloads, but our `popup_children`
--- table starts empty, so old per-session items would otherwise become
--- orphans (rendered, but not tracked or rebuilt). After cleanup,
+-- Remove any per-session bar items left over from a prior run.
+-- Sketchybar's hotload preserves items across reloads, but our
+-- `session_items` table starts empty, so old items would otherwise
+-- become orphans (rendered, but not tracked or rebuilt). After cleanup,
 -- restore state.sessions from on-disk pin files (written by the helper
--- on every hook fire) so the popup shows the previously-known agents
+-- on every hook fire) so the bar shows the previously-known agents
 -- immediately after a sketchybar reload — rather than starting empty
--- and waiting for each session to fire its next hook.
-local PIN_DIR = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state"))
-  .. "/sketchybar/sessions"
+-- and waiting for each session to fire its next hook. PIN_DIR is
+-- declared up-top so dedupe_sessions can also see it.
+
+-- True iff a process with the given PID is alive on the local host.
+-- `kill -0` returns 0 on alive, non-zero on missing or wrong-owner.
+-- We treat PID 0 / nil as "unknown" and return true so sessions with
+-- no recorded agent_pid (older pin files, ancestor-walk failures)
+-- aren't pruned by mistake. os.execute returns differ between Lua 5.1
+-- (integer code) and 5.2+ (boolean) — accept both.
+local function pid_alive(pid)
+  if not pid or pid == 0 then return true end
+  local result = os.execute(string.format("kill -0 %d 2>/dev/null", pid))
+  return result == 0 or result == true
+end
 
 local function restore_sessions()
   local cmd = string.format(
     "find %q -maxdepth 1 -name '*.json' -print0 2>/dev/null | "
     .. "xargs -0 jq -r '[.session_id, (.workspace // \"\"), (.window_id // \"\"), "
     .. "(.state // \"\"), (.cwd // \"\"), (.zmx_session // \"\"), "
-    .. "(.zmx_short // \"\"), (.agent // \"\"), ((.updated_at // 0)|tostring)] | @tsv' 2>/dev/null",
+    .. "(.zmx_short // \"\"), (.agent // \"\"), ((.updated_at // 0)|tostring), "
+    .. "((.agent_pid // 0)|tostring)] | @tsv' 2>/dev/null",
     PIN_DIR
   )
   local handle = io.popen(cmd)
   if not handle then return end
   for line in handle:lines() do
-    local sid, ws, win, st, cwd, zmx, zsh, agent, ts =
-      line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
+    local sid, ws, win, st, cwd, zmx, zsh, agent, ts, pid =
+      line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
     if sid and sid ~= "" and ws ~= "" and st ~= "" then
-      state.sessions[sid] = {
-        workspace   = ws,
-        window_id   = win,
-        state       = st,
-        cwd         = cwd,
-        zmx_session = zmx,
-        zmx_short   = zsh,
-        agent       = agent,
-        updated_at  = tonumber(ts) or 0,
-      }
+      local agent_pid = tonumber(pid) or 0
+      if pid_alive(agent_pid) then
+        state.sessions[sid] = {
+          workspace   = ws,
+          window_id   = win,
+          state       = st,
+          cwd         = cwd,
+          zmx_session = zmx,
+          zmx_short   = zsh,
+          agent       = agent,
+          agent_pid   = agent_pid,
+          updated_at  = tonumber(ts) or 0,
+        }
+      else
+        -- Agent process is gone; drop the pin file so this session
+        -- doesn't get restored on the next sketchybar reload either.
+        os.remove(PIN_DIR .. "/" .. sid .. ".json")
+      end
     end
   end
   handle:close()
+  dedupe_sessions()
 end
 
 sbar.exec(
@@ -550,11 +519,19 @@ sbar.exec(
     restore_sessions()
     recompute_workspace_state()
     repaint_parent()
-    rebuild_popup()
-    start_pulse_if_needed()
+    rebuild_session_items()
     sbar.trigger("aerospace_workspace_change")
   end
 )
+
+-- Seed `focused_workspace` so the "no underline if already focused"
+-- rule works on the first hook fire after sketchybar startup. Without
+-- this, focused_workspace is nil until the user actually switches
+-- workspaces.
+sbar.exec("aerospace list-workspaces --focused 2>/dev/null", function(out)
+  out = (out or ""):gsub("%s+$", "")
+  if out ~= "" then focused_workspace = out end
+end)
 
 -- Initial paint so the pill shows "0" dim grey before the async
 -- restore above completes.
