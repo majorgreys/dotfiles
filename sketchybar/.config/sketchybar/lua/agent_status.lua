@@ -58,6 +58,38 @@ local parent = sbar.add("item", "agent_sessions", {
   label = { string = "" },
 })
 
+-- Overflow pill sits to the left of the parent (added after `parent`,
+-- so position=right prepend semantics put it left). It holds a
+-- vertical popup listing all sessions that *aren't* shown inline
+-- (idle, detached, stale needs-attention). Label is "+N" — N matches
+-- the popup item count. `drawing=off` when there's nothing to overflow.
+-- MacBooks with a camera notch have limited horizontal real estate;
+-- filtering inline pills to only running + attached-needs-attention
+-- keeps the bar from running into the notch.
+local overflow_item = sbar.add("item", "agent_sessions_overflow", {
+  position = "right",
+  drawing  = "off",
+  icon     = { drawing = false },
+  label = {
+    string        = "",
+    font          = Fonts.popup,
+    color         = Colors.dim,
+    padding_left  = 6,
+    padding_right = 10,
+  },
+  popup = {
+    background = {
+      color         = Colors.popup_bg,
+      corner_radius = 6,
+      border_width  = 1,
+      border_color  = Colors.popup_border,
+    },
+    horizontal = false,
+    align      = "right",
+    y_offset   = 4,
+  },
+})
+
 -- 2px magenta underline applied to session bar items in `needs-attention`
 -- state. Marks the agent that is waiting for a response; replaces the
 -- former parent-pill bracket underline.
@@ -110,6 +142,7 @@ local focused_workspace = nil
 -- Track current per-session bar items so we can wipe them cleanly on
 -- rebuild. sketchybar has no "remove by prefix" lua primitive.
 local session_items = {}
+local overflow_children = {}
 
 local function clear_session_items()
   for _, name in ipairs(session_items) do
@@ -118,10 +151,45 @@ local function clear_session_items()
   session_items = {}
 end
 
+local function clear_overflow_children()
+  for _, name in ipairs(overflow_children) do
+    sbar.remove(name)
+  end
+  overflow_children = {}
+end
+
 local function add_session_item(name, props)
   table.insert(session_items, name)
   return sbar.add("item", name, props)
 end
+
+local function add_overflow_child(name, props)
+  table.insert(overflow_children, name)
+  return sbar.add("item", name, props)
+end
+
+-- Hover-driven popup with a small close grace so a cursor sweep from
+-- the overflow pill into the popup doesn't slam it shut mid-traversal.
+local OVERFLOW_CLOSE_DELAY_S = 0.6
+local overflow_close_token = 0
+
+local function open_overflow_popup()
+  overflow_close_token = overflow_close_token + 1
+  overflow_item:set({ popup = { drawing = "on" } })
+end
+
+local function schedule_close_overflow_popup()
+  overflow_close_token = overflow_close_token + 1
+  local my = overflow_close_token
+  sbar.exec(string.format("sleep %.2f", OVERFLOW_CLOSE_DELAY_S), function()
+    if overflow_close_token == my then
+      overflow_item:set({ popup = { drawing = "off" } })
+    end
+  end)
+end
+
+overflow_item:subscribe("mouse.entered", open_overflow_popup)
+overflow_item:subscribe("mouse.exited", schedule_close_overflow_popup)
 
 -- Pin file directory; declared early so dedupe_sessions can remove
 -- loser files. restore_sessions further down references the same path.
@@ -229,11 +297,15 @@ local function read_zmx_attached()
 end
 
 -- Wrap detached zmx session names in parens so the popup distinguishes
--- a live attached session from one that's been detached.
-local function display_zmx(name, attached_map)
-  if not name or name == "" then return "" end
-  if attached_map[name] then return name end
-  return "(" .. name .. ")"
+-- a live attached session from one that's been detached. `lookup_key`
+-- (optional) is the name used to query `attached_map` — pass when
+-- `display` is the prefix-stripped short name but the map keys are the
+-- full names that `zmx l` reports.
+local function display_zmx(display, attached_map, lookup_key)
+  if not display or display == "" then return "" end
+  local key = (lookup_key and lookup_key ~= "") and lookup_key or display
+  if attached_map[key] then return display end
+  return "(" .. display .. ")"
 end
 
 
@@ -252,32 +324,91 @@ local function aggregate_state()
   return count, top_state
 end
 
+-- Build the shell command that handles a click on a session item.
+-- Detached sessions reopen a fresh Ghostty + zmx attach; live sessions
+-- focus the window/workspace via aerospace.
+local function make_click_script(s, detached)
+  local zmx = s.zmx_session or ""
+  if detached then
+    -- Mirrors `wft term` / `ghostty::spawn_window`: open a fresh Ghostty
+    -- window attached to the session's zmx. Key flags:
+    --   --window-inherit-working-directory=false  so --working-directory wins
+    --   --working-directory=<cwd>                 land in the project dir
+    --   -e zmx attach <session>                   reattach to the persisted zmx
+    -- Use the FULL zmx session name (e.g. "d.dotfiles.0") because the
+    -- Ghostty login shell won't have $ZMX_SESSION_PREFIX set. Using the
+    -- short name would create a new empty session instead of reattaching.
+    local cwd = s.cwd ~= "" and s.cwd or os.getenv("HOME") or "/tmp"
+    local esc_cwd = cwd:gsub("'", "'\\''")
+    return string.format(
+      "open -n -a Ghostty --args"
+      .. " --window-inherit-working-directory=false"
+      .. " --working-directory='%s'"
+      .. " -e zmx attach %s",
+      esc_cwd, zmx
+    )
+  elseif s.window_id and s.window_id ~= "" then
+    return "aerospace focus --window-id " .. s.window_id
+  end
+  return "aerospace workspace " .. s.workspace
+end
+
 local function rebuild_session_items()
   clear_session_items()
+  clear_overflow_children()
 
   -- Each session labels itself with its zmx session (preferred —
   -- detached sessions wrapped in parens) or, when no zmx is persisted,
-  -- the cwd basename.
+  -- the cwd basename. Prefer zmx_short (helper-computed: zmx_session
+  -- with $ZMX_SESSION_PREFIX stripped — e.g. "d.claude.ops.fedf" →
+  -- "claude.ops.fedf") so the bar isn't cluttered with the namespace
+  -- prefix users already know belongs to them.
   local zmx_attached = read_zmx_attached()
   local function row_name(s)
-    if s.zmx_session and s.zmx_session ~= "" then
-      return display_zmx(s.zmx_session, zmx_attached)
+    local display = (s.zmx_short and s.zmx_short ~= "" and s.zmx_short)
+      or (s.zmx_session and s.zmx_session ~= "" and s.zmx_session)
+    if display then
+      -- display_zmx wraps in parens for detached. Pass zmx_session to
+      -- the attached-map lookup since `zmx l` reports full names.
+      return display_zmx(display, zmx_attached, s.zmx_session)
     end
     return basename(s.cwd)
   end
 
-  -- Order matters: sketchybar prepends position=right items, so the
-  -- FIRST add ends up rightmost (closest to the parent pill). Iterate
-  -- in sorted order (most-urgent first) so most-urgent sits adjacent
-  -- to the parent.
-  local sessions = sorted_sessions()
-  for i, entry in ipairs(sessions) do
+  -- Split sessions into inline (currently active) and overflow
+  -- (everything else). "Currently active" means attached AND either:
+  --   - state == running, OR
+  --   - state == needs-attention with a fresh, unviewed hook fire
+  -- (the same predicate that drives the magenta underline). Stale or
+  -- already-viewed needs-attention falls to overflow so the bar shows
+  -- only the agents actually waiting on the user right now.
+  local now = os.time()
+  local inline = {}
+  local overflow = {}
+  for _, entry in ipairs(sorted_sessions()) do
     local s = entry.session
     local zmx = s.zmx_session or ""
     local detached = zmx ~= "" and not zmx_attached[zmx]
+    local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
+    local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
+    local active = s.state == "running"
+      or (s.state == "needs-attention" and fresh and unviewed)
+    local record = { entry = entry, s = s, detached = detached }
+    if active and not detached then
+      table.insert(inline, record)
+    else
+      table.insert(overflow, record)
+    end
+  end
 
+  -- Inline pills (position=right). Order matters: sketchybar prepends
+  -- right-positioned items, so the FIRST add ends up rightmost (closest
+  -- to the parent pill). We iterate in sorted order so most-urgent sits
+  -- adjacent to the parent.
+  for i, r in ipairs(inline) do
+    local s = r.s
     local label = row_name(s)
-    local short = entry.id:sub(1, 8)
+    local short = r.entry.id:sub(1, 8)
     local child = "agent_sessions." .. short
 
     -- The rightmost session (first in sorted order, sitting next to
@@ -286,47 +417,17 @@ local function rebuild_session_items()
     local is_rightmost = i == 1
     local label_right_pad = is_rightmost and 16 or 8
 
-    local click_script
-    if detached then
-      -- Mirrors `wft term` / `ghostty::spawn_window`: open a fresh Ghostty
-      -- window attached to the session's zmx. Key flags:
-      --   --window-inherit-working-directory=false  so --working-directory wins
-      --   --working-directory=<cwd>                 land in the project dir
-      --   -e zmx attach <session>                   reattach to the persisted zmx
-      -- Use the FULL zmx session name (e.g. "d.dotfiles.0") because the
-      -- Ghostty login shell won't have $ZMX_SESSION_PREFIX set. Using the
-      -- short name would create a new empty session instead of reattaching.
-      local zmx_arg = zmx
-      local cwd = s.cwd ~= "" and s.cwd or os.getenv("HOME") or "/tmp"
-      -- Shell-escape cwd in case it contains spaces; click_script is
-      -- executed by sketchybar via /bin/sh -c.
-      local esc_cwd = cwd:gsub("'", "'\\''")
-      click_script = string.format(
-        "open -n -a Ghostty --args"
-        .. " --window-inherit-working-directory=false"
-        .. " --working-directory='%s'"
-        .. " -e zmx attach %s",
-        esc_cwd, zmx_arg
-      )
-    elseif s.window_id and s.window_id ~= "" then
-      click_script = "aerospace focus --window-id " .. s.window_id
-    else
-      click_script = "aerospace workspace " .. s.workspace
-    end
-
     -- needs-attention underline applies only when:
     --   1. session state is needs-attention,
-    --   2. terminal is attached (zmx connected),
-    --   3. last state-change is within NEEDS_ATTENTION_TTL_S, and
-    --   4. user hasn't focused this session's workspace since the
+    --   2. last state-change is within NEEDS_ATTENTION_TTL_S, and
+    --   3. user hasn't focused this session's workspace since the
     --      state-change (viewed_at < updated_at).
-    -- (4) clears the underline as soon as the user switches into the
-    -- agent's workspace; the next Stop hook re-arms it.
-    local now = os.time()
+    -- (3) clears the underline as soon as the user switches into the
+    -- agent's workspace; the next Stop hook re-arms it. (detached is
+    -- already filtered out at split time.)
     local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
     local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
-    local attention_active = s.state == "needs-attention"
-      and not detached and fresh and unviewed
+    local attention_active = s.state == "needs-attention" and fresh and unviewed
     local rest_bg = attention_active and NEEDS_ATTENTION_BG or REST_BG_NONE
 
     local item = add_session_item(child, {
@@ -340,7 +441,7 @@ local function rebuild_session_items()
         padding_right = label_right_pad,
       },
       background   = rest_bg,
-      click_script = click_script,
+      click_script = make_click_script(s, false),
     })
 
     item:subscribe("mouse.entered", function()
@@ -351,6 +452,50 @@ local function rebuild_session_items()
     end)
   end
 
+  -- Overflow popup children (vertical list). Each row clicks through to
+  -- the same workspace/spawn action as an inline pill. Detached rows
+  -- get parens via display_zmx in row_name.
+  for _, r in ipairs(overflow) do
+    local s = r.s
+    local short = r.entry.id:sub(1, 8)
+    local child = "agent_sessions_overflow." .. short
+    local row_label = row_name(s)
+    local row = add_overflow_child(child, {
+      position = "popup." .. overflow_item.name,
+      icon = { drawing = false },
+      label = {
+        string        = row_label,
+        font          = Fonts.popup,
+        color         = r.detached and Colors.dim or Colors.fg,
+        padding_left  = 12,
+        padding_right = 12,
+      },
+      click_script = make_click_script(s, r.detached),
+    })
+    -- Hovering popup rows keeps the popup open and provides a subtle
+    -- highlight. Leaving the row schedules a close like the parent.
+    row:subscribe("mouse.entered", function()
+      open_overflow_popup()
+      row:set({ background = { color = Colors.pill_bg, drawing = "on" } })
+    end)
+    row:subscribe("mouse.exited", function()
+      schedule_close_overflow_popup()
+      row:set({ background = { color = Colors.transparent, drawing = "off" } })
+    end)
+  end
+
+  -- Show / hide the overflow pill based on whether anything overflowed.
+  if #overflow > 0 then
+    overflow_item:set({
+      drawing = "on",
+      label   = { string = "+" .. #overflow },
+    })
+  else
+    overflow_item:set({
+      drawing = "off",
+      popup   = { drawing = "off" },
+    })
+  end
 end
 
 local function repaint_parent()
