@@ -28,13 +28,12 @@ Personal development environment setup. Configs are minimal, version-controlled,
   - TODO keywords: `TODO` / `DONE` (simple, tasks tracked in beads)
   - Logging: `org-log-done 'time`, `org-log-into-drawer t`
   - Vulpea: primary note interface, same config (describe-fn, template, journal)
-  - Agent-shell: same viewport evil bindings, table renderer, attention, manager
   - Org-roam: stays as db layer for vulpea, same capture templates and dailies
   - Org-attach: same timestamp-based config (`org-id-method 'ts`, cp method)
   - Org-modern + org-tidy: same visual settings
   - Modus-themes: `modus-operandi` default, same toggle function
   - Keybindings: compatible SPC-leader namespace (general.el)
-- Doom-only features (not in thbemacs): lsp-mode, tree-sitter, multi-lang, org-babel (mermaid/D2/dot), org-confluence-publish, org-db-v3, persp-mode workspaces
+- Doom-only features (not in thbemacs): lsp-mode, tree-sitter, multi-lang, org-babel (mermaid/D2/dot), org-confluence-publish, org-db-v3, persp-mode workspaces, agent-shell
 - thbemacs-only features: eglot, tabspaces, org-appear, custom splash screen
 
 **thbemacs (vanilla Emacs):**
