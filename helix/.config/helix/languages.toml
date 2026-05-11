@@ -14,7 +14,11 @@ formatter = { command = "goimports" }
 
 [language-server.gopls.config]
 gofumpt     = false
-directoryFilters = ["-bazel-bin","-bazel-out","-bazel-testlogs","-bazel-mypkg","-bazel-dd-go","-bazel-dd-source"]
+# Workspace-specific bazel output dirs (-bazel-<monorepo-name>) can be
+# appended to this list locally after stow; helix has no include
+# mechanism, so the override is just an in-place edit + `git
+# update-index --skip-worktree`.
+directoryFilters = ["-bazel-bin","-bazel-out","-bazel-testlogs","-bazel-mypkg"]
 usePlaceholders = true
 semanticTokens = true
 staticcheck = true

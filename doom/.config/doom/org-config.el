@@ -348,20 +348,14 @@ Returns absolute path for diagram renderers to write file to."
               vc-ignore-dir-regexp
               (regexp-quote (expand-file-name org-directory))))
 
-;; org-confluence-publish configuration
-;; One-way publishing of org files to Confluence Cloud
+;; org-confluence-publish keybindings. The connection settings
+;; (base URL, space key, parent page ID, JIRA env-var credentials)
+;; are workspace-specific and live in local.el so they don't leak
+;; into the public dotfiles.
 (use-package! org-confluence-publish
   :after org
   :commands (org-confluence-publish-buffer org-confluence-publish-open-page)
   :config
-  ;; Confluence Cloud connection settings
-  ;; Reuse existing JIRA_EMAIL and JIRA_API_TOKEN environment variables
-  (setq org-confluence-publish-base-url "https://datadoghq.atlassian.net"
-        org-confluence-publish-email (getenv "JIRA_EMAIL")
-        org-confluence-publish-api-token (getenv "JIRA_API_TOKEN")
-        org-confluence-publish-space-key "~972692212"  ; Personal space
-        org-confluence-publish-parent-id "5915312686")  ; DRAFTS page
-
   ;; Keybindings under SPC m e c (org-mode export confluence)
   (map! :map org-mode-map
         :localleader

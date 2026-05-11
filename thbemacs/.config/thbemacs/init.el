@@ -1355,19 +1355,15 @@ Cell text has markdown inline formatting rendered as text properties."
   :mode "\\.go\\'"
   :hook (go-mode . eglot-ensure)
   :config
-  (setq go-test-args "-tags dynamic")
   (with-eval-after-load 'eglot
-    (add-to-list 'eglot-server-programs
-                 '(go-mode . ("dd-gopls")))
     (setq-default eglot-workspace-configuration
-                  '(:gopls (:buildFlags ["-tags=dynamic"]
-                            :local "github.com/DataDog"
-                            :directoryFilters ["-bazel-bin"
+                  '(:gopls (:directoryFilters ["-bazel-bin"
                                                "-bazel-out"
-                                               "-bazel-testlogs"
-                                               "-bazel-dd-go"
-                                               "-bazel-dd-source"]))))
-  (setenv "GOPLS_DISABLE_MODULE_LOADS" "1"))
+                                               "-bazel-testlogs"])))))
+;; Monorepo / vendor-specific gopls customizations (alternate server
+;; binary, :local imports prefix, extra build flags / directory filters,
+;; GOPLS_DISABLE_MODULE_LOADS) live in local.el so they don't leak into
+;; the public dotfiles.
 
 
 ;;; ============================================================

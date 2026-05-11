@@ -40,13 +40,16 @@ Personal development environment setup. Configs are minimal, version-controlled,
 **thbemacs (vanilla Emacs):**
 - Daemon managed by LaunchAgent (`com.thbemacs.daemon`), socket name `thbemacs`
 - Connect: `emacsclient -s thbemacs` or fish function `thbemacs`
-- Uses dd-gopls (not vanilla gopls) with `GOPLS_DISABLE_MODULE_LOADS=1`
 - LSP client: eglot (built-in), not lsp-mode
+- Go-mode uses vanilla gopls by default; workspace-specific overrides
+  (alternate server binary, `:local` import prefix, extra build flags,
+  `GOPLS_DISABLE_MODULE_LOADS`) live in `~/.config/thbemacs/local.el`
 - native-comp requires `LIBRARY_PATH=/opt/homebrew/lib/gcc/current` in LaunchAgent env
 
 **Local overrides (not synced):**
 - Fish: `~/.config/fish/config.local.fish`
 - Doom: `~/.config/doom/local.el` and `packages-local.el`
+- thbemacs: `~/.config/thbemacs/local.el`
 - Topgrade: `~/.config/topgrade.d/local.toml`
 
 **Commits:**
