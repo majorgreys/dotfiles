@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Modus Vivendi Tinted — Pi Theme Semantic Comparison</title>
+  <style>
+    @font-face {
+      font-family: 'IBM Plex Sans';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url('https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/files/ibm-plex-sans-latin-400-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'IBM Plex Sans';
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+      src: url('https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/files/ibm-plex-sans-latin-600-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'IBM Plex Sans';
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+      src: url('https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans@5/files/ibm-plex-sans-latin-700-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'IBM Plex Mono';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url('https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/files/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'IBM Plex Mono';
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+      src: url('https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-mono@5/files/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+    }
+
+    :root {
+      --bg-main: #ffffff;
+      --bg-dim: #f2f2f2;
+      --fg-main: #000000;
+      --fg-dim: #595959;
+      --fg-alt: #193668;
+      --border: #9f9f9f;
+      --border-subtle: #d0d0d0;
+      --blue: #0031a9;
+      --blue-warmer: #354fcf;
+      --cyan: #005e8b;
+      --cyan-cooler: #005f5f;
+      --magenta-cooler: #531ab6;
+      --green-cooler: #00663f;
+      --yellow-warmer: #884900;
+      --red-warmer: #972500;
+      --bg-cyan-nuanced: #e1f3fc;
+      --bg-yellow-nuanced: #fff3da;
+      --bg-magenta-nuanced: #f6e7ff;
+      --bg-added-faint: #d8f2cd;
+      --bg-removed-faint: #ffe9e5;
+      --bg-changed-faint: #fff4d0;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg-main);
+      color: var(--fg-main);
+      font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-feature-settings: "ss03";
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    code, .mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    header {
+      padding: 24px 32px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: var(--bg-main);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+    .subtitle { margin-top: 4px; color: var(--fg-dim); font-size: 14px; max-width: 900px; }
+    main { padding: 26px 32px 48px; max-width: 1480px; margin: 0 auto; }
+    h2 { font-size: 15px; margin: 0 0 12px; color: var(--fg-alt); }
+    h3 { font-size: 13px; margin: 0 0 8px; color: var(--fg-main); }
+    p { margin: 0 0 12px; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+    .note, .legend-card {
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid var(--cyan-cooler);
+      background: var(--bg-cyan-nuanced);
+      padding: 14px 16px;
+      border-radius: 10px;
+    }
+    .note strong, .legend-card strong { color: var(--fg-alt); }
+    .note .meta { color: var(--fg-dim); font-size: 13px; }
+    .legend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .legend-item { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--fg-main); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--fg-dim); }
+    .dot.current { background: var(--cyan-cooler); }
+    .dot.revised { background: var(--magenta-cooler); }
+    .dot.same { background: var(--green-cooler); }
+    .dot.changed { background: var(--yellow-warmer); }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: start;
+      margin-bottom: 24px;
+    }
+    .panel {
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-main);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+    }
+    .panel-head .label { font-weight: 700; color: var(--fg-main); }
+    .panel-head .desc { color: var(--fg-dim); font-size: 12px; }
+
+    .theme-current {
+      --t-bg-main: #0d0e1c;
+      --t-fg-main: #ffffff;
+      --t-fg-dim: #989898;
+      --t-fg-alt: #c6daff;
+      --t-accent: #6ae4b9;
+      --t-border: #2fafff;
+      --t-border-accent: #00d3d0;
+      --t-border-muted: #4a4f69;
+      --t-selected-bg: #303a6f;
+      --t-user-message-bg: #1d2235;
+      --t-custom-message-bg: #2f0c3f;
+      --t-tool-pending-bg: #12154a;
+      --t-tool-success-bg: #092f1f;
+      --t-tool-error-bg: #3a0c14;
+      --t-tool-output: #989898;
+      --t-md-heading: #fec43f;
+      --t-md-link: #79a8ff;
+      --t-md-link-url: #61647a;
+      --t-md-code: #6ae4b9;
+      --t-md-code-block: #44bc44;
+      --t-md-code-block-border: #989898;
+      --t-diff-added: #44bc44;
+      --t-diff-removed: #ff5f59;
+      --t-diff-context: #989898;
+      --t-syntax-comment: #ef8386;
+      --t-syntax-keyword: #79a8ff;
+      --t-syntax-function: #f78fe7;
+      --t-syntax-variable: #4ae2f0;
+      --t-syntax-string: #2fafff;
+      --t-syntax-number: #dfaf7a;
+      --t-syntax-type: #11c777;
+      --t-syntax-operator: #ffffff;
+      --t-thinking-high: #caa6df;
+    }
+    .theme-revised {
+      --t-bg-main: #0d0e1c;
+      --t-fg-main: #ffffff;
+      --t-fg-dim: #989898;
+      --t-fg-alt: #c6daff;
+      --t-accent: #b6a0ff;
+      --t-border: #61647a;
+      --t-border-accent: #00d3d0;
+      --t-border-muted: #61647a;
+      --t-selected-bg: #483d8a;
+      --t-user-message-bg: #1d2235;
+      --t-custom-message-bg: #2f0c3f;
+      --t-tool-pending-bg: #12154a;
+      --t-tool-success-bg: #092f1f;
+      --t-tool-error-bg: #3a0c14;
+      --t-tool-output: #989898;
+      --t-md-heading: #6ae4b9;
+      --t-md-link: #79a8ff;
+      --t-md-link-url: #61647a;
+      --t-md-code: #6ae4b9;
+      --t-md-code-block: #f78fe7;
+      --t-md-code-block-border: #989898;
+      --t-diff-added: #a0e0a0;
+      --t-diff-removed: #ffbfbf;
+      --t-diff-context: #989898;
+      --t-syntax-comment: #ef8386;
+      --t-syntax-keyword: #79a8ff;
+      --t-syntax-function: #f78fe7;
+      --t-syntax-variable: #4ae2f0;
+      --t-syntax-string: #2fafff;
+      --t-syntax-number: #dfaf7a;
+      --t-syntax-type: #11c777;
+      --t-syntax-operator: #ffffff;
+      --t-thinking-high: #caa6df;
+    }
+
+    .tui {
+      background: var(--t-bg-main);
+      color: var(--t-fg-main);
+      padding: 16px;
+      min-height: 640px;
+      font-size: 13px;
+    }
+    .tui-top {
+      border: 1px solid var(--t-border);
+      border-left: 4px solid var(--t-accent);
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .tui-logo { color: var(--t-accent); font-weight: 700; }
+    .tui-muted { color: var(--t-fg-dim); }
+    .tui-editor {
+      border: 1px solid var(--t-border-muted);
+      border-bottom: 3px solid var(--t-thinking-high);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      color: var(--t-fg-main);
+    }
+    .cursor { color: var(--t-accent); }
+    .row-selected {
+      background: var(--t-selected-bg);
+      border-radius: 5px;
+      padding: 6px 8px;
+      margin: 8px 0;
+      color: var(--t-fg-main);
+    }
+    .message {
+      background: var(--t-user-message-bg);
+      border: 1px solid var(--t-border-muted);
+      border-left: 4px solid var(--t-border-accent);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    .message .label { color: var(--t-accent); font-weight: 700; margin-bottom: 4px; }
+    .tools { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .tool {
+      border-radius: 8px;
+      padding: 9px 10px;
+      min-height: 76px;
+      border: 1px solid var(--t-border-muted);
+    }
+    .tool.pending { background: var(--t-tool-pending-bg); }
+    .tool.success { background: var(--t-tool-success-bg); }
+    .tool.error { background: var(--t-tool-error-bg); }
+    .tool-title { color: var(--t-fg-main); font-weight: 700; }
+    .tool-output { color: var(--t-tool-output); margin-top: 5px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; }
+    .markdown {
+      border: 1px solid var(--t-border-muted);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .md-heading { color: var(--t-md-heading); font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+    .markdown a { color: var(--t-md-link); }
+    .markdown .url { color: var(--t-md-link-url); }
+    .markdown code.inline { color: var(--t-md-code); background: transparent; }
+    .codeblock {
+      color: var(--t-md-code-block);
+      border: 1px solid var(--t-md-code-block-border);
+      border-radius: 6px;
+      padding: 9px 10px;
+      margin-top: 8px;
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      white-space: pre-wrap;
+    }
+    .syntax {
+      border: 1px solid var(--t-border-muted);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    }
+    .syn-comment { color: var(--t-syntax-comment); }
+    .syn-keyword { color: var(--t-syntax-keyword); }
+    .syn-function { color: var(--t-syntax-function); }
+    .syn-variable { color: var(--t-syntax-variable); }
+    .syn-string { color: var(--t-syntax-string); }
+    .syn-number { color: var(--t-syntax-number); }
+    .syn-type { color: var(--t-syntax-type); }
+    .syn-operator { color: var(--t-syntax-operator); }
+    .diff {
+      border: 1px solid var(--t-border-muted);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: 12px;
+    }
+    .diff .ctx { color: var(--t-diff-context); }
+    .diff .add { color: var(--t-diff-added); }
+    .diff .del { color: var(--t-diff-removed); }
+
+    .semantic-table {
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); }
+    th { background: var(--bg-dim); color: var(--fg-alt); font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; }
+    td { font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    .token { color: var(--fg-alt); font-weight: 600; }
+    .swatch-line { display: flex; align-items: center; gap: 8px; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+    .swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #00000033; flex: 0 0 auto; }
+    .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; background: var(--bg-main); }
+    .status.changed { color: var(--yellow-warmer); border-color: var(--yellow-warmer); }
+    .status.same { color: var(--green-cooler); border-color: var(--green-cooler); }
+
+    .callout-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .callout {
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid var(--yellow-warmer);
+      background: var(--bg-yellow-nuanced);
+      border-radius: 10px;
+      padding: 13px 14px;
+    }
+    .callout.good { border-left-color: var(--green-cooler); background: var(--bg-added-faint); }
+    .callout.warn { border-left-color: var(--red-warmer); background: var(--bg-removed-faint); }
+    .callout .title { font-weight: 700; color: var(--fg-alt); margin-bottom: 4px; }
+    .callout .body { color: var(--fg-main); font-size: 13px; }
+
+    @media (max-width: 1100px) {
+      .summary, .comparison-grid, .callout-grid { grid-template-columns: 1fr; }
+      main { padding: 18px; }
+      header { position: static; }
+      .tools { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Modus Vivendi Tinted — Pi theme semantic comparison</h1>
+    <div class="subtitle">Current adopted GitHub theme vs. a small revision set that follows the official Emacs Modus semantic mappings more closely.</div>
+  </header>
+
+  <main>
+    <section class="summary" aria-labelledby="summary-heading">
+      <div class="note">
+        <h2 id="summary-heading">What this page compares</h2>
+        <p><strong>Current</strong> is the newly adopted <code>modus-vivendi-tinted</code> Pi theme. <strong>Suggested revision</strong> keeps the same palette and only changes the tokens that diverged semantically from the Emacs theme: accent, borders, selected background, headings, code blocks, and diff colors.</p>
+        <div class="meta mono">File context: ~/.pi/agent/extensions/tb/themes/modus-vivendi-tinted.json</div>
+      </div>
+      <div class="legend-card">
+        <h2>Legend</h2>
+        <div class="legend-grid">
+          <div class="legend-item"><span class="dot current"></span>Current GitHub adoption</div>
+          <div class="legend-item"><span class="dot revised"></span>Suggested semantic revision</div>
+          <div class="legend-item"><span class="dot changed"></span>Changed token</div>
+          <div class="legend-item"><span class="dot same"></span>Already aligned</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="comparison-grid" aria-label="Side-by-side Pi preview">
+      <article class="panel theme-current">
+        <div class="panel-head">
+          <div>
+            <div class="label">Current theme</div>
+            <div class="desc">Palette-faithful; several Pi tokens use visual rather than Modus semantics.</div>
+          </div>
+          <span class="status changed">8 semantic deltas</span>
+        </div>
+        <div class="tui">
+          <div class="tui-top"><span class="tui-logo">π modus-vivendi-tinted</span><span class="tui-muted mono">current</span></div>
+          <div class="tui-editor">Ask Pi to compare <span class="cursor">▌</span><div class="row-selected">selected row uses bg-hl-line blue (#303a6f)</div></div>
+          <div class="message"><div class="label">User</div>Show me semantic differences in <code class="inline">modus-vivendi-tinted</code>.</div>
+          <div class="tools">
+            <div class="tool pending"><div class="tool-title">read</div><div class="tool-output">pending background = bg-blue-nuanced</div></div>
+            <div class="tool success"><div class="tool-title">grep</div><div class="tool-output">success background = bg-green-nuanced</div></div>
+            <div class="tool error"><div class="tool-title">bash</div><div class="tool-output">error background = bg-red-nuanced</div></div>
+          </div>
+          <div class="markdown">
+            <div class="md-heading">Markdown heading is yellow-warmer</div>
+            Body text uses terminal foreground. Link <a href="#">blue-warmer</a> <span class="url mono">https://example.test</span>. Inline <code class="inline mono">code</code> is cyan-cooler.
+            <div class="codeblock">function compare(theme) {
+  return "green code block";
+}</div>
+          </div>
+          <div class="syntax"><span class="syn-comment">// official-like code mappings</span><br><span class="syn-keyword">const</span> <span class="syn-variable">answer</span> <span class="syn-operator">=</span> <span class="syn-function">compare</span>(<span class="syn-string">"modus"</span>, <span class="syn-number">8</span>) <span class="syn-operator">as</span> <span class="syn-type">Report</span>;</div>
+          <div class="diff"><div class="ctx"> context line stays gray</div><div class="del">- removed line is strong red</div><div class="add">+ added line is standard green</div></div>
+        </div>
+      </article>
+
+      <article class="panel theme-revised">
+        <div class="panel-head">
+          <div>
+            <div class="label">Suggested semantic revision</div>
+            <div class="desc">Same palette, token choices moved toward official Modus mappings.</div>
+          </div>
+          <span class="status same">closer semantics</span>
+        </div>
+        <div class="tui">
+          <div class="tui-top"><span class="tui-logo">π modus-vivendi-tinted</span><span class="tui-muted mono">revised</span></div>
+          <div class="tui-editor">Ask Pi to compare <span class="cursor">▌</span><div class="row-selected">selected row uses bg-completion purple (#483d8a)</div></div>
+          <div class="message"><div class="label">User</div>Show me semantic differences in <code class="inline">modus-vivendi-tinted</code>.</div>
+          <div class="tools">
+            <div class="tool pending"><div class="tool-title">read</div><div class="tool-output">pending background unchanged</div></div>
+            <div class="tool success"><div class="tool-title">grep</div><div class="tool-output">success background unchanged</div></div>
+            <div class="tool error"><div class="tool-title">bash</div><div class="tool-output">error background unchanged</div></div>
+          </div>
+          <div class="markdown">
+            <div class="md-heading">Markdown heading is cyan-cooler</div>
+            Body text uses terminal foreground. Link <a href="#">blue-warmer</a> <span class="url mono">https://example.test</span>. Inline <code class="inline mono">code</code> is cyan-cooler.
+            <div class="codeblock">function compare(theme) {
+  return "magenta verbatim block";
+}</div>
+          </div>
+          <div class="syntax"><span class="syn-comment">// code mappings unchanged</span><br><span class="syn-keyword">const</span> <span class="syn-variable">answer</span> <span class="syn-operator">=</span> <span class="syn-function">compare</span>(<span class="syn-string">"modus"</span>, <span class="syn-number">8</span>) <span class="syn-operator">as</span> <span class="syn-type">Report</span>;</div>
+          <div class="diff"><div class="ctx"> context line stays gray</div><div class="del">- removed line uses fg-removed pale red</div><div class="add">+ added line uses fg-added pale green</div></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="semantic-table" aria-labelledby="semantic-table-heading">
+      <table>
+        <thead>
+          <tr>
+            <th id="semantic-table-heading">Pi token</th>
+            <th>Current value</th>
+            <th>Suggested value</th>
+            <th>Why change?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="token">accent</span></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#6ae4b9"></span>#6ae4b9</div></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#b6a0ff"></span>#b6a0ff</div></td>
+            <td>Modus key binding / accent-0 semantics lean <span class="mono">magenta-cooler</span>; current uses <span class="mono">cyan-cooler</span>.</td>
+          </tr>
+          <tr>
+            <td><span class="token">border</span></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#2fafff"></span>#2fafff</div></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#61647a"></span>#61647a</div></td>
+            <td>Official <span class="mono">border</span> is the muted slate value, not blue.</td>
+          </tr>
+          <tr>
+            <td><span class="token">borderMuted</span></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#4a4f69"></span>#4a4f69</div></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#61647a"></span>#61647a</div></td>
+            <td>Current uses <span class="mono">bg-active</span>; muted border semantics are closer to <span class="mono">border</span>.</td>
+          </tr>
+          <tr>
+            <td><span class="token">selectedBg</span></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#303a6f"></span>#303a6f</div></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#483d8a"></span>#483d8a</div></td>
+            <td>Current uses <span class="mono">bg-hl-line</span>; selected/completion UI maps better to <span class="mono">bg-completion</span>.</td>
+          </tr>
+          <tr>
+            <td><span class="token">mdHeading</span></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#fec43f"></span>#fec43f</div></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#6ae4b9"></span>#6ae4b9</div></td>
+            <td>Official heading level 0 maps to <span class="mono">cyan-cooler</span>; yellow is more of an accent/date color.</td>
+          </tr>
+          <tr>
+            <td><span class="token">mdCodeBlock</span></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#44bc44"></span>#44bc44</div></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#f78fe7"></span>#f78fe7</div></td>
+            <td>Prose verbatim blocks are closer to <span class="mono">magenta-warmer</span>; inline code already uses cyan-cooler.</td>
+          </tr>
+          <tr>
+            <td><span class="token">toolDiffAdded</span></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#44bc44"></span>#44bc44</div></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#a0e0a0"></span>#a0e0a0</div></td>
+            <td>Official diff added foreground is <span class="mono">fg-added</span>, a softer green designed for diff text.</td>
+          </tr>
+          <tr>
+            <td><span class="token">toolDiffRemoved</span></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#ff5f59"></span>#ff5f59</div></td>
+            <td><div class="swatch-line"><span class="swatch" style="background:#ffbfbf"></span>#ffbfbf</div></td>
+            <td>Official diff removed foreground is <span class="mono">fg-removed</span>, a softer red designed for diff text.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="callout-grid" aria-label="Recommendations">
+      <div class="callout good">
+        <div class="title">Keep</div>
+        <div class="body">The core palette, tool semantic backgrounds, links, inline code, and syntax mappings are already close to the official Modus palette.</div>
+      </div>
+      <div class="callout">
+        <div class="title">Revise</div>
+        <div class="body">Change only the eight highlighted tokens if the goal is semantic fidelity rather than preserving the exact GitHub theme.</div>
+      </div>
+      <div class="callout warn">
+        <div class="title">Trade-off</div>
+        <div class="body">The revised preview is a little less blue/cyan in chrome and more purple in selection/accent, matching Modus semantics but changing the first impression.</div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
