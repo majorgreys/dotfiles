@@ -1325,6 +1325,31 @@ that happen before the GUI frame is the selected one."
   (with-eval-after-load 'modus-themes
     (thb/apply-markdown-ts-faces))
 
+  ;; --- Phase 3: checkbox prettify ----------------------------------------
+  ;;
+  ;; Render Markdown task-list checkboxes as Unicode glyphs via
+  ;; `prettify-symbols-mode'.  Pattern-based (not semantic) — a literal
+  ;; `- [ ]' inside a code block or blockquote will also render as ☐, which
+  ;; matches the rendered-Markdown intent.  Composes with PragmataPro
+  ;; ligatures (ligatures handle prog-mode glyphs; this handles markdown
+  ;; checkbox tokens).
+
+  (defvar thb-markdown-ts-prettify-symbols
+    '(("- [ ]" . ?☐)
+      ("- [x]" . ?☑)
+      ("- [X]" . ?☑)
+      ("- [-]" . ?◐)
+      ("* [ ]" . ?☐)
+      ("* [x]" . ?☑)
+      ("* [X]" . ?☑)
+      ("* [-]" . ?◐)
+      ("+ [ ]" . ?☐)
+      ("+ [x]" . ?☑)
+      ("+ [X]" . ?☑)
+      ("+ [-]" . ?◐))
+    "Markdown task-list checkbox tokens shown as Unicode glyphs.
+☐ unchecked  ☑ checked  ◐ in-progress (- [-] is a common GFM-ish convention).")
+
   (defun thb/markdown-setup ()
     "Per-buffer markdown setup: visual line wrapping and custom font-lock rules.
 
@@ -1345,6 +1370,12 @@ fontification from the block-level rules."
     (setq-local treesit-font-lock-settings (thb-markdown-ts--rules))
     (when (fboundp 'treesit-font-lock-recompute-features)
       (treesit-font-lock-recompute-features))
+    ;; Prettify checkboxes.  Append to (don't replace) prettify-symbols-alist
+    ;; so any future additions from other minor modes still work.
+    (setq-local prettify-symbols-alist
+                (append thb-markdown-ts-prettify-symbols
+                        prettify-symbols-alist))
+    (prettify-symbols-mode 1)
     (when (treesit-parser-list)
       (treesit-font-lock-fontify-region (point-min) (point-max))))
   (add-hook 'markdown-ts-mode-hook #'thb/markdown-setup))
