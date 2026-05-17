@@ -1378,7 +1378,200 @@ fontification from the block-level rules."
     (prettify-symbols-mode 1)
     (when (treesit-parser-list)
       (treesit-font-lock-fontify-region (point-min) (point-max))))
-  (add-hook 'markdown-ts-mode-hook #'thb/markdown-setup))
+  (add-hook 'markdown-ts-mode-hook #'thb/markdown-setup)
+
+  ;; --- Phase 4: editing commands + SPC m leader -------------------------
+  ;;
+  ;; `markdown-ts-mode' v0.3 ships zero editing commands and no keymap.
+  ;; We implement org-style heading / subtree / link manipulation directly
+  ;; against the tree-sitter parse, then bind via the existing `thb/leader'.
+  ;; All helpers and commands use a `thb-markdown-ts-' prefix.
+
+  (defun thb-markdown-ts--parent-of-type (pt type &optional lang)
+    "Find nearest ancestor of TYPE (string) at PT in LANG (default `markdown')."
+    (when-let* ((lang (or lang 'markdown))
+                (node (treesit-node-at pt lang)))
+      (treesit-parent-until
+       node
+       (lambda (n) (equal (treesit-node-type n) type))
+       t)))
+
+  (defun thb-markdown-ts--atx-heading-at-point ()
+    "Return the `atx_heading' node containing point, or nil."
+    (thb-markdown-ts--parent-of-type (point) "atx_heading"))
+
+  (defun thb-markdown-ts--section-at-point ()
+    "Return the innermost `section' node containing point, or nil.
+A section spans an ATX heading plus all its content/nested sections."
+    (thb-markdown-ts--parent-of-type (point) "section"))
+
+  (defun thb-markdown-ts--task-list-marker-at-point ()
+    "Return the `task_list_marker_*' node on the line at point, or nil.
+Walks the `list_item' ancestor and returns its task-marker child if any."
+    (when-let* ((li (thb-markdown-ts--parent-of-type (point) "list_item")))
+      (seq-find (lambda (c)
+                  (string-prefix-p "task_list_marker_"
+                                   (treesit-node-type c)))
+                (treesit-node-children li))))
+
+  (defun thb-markdown-ts-promote-heading ()
+    "Promote heading at point one level (e.g. ## → #).  Errors at level 1."
+    (interactive)
+    (let ((h (thb-markdown-ts--atx-heading-at-point)))
+      (unless h (user-error "Not on an ATX heading"))
+      (let* ((marker (treesit-node-child h 0))
+             (start  (treesit-node-start marker))
+             (end    (treesit-node-end marker))
+             (level  (- end start)))
+        (when (<= level 1) (user-error "Already at level 1"))
+        (save-excursion (goto-char start) (delete-char 1)))))
+
+  (defun thb-markdown-ts-demote-heading ()
+    "Demote heading at point one level (e.g. # → ##).  Errors at level 6."
+    (interactive)
+    (let ((h (thb-markdown-ts--atx-heading-at-point)))
+      (unless h (user-error "Not on an ATX heading"))
+      (let* ((marker (treesit-node-child h 0))
+             (start  (treesit-node-start marker))
+             (end    (treesit-node-end marker))
+             (level  (- end start)))
+        (when (>= level 6) (user-error "Already at level 6"))
+        (save-excursion (goto-char start) (insert "#")))))
+
+  (defun thb-markdown-ts--swap-with-sibling (direction)
+    "Swap the section at point with its sibling in DIRECTION (`next' or `prev').
+Preserves point's offset within the section so the caret stays on the
+same logical line after the move."
+    (let ((section (thb-markdown-ts--section-at-point)))
+      (unless section (user-error "Not in a section"))
+      (let* ((sibling (pcase direction
+                        ('next (treesit-node-next-sibling section))
+                        ('prev (treesit-node-prev-sibling section))))
+             (_ (unless (and sibling
+                             (equal (treesit-node-type sibling) "section"))
+                  (user-error "No %s section to swap with"
+                              (if (eq direction 'next) "following" "preceding"))))
+             (s-start (treesit-node-start section))
+             (s-end   (treesit-node-end   section))
+             (b-start (treesit-node-start sibling))
+             (b-end   (treesit-node-end   sibling))
+             (offset  (- (point) s-start))
+             (s-text  (buffer-substring s-start s-end))
+             (b-text  (buffer-substring b-start b-end)))
+        (cond
+         ((eq direction 'next)
+          (delete-region s-start b-end)
+          (goto-char s-start)
+          (insert b-text s-text)
+          ;; New section start = old start + length(sibling text).
+          (goto-char (+ s-start (length b-text) offset)))
+         ((eq direction 'prev)
+          (delete-region b-start s-end)
+          (goto-char b-start)
+          (insert s-text b-text)
+          (goto-char (+ b-start offset)))))))
+
+  (defun thb-markdown-ts-move-subtree-down ()
+    "Move section (heading + content) at point down past its next sibling."
+    (interactive)
+    (thb-markdown-ts--swap-with-sibling 'next))
+
+  (defun thb-markdown-ts-move-subtree-up ()
+    "Move section (heading + content) at point up past its previous sibling."
+    (interactive)
+    (thb-markdown-ts--swap-with-sibling 'prev))
+
+  (defun thb-markdown-ts-narrow-to-subtree ()
+    "Narrow buffer to the section (heading + content) at point."
+    (interactive)
+    (let ((section (thb-markdown-ts--section-at-point)))
+      (unless section (user-error "Not in a section"))
+      (narrow-to-region (treesit-node-start section)
+                        (treesit-node-end section))))
+
+  (defun thb-markdown-ts-cut-subtree ()
+    "Kill the section (heading + content) at point."
+    (interactive)
+    (let ((section (thb-markdown-ts--section-at-point)))
+      (unless section (user-error "Not in a section"))
+      (kill-region (treesit-node-start section)
+                   (treesit-node-end section))))
+
+  (defun thb-markdown-ts-toggle-checkbox ()
+    "Toggle the task-list checkbox on the line at point ([ ] ↔ [x])."
+    (interactive)
+    (let ((marker (thb-markdown-ts--task-list-marker-at-point)))
+      (unless marker (user-error "No task-list checkbox on this line"))
+      (let* ((start (treesit-node-start marker))
+             (end   (treesit-node-end   marker))
+             (text  (buffer-substring-no-properties start end))
+             (new   (cond
+                     ((string-match-p "\\[ \\]"   text) "[x]")
+                     ((string-match-p "\\[[xX]\\]" text) "[ ]")
+                     ((string-match-p "\\[-\\]"   text) "[ ]")
+                     (t text))))
+        (save-excursion
+          (goto-char start)
+          (delete-region start end)
+          (insert new)))))
+
+  (defun thb-markdown-ts--link-at-point ()
+    "Return the enclosing `inline_link', `image', or `shortcut_link' node.
+Uses the markdown-inline parser; returns nil when point is outside any
+inline region (e.g. inside a fenced code block)."
+    (when-let* ((node (treesit-node-at (point) 'markdown-inline)))
+      (treesit-parent-until
+       node
+       (lambda (n) (member (treesit-node-type n)
+                           '("inline_link" "image" "shortcut_link")))
+       t)))
+
+  (defun thb-markdown-ts-open-link ()
+    "Open the markdown link at point via `browse-url'."
+    (interactive)
+    (let ((link (thb-markdown-ts--link-at-point)))
+      (unless link (user-error "Not on a link"))
+      (let ((dest (seq-find
+                   (lambda (c) (equal (treesit-node-type c) "link_destination"))
+                   (treesit-node-children link))))
+        (unless dest (user-error "Link has no destination"))
+        (browse-url (treesit-node-text dest t)))))
+
+  (defun thb-markdown-ts-insert-link (text url)
+    "Insert a markdown inline link [TEXT](URL).
+With an active region, TEXT defaults to the region's content."
+    (interactive
+     (let* ((default (when (use-region-p)
+                       (buffer-substring-no-properties
+                        (region-beginning) (region-end))))
+            (text (read-string (format-prompt "Link text" default)
+                               nil nil default))
+            (url  (read-string "URL: ")))
+       (list text url)))
+    (when (use-region-p) (delete-region (region-beginning) (region-end)))
+    (insert (format "[%s](%s)" text url)))
+
+  ;; --- SPC m leader bindings -------------------------------------------
+  (thb/leader
+    :keymaps 'markdown-ts-mode-map
+    "m"   '(:ignore t :which-key "markdown")
+    "mx"  '(thb-markdown-ts-toggle-checkbox :which-key "toggle checkbox")
+    "m."  '(consult-imenu               :which-key "goto heading")
+
+    ;; --- SPC m s: subtree ---
+    "ms"  '(:ignore t :which-key "subtree")
+    "msh" '(thb-markdown-ts-promote-heading   :which-key "promote")
+    "msl" '(thb-markdown-ts-demote-heading    :which-key "demote")
+    "msj" '(thb-markdown-ts-move-subtree-down :which-key "move down")
+    "msk" '(thb-markdown-ts-move-subtree-up   :which-key "move up")
+    "msn" '(thb-markdown-ts-narrow-to-subtree :which-key "narrow")
+    "msN" '(widen                              :which-key "widen")
+    "msd" '(thb-markdown-ts-cut-subtree        :which-key "cut")
+
+    ;; --- SPC m l: links ---
+    "ml"  '(:ignore t :which-key "links")
+    "mlo" '(thb-markdown-ts-open-link   :which-key "open at point")
+    "mll" '(thb-markdown-ts-insert-link :which-key "insert link")))
 
 
 ;;; ============================================================
