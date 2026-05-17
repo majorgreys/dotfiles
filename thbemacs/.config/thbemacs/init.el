@@ -145,7 +145,7 @@
   (display-line-numbers-mode -1))
 (dolist (mode '(org-mode-hook
                org-agenda-mode-hook
-               markdown-mode-hook
+               markdown-ts-mode-hook
                special-mode-hook
                term-mode-hook
                eshell-mode-hook))
@@ -406,8 +406,8 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
     (disable-theme 'modus-vivendi-tinted)
     (load-theme 'modus-operandi-tinted t))
   (thb/apply-org-faces)
-  (when (fboundp 'thb/apply-markdown-faces)
-    (thb/apply-markdown-faces)))
+  (when (fboundp 'thb/apply-markdown-ts-faces)
+    (thb/apply-markdown-ts-faces)))
 
 ;; Apply org faces once org-mode is available (faces don't exist until then).
 (with-eval-after-load 'org
@@ -456,7 +456,7 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
   :config
   (evil-collection-init
    '(corfu consult dired embark ibuffer info magit minibuffer
-     org org-roam vertico which-key diff-hl eglot markdown-mode
+     org org-roam vertico which-key diff-hl eglot
      go-mode help custom tab-bar)))
 
 ;; General.el — the same library Doom uses for SPC leader bindings.
@@ -1158,85 +1158,196 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 
 
 ;;; ============================================================
-;;; Markdown
+;;; Markdown — tree-sitter
 ;;; ============================================================
+;;
+;; Phase 1: bare switch from `markdown-mode' to `markdown-ts-mode'.
+;;
+;; The MELPA `markdown-ts-mode' (v0.3.0, by Rahul M. Juliato — soon to be
+;; superseded by an Emacs 31 built-in version) provides only fontification
+;; and iMenu over a tree-sitter parse. It exposes generic faces
+;; (`font-lock-keyword-face' for headings, `font-lock-string-face' for code,
+;; `bold' / `underline' / `link' for emphasis) and ships no keymap or
+;; editing commands. Display customisation (header scaling, code/quote
+;; backgrounds, checkbox prettification) and an org-style `SPC m' leader
+;; will be rebuilt on top of this in phase 2.
+;;
+;; Requires BOTH the `markdown' and `markdown-inline' tree-sitter grammars;
+;; `thb/markdown-ensure-grammar' installs them on first load if missing.
 
-(use-package markdown-mode
-  :mode (("\\.md\\'" . markdown-mode)
-         ("\\.markdown\\'" . markdown-mode))
+(use-package markdown-ts-mode
+  :mode (("\\.md\\'" . markdown-ts-mode)
+         ("\\.markdown\\'" . markdown-ts-mode))
+  :defer t
+  :init
+  (with-eval-after-load 'treesit
+    (dolist (entry '((markdown
+                      "https://github.com/tree-sitter-grammars/tree-sitter-markdown"
+                      "split_parser" "tree-sitter-markdown/src")
+                     (markdown-inline
+                      "https://github.com/tree-sitter-grammars/tree-sitter-markdown"
+                      "split_parser" "tree-sitter-markdown-inline/src")))
+      (add-to-list 'treesit-language-source-alist entry)))
+
+  (defun thb/markdown-ensure-grammar ()
+    "Install markdown + markdown-inline tree-sitter grammars if missing."
+    (dolist (lang '(markdown markdown-inline))
+      (unless (treesit-language-available-p lang)
+        (message "markdown-ts-mode: installing tree-sitter grammar %s" lang)
+        (treesit-install-language-grammar lang))))
+
   :config
-  (setq markdown-fontify-code-blocks-natively t
-        markdown-hide-urls t
-        markdown-hide-markup t
-        markdown-header-scaling t
-        markdown-header-scaling-values '(1.3 1.15 1.05 1.0 1.0 1.0)
-        markdown-asymmetric-header t
-        markdown-italic-underscore t
-        markdown-display-remote-images t
-        markdown-command "multimarkdown")
+  (thb/markdown-ensure-grammar)
 
-  ;; Pretty checkbox / arrow rendering via display table.
-  ;; Composes with PragmataPro ligatures (ligatures handle prog-mode glyphs;
-  ;; this handles markdown-specific tokens).
-  (defvar thb/markdown-prettify-symbols
-    '(("- [ ]" . "☐")
-      ("- [x]" . "☑")
-      ("- [X]" . "☑")
-      ("- [-]" . "◐")
-      ("* [ ]" . "☐")
-      ("* [x]" . "☑")
-      ("* [X]" . "☑")
-      ("* [-]" . "◐"))
-    "Markdown tokens replaced for rendered-like display.")
+  ;; --- Phase 2: faces + heading scaling ---------------------------------
+  ;;
+  ;; The MELPA package collapses all heading levels to `font-lock-keyword-face'
+  ;; and uses generic faces for code/emphasis/links.  We replace its tree-sitter
+  ;; query rules with a richer set that captures each heading level separately,
+  ;; subdues syntactic markers, and routes blocks/inlines through semantic
+  ;; faces we own.  Capture names in tree-sitter queries cannot contain `/',
+  ;; so these faces use a `thb-' prefix instead of `thb/'.
+
+  (defgroup thb-markdown-ts nil
+    "Display customization for `markdown-ts-mode'."
+    :group 'markdown)
+
+  (defface thb-markdown-ts-h1 '((t :inherit outline-1 :weight bold :height 1.3))
+    "Face for level-1 atx & setext headings." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-h2 '((t :inherit outline-2 :weight bold :height 1.15))
+    "Face for level-2 atx & setext headings." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-h3 '((t :inherit outline-3 :weight semi-bold :height 1.05))
+    "Face for level-3 atx headings." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-h4 '((t :inherit outline-4 :weight semi-bold))
+    "Face for level-4 atx headings." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-h5 '((t :inherit outline-5 :weight semi-bold))
+    "Face for level-5 atx headings." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-h6 '((t :inherit outline-6 :weight semi-bold))
+    "Face for level-6 atx headings." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-marker '((t :inherit shadow))
+    "Face for syntactic markers (#, *, -, `, [], etc.)." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-code-inline '((t :inherit (font-lock-string-face fixed-pitch)))
+    "Face for inline code spans." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-code-block '((t :inherit (font-lock-string-face fixed-pitch) :extend t))
+    "Face for fenced/indented code-block content." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-fence-delim '((t :inherit (shadow fixed-pitch)))
+    "Face for fenced code-block delimiters." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-info-language '((t :inherit font-lock-type-face))
+    "Face for language tag in fenced code-block info string." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-blockquote '((t :slant italic :extend t))
+    "Face for block quotes." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-emphasis '((t :slant italic))
+    "Face for emphasis (italic)." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-strong '((t :weight bold))
+    "Face for strong emphasis (bold)." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-strikethrough '((t :strike-through t))
+    "Face for strikethrough text." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-link '((t :inherit link))
+    "Face for link text and image descriptions." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-url '((t :inherit (link shadow)))
+    "Face for link destinations." :group 'thb-markdown-ts)
+
+  (defun thb-markdown-ts--rules ()
+    "Build the replacement `treesit-font-lock-rules' for `markdown-ts-mode'."
+    (treesit-font-lock-rules
+     :language 'markdown-inline
+     :override t
+     :feature 'delimiter
+     '([ "[" "]" "(" ")" ] @thb-markdown-ts-marker)
+
+     :language 'markdown
+     :override t
+     :feature 'paragraph
+     '(;; ATX headings — scale text, dim markers.
+       (atx_heading (atx_h1_marker) @thb-markdown-ts-marker
+                    heading_content: (inline) @thb-markdown-ts-h1)
+       (atx_heading (atx_h2_marker) @thb-markdown-ts-marker
+                    heading_content: (inline) @thb-markdown-ts-h2)
+       (atx_heading (atx_h3_marker) @thb-markdown-ts-marker
+                    heading_content: (inline) @thb-markdown-ts-h3)
+       (atx_heading (atx_h4_marker) @thb-markdown-ts-marker
+                    heading_content: (inline) @thb-markdown-ts-h4)
+       (atx_heading (atx_h5_marker) @thb-markdown-ts-marker
+                    heading_content: (inline) @thb-markdown-ts-h5)
+       (atx_heading (atx_h6_marker) @thb-markdown-ts-marker
+                    heading_content: (inline) @thb-markdown-ts-h6)
+       ;; Setext headings (=== and --- underlines).
+       (setext_heading heading_content: (paragraph) @thb-markdown-ts-h1
+                       (setext_h1_underline) @thb-markdown-ts-marker)
+       (setext_heading heading_content: (paragraph) @thb-markdown-ts-h2
+                       (setext_h2_underline) @thb-markdown-ts-marker)
+       ;; Code blocks.
+       (fenced_code_block (fenced_code_block_delimiter) @thb-markdown-ts-fence-delim)
+       (fenced_code_block (info_string (language) @thb-markdown-ts-info-language))
+       (fenced_code_block (code_fence_content) @thb-markdown-ts-code-block)
+       (indented_code_block) @thb-markdown-ts-code-block
+       ;; Lists and tasks.
+       (list_item (list_marker_minus) @thb-markdown-ts-marker)
+       (list_item (list_marker_plus) @thb-markdown-ts-marker)
+       (list_item (list_marker_star) @thb-markdown-ts-marker)
+       (list_item (list_marker_dot) @thb-markdown-ts-marker)
+       (list_item (task_list_marker_unchecked) @thb-markdown-ts-marker)
+       (list_item (task_list_marker_checked) @thb-markdown-ts-marker)
+       ;; Blockquotes and horizontal rules.
+       (block_quote (block_quote_marker) @thb-markdown-ts-marker)
+       (block_quote (paragraph) @thb-markdown-ts-blockquote)
+       (thematic_break) @thb-markdown-ts-marker)
+
+     :language 'markdown-inline
+     :override t
+     :feature 'paragraph-inline
+     '((emphasis) @thb-markdown-ts-emphasis
+       (strong_emphasis) @thb-markdown-ts-strong
+       (strikethrough) @thb-markdown-ts-strikethrough
+       (emphasis_delimiter) @thb-markdown-ts-marker
+       (code_span) @thb-markdown-ts-code-inline
+       (code_span_delimiter) @thb-markdown-ts-marker
+       (inline_link (link_text) @thb-markdown-ts-link
+                    (link_destination) @thb-markdown-ts-url)
+       (image (image_description) @thb-markdown-ts-link
+              (link_destination) @thb-markdown-ts-url)
+       (shortcut_link (link_text) @thb-markdown-ts-link))))
+
+  (defun thb/apply-markdown-ts-faces ()
+    "Reapply theme-aware background colors to `thb-markdown-ts-*' faces.
+Called from `thb/toggle-theme' so colors track light/dark swaps.
+
+Note: no `display-graphic-p' guard — hex colors set on face attributes
+work in any frame type (terminal Emacs just approximates), and gating
+on the selected frame breaks `with-eval-after-load' / emacsclient calls
+that happen before the GUI frame is the selected one."
+    (when (featurep 'modus-themes)
+      (let ((bg-code  (modus-themes-get-color-value 'bg-dim))
+            (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced)))
+        (set-face-attribute 'thb-markdown-ts-code-block nil :background bg-code)
+        (set-face-attribute 'thb-markdown-ts-blockquote nil :background bg-quote))))
+
+  (with-eval-after-load 'modus-themes
+    (thb/apply-markdown-ts-faces))
 
   (defun thb/markdown-setup ()
-    "Per-buffer markdown setup: word-wrap, valign tables, prettify checkboxes,
-hide markup and URLs (re-fontify so existing buffers update)."
+    "Per-buffer markdown setup: visual line wrapping and custom font-lock rules.
+
+Replaces `markdown-ts--treesit-settings' with our richer rule set so each
+heading level, markers, code, blockquotes, and inlines get their own faces.
+
+Also installs `treesit-range-settings' restricting the markdown-inline
+parser to (inline) nodes from the markdown grammar. Without this, the
+MELPA package runs both parsers across the whole buffer and the inline
+parser misclassifies fenced code-block content as `code_span', stealing
+fontification from the block-level rules."
     (visual-line-mode 1)
-    (setq-local markdown-hide-markup t
-                markdown-hide-urls t)
-    (when (fboundp 'valign-mode) (valign-mode 1))
-    (setq-local prettify-symbols-alist
-                (append thb/markdown-prettify-symbols
-                        prettify-symbols-alist))
-    (prettify-symbols-mode 1)
-    (font-lock-flush)
-    (font-lock-ensure))
-
-  (add-hook 'markdown-mode-hook #'thb/markdown-setup)
-
-  (defun thb/apply-markdown-faces ()
-    "Set markdown faces — heading sizes, code/quote backgrounds (GUI only)."
-    (set-face-attribute 'markdown-header-face-1 nil :height 1.3 :weight 'bold :inherit 'org-level-1)
-    (set-face-attribute 'markdown-header-face-2 nil :height 1.15 :weight 'bold :inherit 'org-level-2)
-    (set-face-attribute 'markdown-header-face-3 nil :height 1.05 :weight 'semi-bold :inherit 'org-level-3)
-    (when (display-graphic-p)
-      (let ((bg  (modus-themes-get-color-value 'bg-dim))
-            (bgq (modus-themes-get-color-value 'bg-blue-nuanced)))
-        (when (facep 'markdown-code-face)
-          (set-face-attribute 'markdown-code-face nil :background bg :extend t))
-        (when (facep 'markdown-pre-face)
-          (set-face-attribute 'markdown-pre-face nil :background bg))
-        (when (facep 'markdown-blockquote-face)
-          (set-face-attribute 'markdown-blockquote-face nil
-                              :background bgq :slant 'italic :extend t)))))
-
-  (with-eval-after-load 'markdown-mode
-    (thb/apply-markdown-faces))
-
-  ;; --- SPC m: markdown bindings (mirror org leader namespace) ---
-  (thb/leader
-    :keymaps 'markdown-mode-map
-    "m"  '(:ignore t :which-key "markdown")
-    "mi" '(markdown-toggle-inline-images :which-key "inline images")
-    "mh" '(markdown-toggle-markup-hiding :which-key "toggle markup hiding")
-    "mu" '(markdown-toggle-url-hiding :which-key "toggle url hiding")
-
-    ;; --- SPC m v: preview (rendered view) ---
-    "mv"  '(:ignore t :which-key "preview")
-    "mvl" '(markdown-live-preview-mode :which-key "live preview (eww)")
-    "mvp" '(markdown-preview :which-key "preview (browser)")
-    "mvo" '(markdown-open :which-key "open externally")))
+    (setq-local treesit-range-settings
+                (treesit-range-rules
+                 :embed 'markdown-inline
+                 :host 'markdown
+                 '((inline) @capture)))
+    (setq-local treesit-font-lock-settings (thb-markdown-ts--rules))
+    (when (fboundp 'treesit-font-lock-recompute-features)
+      (treesit-font-lock-recompute-features))
+    (when (treesit-parser-list)
+      (treesit-font-lock-fontify-region (point-min) (point-max))))
+  (add-hook 'markdown-ts-mode-hook #'thb/markdown-setup))
 
 
 ;;; ============================================================
