@@ -339,8 +339,8 @@
 
 ;; Theme — modus-operandi-tinted (light) / modus-vivendi-tinted (dark)
 ;; These are built-in since Emacs 28, high-contrast and WCAG-compliant.
-;; Tinted variants match the Ghostty terminal themes for consistent TUI colors.
-(load-theme 'modus-operandi-tinted t)
+;; Default to the dark tinted variant to match Ghostty's terminal theme.
+(load-theme 'modus-vivendi-tinted t)
 
 ;; Enable 24-bit color on terminals with COLORTERM=truecolor.
 ;; Emacs's tty-color-24bit only activates when display-color-cells == 16777216,
