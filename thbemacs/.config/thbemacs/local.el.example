@@ -16,6 +16,6 @@
 ;; (set-face-attribute 'default nil :height 140)
 
 ;; --- Theme Override ---
-;; (load-theme 'modus-vivendi t)  ; dark theme by default
+;; (load-theme 'modus-operandi-tinted t)  ; light theme override
 
 ;;; local.el.example ends here
