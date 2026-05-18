@@ -82,6 +82,57 @@ The default is a left-bar glyph that approximates a CSS border-left."
   :type '(alist :key-type string :value-type string)
   :group 'thb-md-render)
 
+(defcustom thb-md-render-language-mode-alist
+  '(("python"     . python-mode)
+    ("py"         . python-mode)
+    ("js"         . js-mode)
+    ("javascript" . js-mode)
+    ("jsx"        . js-mode)
+    ("ts"         . typescript-mode)
+    ("typescript" . typescript-mode)
+    ("tsx"        . typescript-mode)
+    ("go"         . go-mode)
+    ("rust"       . rust-mode)
+    ("rs"         . rust-mode)
+    ("c"          . c-mode)
+    ("cpp"        . c++-mode)
+    ("c++"        . c++-mode)
+    ("java"       . java-mode)
+    ("ruby"       . ruby-mode)
+    ("rb"         . ruby-mode)
+    ("json"       . js-mode) ; close enough for keyword/string fontification
+    ("yaml"       . conf-mode)
+    ("yml"        . conf-mode)
+    ("toml"       . conf-mode)
+    ("sh"         . sh-mode)
+    ("bash"       . sh-mode)
+    ("shell"      . sh-mode)
+    ("zsh"        . sh-mode)
+    ("css"        . css-mode)
+    ("html"       . html-mode)
+    ("xml"        . sgml-mode)
+    ("dockerfile" . conf-mode)
+    ("elisp"      . emacs-lisp-mode)
+    ("emacs-lisp" . emacs-lisp-mode)
+    ("lisp"       . lisp-mode)
+    ("scheme"     . scheme-mode)
+    ("sql"        . sql-mode)
+    ("diff"       . diff-mode)
+    ("patch"      . diff-mode)
+    ("md"         . markdown-ts-mode)
+    ("markdown"   . markdown-ts-mode))
+  "Map fence info-string language to major mode for syntax fontification.
+Used by `thb-md-render--fontify-code'.  Modes are tried in a cached
+temp buffer; failures (missing mode, init error) fall back to no
+highlighting (plain code-block face only).
+
+We deliberately use traditional (non-tree-sitter) modes here because
+`*-ts-mode' modes require external tree-sitter grammars that may not
+be installed.  Traditional modes ship with Emacs and rely only on
+font-lock-keywords which is always available."
+  :type '(alist :key-type string :value-type symbol)
+  :group 'thb-md-render)
+
 ;;;; Faces ---------------------------------------------------------------
 
 (defface thb-md-render-h1 '((t :inherit outline-1 :weight bold :height 2.0))
@@ -528,6 +579,57 @@ ordered list (incremented per `list_item').")
 
 ;;;; Block: fenced code -------------------------------------------------
 
+(defvar thb-md-render--fontify-buffers (make-hash-table :test 'eq)
+  "Cache of per-mode hidden buffers used for code-fence fontification.
+Mode init (defining font-lock-keywords, syntax tables, etc.) is the
+expensive part — cache the initialized buffer and reuse it across all
+fontify calls for the same language.  Lives for the Emacs session;
+buffers are killed only on `kill-emacs-hook' (via the cleanup helper).")
+
+(defun thb-md-render--fontify-buffer-for-mode (mode)
+  "Return a cached hidden buffer initialised in MODE.
+Creates and primes one on first use; subsequent calls reuse it."
+  (let ((cached (gethash mode thb-md-render--fontify-buffers)))
+    (if (and cached (buffer-live-p cached))
+        cached
+      (let ((buf (generate-new-buffer
+                  (format " *thb-md-fontify-cache: %s*" mode) t)))
+        (with-current-buffer buf
+          (delay-mode-hooks (funcall mode)))
+        (puthash mode buf thb-md-render--fontify-buffers)
+        buf))))
+
+(defun thb-md-render-fontify-cleanup ()
+  "Kill all cached fontification buffers.  Hooked to `kill-emacs-hook'."
+  (maphash (lambda (_mode buf)
+             (when (buffer-live-p buf) (kill-buffer buf)))
+           thb-md-render--fontify-buffers)
+  (clrhash thb-md-render--fontify-buffers))
+(add-hook 'kill-emacs-hook #'thb-md-render-fontify-cleanup)
+
+(defun thb-md-render--fontify-code (text lang)
+  "Return TEXT fontified per LANG's major mode (looks up `thb-md-render-
+language-mode-alist').  Returns the original TEXT unchanged on any
+failure: unknown language, mode missing, mode init errors, etc.
+
+Uses a per-mode cached buffer so mode init (font-lock-keywords compile,
+syntax-table setup, ...) is paid once per language per Emacs session
+rather than once per fontify call.  The returned string carries text
+properties for the per-token faces font-lock applied; inserting it
+preserves those properties."
+  (let ((mode (cdr (assoc lang thb-md-render-language-mode-alist))))
+    (if (and mode (fboundp mode))
+        (condition-case _err
+            (with-current-buffer
+                (thb-md-render--fontify-buffer-for-mode mode)
+              (let ((inhibit-read-only t))
+                (erase-buffer)
+                (insert text)
+                (font-lock-ensure)
+                (buffer-string)))
+          (error text))
+      text)))
+
 (defun thb-md-render--walk-fenced-code (node)
   (thb-md-render--ensure-blank-line)
   (let* ((info-node (thb-md-render--first-child-of-type node "info_string"))
@@ -541,10 +643,20 @@ ordered list (incremented per `list_item').")
     (when content
       (let* ((raw (thb-md-render--src-text (treesit-node-start content)
                                            (treesit-node-end   content)))
-             ;; Strip trailing newline so the block doesn't double-space.
-             (trimmed (string-trim-right raw "\n")))
-        (thb-md-render--emit (concat trimmed "\n")
-                             'thb-md-render-code-block))))
+             (trimmed (string-trim-right raw "\n"))
+             ;; Inject syntax fontification when we know the language; if not,
+             ;; the string comes back property-free and just gets code-block.
+             (fontified (if (and lang (> (length trimmed) 0))
+                            (thb-md-render--fontify-code trimmed lang)
+                          trimmed))
+             (start (point)))
+        (insert fontified "\n")
+        ;; Apply our code-block face UNDER any per-token faces font-lock set.
+        ;; `font-lock-append-text-property' adds the new face at the END of
+        ;; the face-list at each position, so existing per-token foregrounds
+        ;; win for color while code-block fills bg + fixed-pitch elsewhere.
+        (font-lock-append-text-property start (point)
+                                        'face 'thb-md-render-code-block))))
   (thb-md-render--newline 1))
 
 (defun thb-md-render--walk-indented-code (node)
