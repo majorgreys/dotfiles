@@ -1957,6 +1957,14 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
   :ensure nil
   :commands (thb-md-render-file thb-md-render-toggle))
 
+;; In-place decoration for markdown-ts-mode source buffers — hides
+;; delimiters (* ` ~ etc.) and link URLs so the source reads like the
+;; rendered output.  Reveals decorated regions on cursor-entry, like
+;; org-appear does for org-mode.  Auto-enables on markdown-ts-mode.
+(use-package thb-markdown-decor
+  :ensure nil
+  :hook (markdown-ts-mode . thb-markdown-decor-mode))
+
 
 ;;; ============================================================
 ;;; Beads (Issue Tracking)
