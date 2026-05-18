@@ -1433,17 +1433,43 @@ that happen before the GUI frame is the selected one."
   ;; right edge of the preview — perceived as overflow even when no real
   ;; content is off-screen.  Trim every trailing run of whitespace after
   ;; eww finishes rendering; tables fit the window cleanly.
-  (defun thb-markdown-ts-preview--trim-trailing-whitespace ()
-    "Strip trailing whitespace from every line in the current buffer.
-Intended as an `eww-after-render-hook'.  No-op outside a markdown-ts
-preview buffer so general eww browsing is unaffected."
+  (defun thb-markdown-ts-preview--post-render-cleanup ()
+    "`eww-after-render-hook' cleanup for markdown preview buffers.
+
+Two passes:
+
+1. Strip trailing whitespace from every line.  shr pads table cells
+   with trailing whitespace to align column widths, which exceeds the
+   window's char count even when no real content is off-screen.
+
+2. Remove shr's outer table borders — the single-run ─── lines
+   immediately above the first row and below the last row.  shr emits
+   them in addition to the per-row separators, so the top and bottom of
+   every table renders as two parallel rules.  Row separators are
+   segmented (────  ────── with internal gaps for column boundaries);
+   outer borders are continuous.  We keep the segmented per-row lines."
     (when (thb-markdown-ts-preview--in-preview-buffer-p)
-      (save-excursion
-        (let ((inhibit-read-only t))
+      (let ((inhibit-read-only t))
+        ;; Pass 1: trailing whitespace.
+        (save-excursion
           (goto-char (point-min))
           (while (re-search-forward "[ \t]+$" nil t)
-            (replace-match ""))))))
-  (add-hook 'eww-after-render-hook #'thb-markdown-ts-preview--trim-trailing-whitespace)
+            (replace-match "")))
+        ;; Pass 2: outer table borders — lines that are only `─' (plus
+        ;; outer whitespace) with no internal gap between rules.
+        (save-excursion
+          (goto-char (point-min))
+          (while (not (eobp))
+            (let ((line (buffer-substring-no-properties
+                         (line-beginning-position)
+                         (line-end-position))))
+              (if (and (string-match-p "\\`\\s-*─+\\s-*\\'" line)
+                       (not (string-match-p "─[ \t]+─" line)))
+                  ;; Continuous-rule line: delete it (and its newline).
+                  (delete-region (line-beginning-position)
+                                 (min (point-max) (1+ (line-end-position))))
+                (forward-line 1))))))))
+  (add-hook 'eww-after-render-hook #'thb-markdown-ts-preview--post-render-cleanup)
 
   ;; --- Phase 3: checkbox prettify ----------------------------------------
   ;;
