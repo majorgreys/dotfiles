@@ -714,26 +714,36 @@ preserves those properties."
            (t thb-md-render-bullet))))
     (insert indent)
     (thb-md-render--emit prefix 'thb-md-render-list-marker)
-    ;; Walk item's children -- typically a paragraph + possibly nested list.
-    (dolist (c (treesit-node-children node))
-      (let ((type (treesit-node-type c)))
-        (pcase type
-          ("paragraph"
-           (let ((inline (thb-md-render--first-child-of-type c "inline")))
-             (when inline
-               (thb-md-render--inline-walk
-                (treesit-node-start inline) (treesit-node-end inline))))
-           (thb-md-render--newline 1))
-          ("list"
-           ;; Nested list: continue at next depth.
-           (thb-md-render--walk-list c))
-          ;; Skip marker children (already handled).
-          ((or "list_marker_minus" "list_marker_plus"
-               "list_marker_star" "list_marker_dot"
-               "task_list_marker_unchecked" "task_list_marker_checked"
-               "block_continuation") nil)
-          (_
-           (thb-md-render--walk c)))))))
+    ;; Remember where the item's CONTENT starts; after walking children we
+    ;; tag the whole content range with a `wrap-prefix' text property so
+    ;; that visual continuation lines align under the text (not column 0).
+    (let* ((content-start (point))
+           ;; Total left padding for wraps = item indent + prefix width.
+           (wrap-pad (concat indent (make-string (length prefix) ?\s))))
+      (dolist (c (treesit-node-children node))
+        (let ((type (treesit-node-type c)))
+          (pcase type
+            ("paragraph"
+             (let ((inline (thb-md-render--first-child-of-type c "inline")))
+               (when inline
+                 (thb-md-render--inline-walk
+                  (treesit-node-start inline) (treesit-node-end inline))))
+             (thb-md-render--newline 1))
+            ("list"
+             ;; Nested list: continue at next depth.
+             (thb-md-render--walk-list c))
+            ;; Skip marker children (already handled).
+            ((or "list_marker_minus" "list_marker_plus"
+                 "list_marker_star" "list_marker_dot"
+                 "task_list_marker_unchecked" "task_list_marker_checked"
+                 "block_continuation") nil)
+            (_
+             (thb-md-render--walk c)))))
+      ;; Apply wrap-prefix to the item content range.  Visual wraps of the
+      ;; item's first paragraph will now hang under the text rather than
+      ;; reset to column 0.  Nested list content (separate items) gets its
+      ;; own wrap-prefix set by its own --walk-list-item call.
+      (put-text-property content-start (point) 'wrap-prefix wrap-pad))))
 
 ;;;; Block: blockquote ---------------------------------------------------
 
@@ -782,10 +792,46 @@ preserves those properties."
 ;; tint via `thb-md-render-table-header'; a horizontal rule sits below
 ;; the header; body rows are plain.  No vertical separators — they cause
 ;; alignment issues with our shr fix and weren't needed here either.
+;;
+;; GFM cell alignment is encoded in the delimiter row's cell text:
+;;   `:---'   left   (default)
+;;   `---:'   right
+;;   `:---:'  center
+;;   `---'    default (left)
+;; We parse those into a vector of alignment symbols and pad cells
+;; accordingly when emitting.
 
 (defun thb-md-render--cell-text (cell)
   "Return CELL's source text, trimmed."
   (string-trim (thb-md-render--node-text cell)))
+
+(defun thb-md-render--table-cell-alignment (delim-cell)
+  "Return `left', `center', `right', or `default' for a delimiter cell.
+Parses the GFM syntax: `:---' / `:--:' / `---:' / `---' (or any length)."
+  (let* ((text (string-trim (thb-md-render--node-text delim-cell)))
+         (left  (and (> (length text) 0) (eq (aref text 0) ?:)))
+         (right (and (> (length text) 0)
+                     (eq (aref text (1- (length text))) ?:))))
+    (cond
+     ((and left right) 'center)
+     (right            'right)
+     (left             'left)
+     (t                'default))))
+
+(defun thb-md-render--table-alignments (table n-cols)
+  "Return a vector of length N-COLS with per-column alignment symbols."
+  (let ((delim-row (thb-md-render--first-child-of-type
+                    table "pipe_table_delimiter_row"))
+        (aligns (make-vector n-cols 'default)))
+    (when delim-row
+      (let ((cells (thb-md-render--children-of-type
+                    delim-row "pipe_table_delimiter_cell"))
+            (i 0))
+        (dolist (c cells)
+          (when (< i n-cols)
+            (aset aligns i (thb-md-render--table-cell-alignment c))
+            (cl-incf i)))))
+    aligns))
 
 (defun thb-md-render--table-rows (table)
   "Return a list of (CELLS . FACE) pairs for TABLE.
@@ -835,6 +881,39 @@ parser must have been configured to parse pipe_table_cell ranges."
       (delete-region (point) (line-end-position)))
     (- (point) start)))
 
+(defun thb-md-render--table-emit-padded-cell (cell width align)
+  "Emit CELL's inline content padded to WIDTH columns per ALIGN.
+ALIGN is one of `left' / `right' / `center' / `default' (= left)."
+  (cond
+   ((eq align 'right)
+    ;; Pad before content: figure out width first by rendering into a
+    ;; throwaway position, but inline-walk advances the cursor and
+    ;; emits text, so we render first then move the result.  Simpler:
+    ;; render, then count chars emitted, then prepend pad by inserting
+    ;; at the cell's start position.
+    (let* ((start (point))
+           (written (thb-md-render--table-emit-cell-inline cell))
+           (pad (max 0 (- width written))))
+      (when (> pad 0)
+        (save-excursion
+          (goto-char start)
+          (insert (make-string pad ?\s))))))
+   ((eq align 'center)
+    (let* ((start (point))
+           (written (thb-md-render--table-emit-cell-inline cell))
+           (pad (max 0 (- width written)))
+           (left-pad (/ pad 2))
+           (right-pad (- pad left-pad)))
+      (when (> left-pad 0)
+        (save-excursion (goto-char start) (insert (make-string left-pad ?\s))))
+      (when (> right-pad 0)
+        (insert (make-string right-pad ?\s)))))
+   (t  ; left or default
+    (let* ((written (thb-md-render--table-emit-cell-inline cell))
+           (pad (max 0 (- width written))))
+      (when (> pad 0)
+        (insert (make-string pad ?\s)))))))
+
 (defun thb-md-render--walk-pipe-table (node)
   (thb-md-render--ensure-blank-line)
   (let* ((rows    (thb-md-render--table-rows node))
@@ -843,6 +922,7 @@ parser must have been configured to parse pipe_table_cell ranges."
          (n-cols  (or (and header (length (car header))) 0)))
     (when (> n-cols 0)
       (let* ((widths (thb-md-render--table-col-widths rows n-cols))
+             (aligns (thb-md-render--table-alignments node n-cols))
              (total-width (+ (cl-loop for w across widths sum w)
                              (* 2 (1- n-cols)))))
         ;; Render rows.
@@ -853,13 +933,10 @@ parser must have been configured to parse pipe_table_cell ranges."
                 (i 0))
             (dolist (cell cells)
               (when (< i n-cols)
-                (let* ((written (thb-md-render--table-emit-cell-inline cell))
-                       (target  (aref widths i))
-                       (pad     (max 0 (- target written))))
-                  (when (> pad 0)
-                    (insert (make-string pad ?\s)))
-                  (when (< i (1- n-cols))
-                    (insert "  "))))
+                (thb-md-render--table-emit-padded-cell
+                 cell (aref widths i) (aref aligns i))
+                (when (< i (1- n-cols))
+                  (insert "  ")))
               (cl-incf i))
             (insert "\n")
             ;; Apply table-content face over the whole row (fixed-pitch);
