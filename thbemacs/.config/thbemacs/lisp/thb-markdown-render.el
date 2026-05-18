@@ -82,6 +82,16 @@ The default is a left-bar glyph that approximates a CSS border-left."
   :type '(alist :key-type string :value-type string)
   :group 'thb-md-render)
 
+(defcustom thb-md-render-body-width 80
+  "Maximum body width (in characters) for the rendered preview.
+Content is centered in the window with the rest as margins, the way
+document viewers and reading apps do.  nil disables the constraint and
+lets prose fill the full window width.
+When non-nil, requires `olivetti-mode' (already declared in init.el)."
+  :type '(choice (const :tag "Fill window" nil)
+                 (integer :tag "Columns"))
+  :group 'thb-md-render)
+
 (defcustom thb-md-render-language-mode-alist
   '(("python"     . python-mode)
     ("py"         . python-mode)
@@ -990,6 +1000,17 @@ ALIGN is one of `left' / `right' / `center' / `default' (= left)."
   ;; want monospace -- code spans, code blocks, thematic break -- inherit
   ;; fixed-pitch explicitly, which overrides this remap.
   (variable-pitch-mode 1)
+  ;; Constrain body to a comfortable reading width and center it in the
+  ;; window, the way a document viewer would.  Olivetti handles margins
+  ;; and follows window-size changes.  When the window is narrower than
+  ;; the configured width, olivetti gracefully falls back to filling.
+  (when (and thb-md-render-body-width
+             (fboundp 'olivetti-mode))
+    (setq-local olivetti-body-width thb-md-render-body-width)
+    (setq-local olivetti-minimum-body-width
+                (max 40 (min thb-md-render-body-width 60)))
+    (setq-local olivetti-style nil)
+    (olivetti-mode 1))
   (buffer-disable-undo))
 
 ;;;; Entry points -------------------------------------------------------
