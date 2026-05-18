@@ -171,14 +171,32 @@ The default is a left-bar glyph that approximates a CSS border-left."
 Fixed-pitch so the box-drawing rule character renders consistently."
   :group 'thb-md-render)
 
+(defface thb-md-render-table
+  '((t :inherit fixed-pitch))
+  "Base face for table content.  Fixed-pitch so columns align visually."
+  :group 'thb-md-render)
+
+(defface thb-md-render-table-header
+  '((t :inherit (bold fixed-pitch) :extend t))
+  "Face for the table header row.  Background is set by
+`thb-md-render-apply-theme'."
+  :group 'thb-md-render)
+
+(defface thb-md-render-table-rule
+  '((t :inherit (fixed-pitch shadow) :extend t))
+  "Face for the horizontal rule under the table header."
+  :group 'thb-md-render)
+
 (defun thb-md-render-apply-theme ()
   "Reapply modus-themes-derived backgrounds to `thb-md-render-*' faces.
 Should be called after a theme toggle."
   (when (featurep 'modus-themes)
     (let ((bg-code  (modus-themes-get-color-value 'bg-dim))
-          (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced)))
-      (set-face-attribute 'thb-md-render-code-block  nil :background bg-code)
-      (set-face-attribute 'thb-md-render-blockquote  nil :background bg-quote))))
+          (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced))
+          (bg-th    (modus-themes-get-color-value 'bg-inactive)))
+      (set-face-attribute 'thb-md-render-code-block    nil :background bg-code)
+      (set-face-attribute 'thb-md-render-blockquote    nil :background bg-quote)
+      (set-face-attribute 'thb-md-render-table-header  nil :background bg-th))))
 
 (with-eval-after-load 'modus-themes
   (thb-md-render-apply-theme))
@@ -450,6 +468,8 @@ ordered list (incremented per `list_item').")
     ("setext_heading"
      ;; Treat as H1/H2 depending on underline.
      (thb-md-render--walk-setext-heading node))
+    ("pipe_table"
+     (thb-md-render--walk-pipe-table node))
     (_
      ;; Unknown: walk children if any so we don't lose content.
      (dolist (c (treesit-node-children node))
@@ -630,6 +650,121 @@ ordered list (incremented per `list_item').")
       (font-lock-prepend-text-property quote-start quote-end
                                        'face 'thb-md-render-blockquote))))
 
+;;;; Block: pipe table -------------------------------------------------
+
+;; GFM tables.  Tree-sitter-markdown emits:
+;;
+;;   (pipe_table
+;;     (pipe_table_header (pipe_table_cell)+)
+;;     (pipe_table_delimiter_row (pipe_table_delimiter_cell)+)
+;;     (pipe_table_row (pipe_table_cell)+)+)
+;;
+;; Each cell is a leaf at the markdown-grammar level; its inline content
+;; (code spans, emphasis, etc.) is parsed by markdown-inline IF we extend
+;; the range-restriction to include pipe_table_cell.  We do that in
+;; `thb-md-render-file' so cells get tokenized like paragraph content.
+;;
+;; Render strategy: tables go in `thb-md-render-table' (fixed-pitch) so
+;; columns align visually with monospace.  Column widths computed from
+;; the longest source text per column.  Header row gets a background
+;; tint via `thb-md-render-table-header'; a horizontal rule sits below
+;; the header; body rows are plain.  No vertical separators — they cause
+;; alignment issues with our shr fix and weren't needed here either.
+
+(defun thb-md-render--cell-text (cell)
+  "Return CELL's source text, trimmed."
+  (string-trim (thb-md-render--node-text cell)))
+
+(defun thb-md-render--table-rows (table)
+  "Return a list of (CELLS . FACE) pairs for TABLE.
+First element is the header row (face = thb-md-render-table-header).
+Subsequent elements are body rows (face = nil)."
+  (let* ((header (thb-md-render--first-child-of-type table "pipe_table_header"))
+         (body   (thb-md-render--children-of-type table "pipe_table_row"))
+         (rows nil))
+    (when header
+      (push (cons (thb-md-render--children-of-type header "pipe_table_cell")
+                  'thb-md-render-table-header)
+            rows))
+    (dolist (r body)
+      (push (cons (thb-md-render--children-of-type r "pipe_table_cell") nil) rows))
+    (nreverse rows)))
+
+(defun thb-md-render--table-col-widths (rows n-cols)
+  "Return a vector of length N-COLS with the max cell-text width per column."
+  (let ((widths (make-vector n-cols 0)))
+    (dolist (row rows)
+      (let ((i 0))
+        (dolist (cell (car row))
+          (when (< i n-cols)
+            (let ((w (length (thb-md-render--cell-text cell))))
+              (when (> w (aref widths i))
+                (aset widths i w))))
+          (cl-incf i))))
+    widths))
+
+(defun thb-md-render--table-emit-cell-inline (cell)
+  "Emit CELL's content via the inline cursor, then return chars emitted.
+Uses `thb-md-render--inline-walk' so code spans / emphasis / links inside
+cells are tokenized and faced like body inline content.  The inline
+parser must have been configured to parse pipe_table_cell ranges."
+  (let ((start (point)))
+    (thb-md-render--inline-walk (treesit-node-start cell)
+                                (treesit-node-end   cell))
+    ;; Trim any leading/trailing whitespace from emitted content; cells
+    ;; in the source typically have a space of inner padding.
+    (save-excursion
+      (goto-char start)
+      (when (looking-at "\\s-+")
+        (delete-region start (match-end 0))))
+    (save-excursion
+      (goto-char (point))
+      (skip-chars-backward " \t")
+      (delete-region (point) (line-end-position)))
+    (- (point) start)))
+
+(defun thb-md-render--walk-pipe-table (node)
+  (thb-md-render--ensure-blank-line)
+  (let* ((rows    (thb-md-render--table-rows node))
+         (header  (and rows (eq (cdr (car rows)) 'thb-md-render-table-header)
+                       (car rows)))
+         (n-cols  (or (and header (length (car header))) 0)))
+    (when (> n-cols 0)
+      (let* ((widths (thb-md-render--table-col-widths rows n-cols))
+             (total-width (+ (cl-loop for w across widths sum w)
+                             (* 2 (1- n-cols)))))
+        ;; Render rows.
+        (dolist (row rows)
+          (let ((row-start (point))
+                (cells     (car row))
+                (face      (cdr row))
+                (i 0))
+            (dolist (cell cells)
+              (when (< i n-cols)
+                (let* ((written (thb-md-render--table-emit-cell-inline cell))
+                       (target  (aref widths i))
+                       (pad     (max 0 (- target written))))
+                  (when (> pad 0)
+                    (insert (make-string pad ?\s)))
+                  (when (< i (1- n-cols))
+                    (insert "  "))))
+              (cl-incf i))
+            (insert "\n")
+            ;; Apply table-content face over the whole row (fixed-pitch);
+            ;; layered with the per-cell faces emitted by the inline walk.
+            (font-lock-append-text-property row-start (point)
+                                            'face 'thb-md-render-table)
+            (when face
+              (font-lock-prepend-text-property row-start (point)
+                                               'face face))
+            ;; Horizontal rule under the header.
+            (when (eq face 'thb-md-render-table-header)
+              (let ((rule-start (point)))
+                (insert (make-string total-width ?─) "\n")
+                (put-text-property rule-start (point) 'face
+                                   'thb-md-render-table-rule))))))))
+  (thb-md-render--newline 1))
+
 ;;;; Block: thematic break ----------------------------------------------
 
 (defun thb-md-render--walk-thematic-break ()
@@ -698,7 +833,16 @@ Return the rendered buffer."
                          :embed 'markdown-inline
                          :host 'markdown
                          '((inline) @capture))))
-          ;; Walk + emit
+          ;; Walk + emit.  Note: we extend the inline-parser range
+          ;; restriction to include pipe_table_cell so cells get tokenized
+          ;; (code spans, emphasis, etc.) just like paragraph content.
+          (with-current-buffer src
+            (setq-local treesit-range-settings
+                        (treesit-range-rules
+                         :embed 'markdown-inline
+                         :host 'markdown
+                         '((inline) @capture
+                           (pipe_table_cell) @capture))))
           (let* ((root (treesit-parser-root-node
                         (car (treesit-parser-list src 'markdown))))
                  (inline-root (treesit-parser-root-node
