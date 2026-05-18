@@ -1294,8 +1294,11 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
     "Face for inline code spans." :group 'thb-markdown-ts)
   (defface thb-markdown-ts-code-block '((t :inherit (font-lock-string-face fixed-pitch) :extend t))
     "Face for fenced/indented code-block content." :group 'thb-markdown-ts)
-  (defface thb-markdown-ts-fence-delim '((t :inherit (shadow fixed-pitch)))
-    "Face for fenced code-block delimiters." :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-fence-delim '((t :inherit (shadow fixed-pitch) :extend t))
+    "Face for fenced code-block delimiters (the ``` lines).
+Shares the code-block background tint so the delimiter lines blend
+visually with the block content rather than being a strip of unstyled
+text between two filled rows." :group 'thb-markdown-ts)
   (defface thb-markdown-ts-info-language '((t :inherit font-lock-type-face))
     "Face for language tag in fenced code-block info string." :group 'thb-markdown-ts)
   (defface thb-markdown-ts-blockquote '((t :slant italic :extend t))
@@ -1397,6 +1400,7 @@ that happen before the GUI frame is the selected one."
             (bg-quote    (modus-themes-get-color-value 'bg-blue-nuanced))
             (bg-th       (modus-themes-get-color-value 'bg-inactive)))
         (set-face-attribute 'thb-markdown-ts-code-block         nil :background bg-code)
+        (set-face-attribute 'thb-markdown-ts-fence-delim        nil :background bg-code)
         (set-face-attribute 'thb-markdown-ts-blockquote         nil :background bg-quote)
         ;; Preview faces.
         (set-face-attribute 'thb-markdown-ts-preview-code-block nil :background bg-code)
