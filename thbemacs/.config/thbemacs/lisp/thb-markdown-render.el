@@ -983,6 +983,13 @@ ALIGN is one of `left' / `right' / `center' / `default' (= left)."
     map)
   "Keymap for `thb-md-render-mode'.")
 
+;; Render buffers are read-only views; evil's default `normal' state binds
+;; `q' to `evil-record-macro' which shadows the mode-map's `q -> quit-window'.
+;; `motion' state has the same navigation keys but no insert/record entries,
+;; so `q' in motion falls through to our local binding.
+(with-eval-after-load 'evil
+  (evil-set-initial-state 'thb-md-render-mode 'motion))
+
 (define-derived-mode thb-md-render-mode special-mode "MD-Render"
   "Major mode for rendered markdown preview buffers."
   (setq-local truncate-lines nil)
