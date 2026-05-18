@@ -94,7 +94,7 @@ slightly more compact reading view than the editor default."
   :type 'integer
   :group 'thb-md-render)
 
-(defcustom thb-md-render-body-width 120
+(defcustom thb-md-render-body-width 140
   "Maximum body width (in characters) for the rendered preview.
 Content is centered in the window with the rest as margins, the way
 document viewers and reading apps do.  nil disables the constraint and
@@ -1058,8 +1058,12 @@ ALIGN is one of `left' / `right' / `center' / `default' (= left)."
   (when (and thb-md-render-body-width
              (fboundp 'olivetti-mode))
     (setq-local olivetti-body-width thb-md-render-body-width)
+    ;; Floor at (body-width - 20) or 100, whichever is higher.  Keeps
+    ;; a generous minimum even on narrower windows; user can override
+    ;; via `M-x customize-variable olivetti-minimum-body-width' or
+    ;; setq-local in a hook.
     (setq-local olivetti-minimum-body-width
-                (max 40 (min thb-md-render-body-width 60)))
+                (max 100 (- thb-md-render-body-width 20)))
     (setq-local olivetti-style nil)
     (olivetti-mode 1))
   (buffer-disable-undo))
