@@ -82,12 +82,18 @@ The default is a left-bar glyph that approximates a CSS border-left."
   :type '(alist :key-type string :value-type string)
   :group 'thb-md-render)
 
-(defcustom thb-md-render-body-width 80
+(defcustom thb-md-render-body-width 100
   "Maximum body width (in characters) for the rendered preview.
 Content is centered in the window with the rest as margins, the way
 document viewers and reading apps do.  nil disables the constraint and
 lets prose fill the full window width.
-When non-nil, requires `olivetti-mode' (already declared in init.el)."
+When non-nil, requires `olivetti-mode' (already declared in init.el).
+
+The value is measured against the buffer's default face char width.
+In the render buffer, default is fixed-pitch (PragmataPro) so 100
+chars = ~900px.  Prose in IBM Plex Sans (narrower per char) fits
+comfortably; tables in fixed-pitch align column-wise within the
+same body width."
   :type '(choice (const :tag "Fill window" nil)
                  (integer :tag "Columns"))
   :group 'thb-md-render)
@@ -1161,7 +1167,14 @@ via `quit-window'."
             (setq thb-md-render--watch
                   (thb-md-render--setup-watch preview src))
             (add-hook 'kill-buffer-hook #'thb-md-render--cleanup nil t)))
-        (switch-to-buffer preview))))
+        (switch-to-buffer preview)
+        ;; Defensive: re-apply visual tweaks AFTER the buffer is shown
+        ;; in a window.  Mode setup runs before the buffer has a
+        ;; window, so `set-window-fringes' and global-mode hooks can
+        ;; race and reset what mode init tried to set.
+        (when-let ((win (selected-window)))
+          (set-window-fringes win 0 0))
+        (display-line-numbers-mode -1))))
    (t (user-error "Not in markdown-ts-mode or a render preview"))))
 
 (provide 'thb-markdown-render)
