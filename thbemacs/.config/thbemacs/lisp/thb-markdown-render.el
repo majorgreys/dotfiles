@@ -1049,9 +1049,14 @@ ALIGN is one of `left' / `right' / `center' / `default' (= left)."
 
 (define-derived-mode thb-md-render-mode special-mode "MD-Render"
   "Major mode for rendered markdown preview buffers."
-  (setq-local truncate-lines nil)
-  (setq-local word-wrap t)
-  (visual-line-mode 1)
+  ;; Truncate long logical lines (with `$' indicator at the window edge)
+  ;; rather than visually wrapping them.  Code blocks and tables stay on
+  ;; one logical line per source line, so they truncate rather than break
+  ;; across multiple visual rows.  Prose paragraphs typically have source-
+  ;; level newlines (markdown convention), so they read fine line-by-line.
+  (setq-local truncate-lines t)
+  (setq-local word-wrap nil)
+  (visual-line-mode -1)
   (setq-local left-fringe-width 0)
   (setq-local right-fringe-width 0)
   (when-let ((w (get-buffer-window (current-buffer))))
