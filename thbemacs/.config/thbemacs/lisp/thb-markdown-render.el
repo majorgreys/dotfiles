@@ -219,8 +219,9 @@ font-lock-keywords which is always available."
   :group 'thb-md-render)
 
 (defface thb-md-render-code-fence-info
-  '((t :inherit (fixed-pitch font-lock-type-face)))
-  "Face for the language tag in a fenced code block info string."
+  '((t :inherit (fixed-pitch font-lock-type-face) :extend t))
+  "Face for the language tag line above a fenced code block.
+Extends across the line so it shares the code-block background tint."
   :group 'thb-md-render)
 
 (defface thb-md-render-blockquote
@@ -664,32 +665,60 @@ preserves those properties."
       text)))
 
 (defun thb-md-render--walk-fenced-code (node)
+  "Render a fenced code block as a unified card:
+  - optional top blank line (with bg) for vertical padding
+  - optional language tag line (small label, in code-fence-info face)
+  - the code itself, each line prefixed with `thb-md-render-code-indent'
+    for left padding, fontified by language injection if available
+  - bottom blank line (with bg)
+
+All lines share `thb-md-render-code-block' so the bg-dim background
+reads as a continuous card rather than a strip behind the code only."
   (thb-md-render--ensure-blank-line)
   (let* ((info-node (thb-md-render--first-child-of-type node "info_string"))
          (lang-node (and info-node
                          (thb-md-render--first-child-of-type info-node "language")))
          (content   (thb-md-render--first-child-of-type node "code_fence_content"))
-         (lang      (and lang-node (thb-md-render--node-text lang-node))))
-    (when lang
-      (thb-md-render--emit (format "  %s\n" lang)
-                           'thb-md-render-code-fence-info))
-    (when content
-      (let* ((raw (thb-md-render--src-text (treesit-node-start content)
-                                           (treesit-node-end   content)))
-             (trimmed (string-trim-right raw "\n"))
-             ;; Inject syntax fontification when we know the language; if not,
-             ;; the string comes back property-free and just gets code-block.
-             (fontified (if (and lang (> (length trimmed) 0))
-                            (thb-md-render--fontify-code trimmed lang)
-                          trimmed))
-             (start (point)))
-        (insert fontified "\n")
-        ;; Apply our code-block face UNDER any per-token faces font-lock set.
-        ;; `font-lock-append-text-property' adds the new face at the END of
-        ;; the face-list at each position, so existing per-token foregrounds
-        ;; win for color while code-block fills bg + fixed-pitch elsewhere.
-        (font-lock-append-text-property start (point)
-                                        'face 'thb-md-render-code-block))))
+         (lang      (and lang-node (thb-md-render--node-text lang-node)))
+         (indent    "  "))
+    (let ((block-start (point)))
+      ;; Top padding line.
+      (insert "\n")
+      ;; Optional language label, indented.
+      (when lang
+        (insert indent)
+        (let ((label-start (point)))
+          (insert lang "\n")
+          (put-text-property label-start (point) 'face
+                             'thb-md-render-code-fence-info)))
+      ;; Content, indented per line.
+      (when content
+        (let* ((raw (thb-md-render--src-text (treesit-node-start content)
+                                             (treesit-node-end   content)))
+               (trimmed (string-trim-right raw "\n"))
+               (fontified (if (and lang (> (length trimmed) 0))
+                              (thb-md-render--fontify-code trimmed lang)
+                            trimmed))
+               (content-start (point)))
+          ;; Insert the (potentially fontified) content one line at a time
+          ;; so each line gets the left-padding indent.  Text properties on
+          ;; `fontified' are preserved by `insert' so per-token faces
+          ;; survive the line splitting.
+          (let ((lines (split-string fontified "\n")))
+            (dolist (line lines)
+              (insert indent line "\n")))
+          ;; Apply code-block face on the WHOLE content range; append so
+          ;; per-token faces (foreground) win for color while code-block
+          ;; fills bg + fixed-pitch.
+          (font-lock-append-text-property content-start (point)
+                                          'face 'thb-md-render-code-block)))
+      ;; Bottom padding line.
+      (insert "\n")
+      ;; Apply code-block face to the top padding line + (if no content,
+      ;; ensure the bottom padding line is faced too).  The middle range
+      ;; was already faced above; this catches the bookends.
+      (font-lock-append-text-property block-start (point)
+                                      'face 'thb-md-render-code-block)))
   (thb-md-render--newline 1))
 
 (defun thb-md-render--walk-indented-code (node)
