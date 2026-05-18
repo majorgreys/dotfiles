@@ -148,7 +148,8 @@
                markdown-ts-mode-hook
                special-mode-hook
                term-mode-hook
-               eshell-mode-hook))
+               eshell-mode-hook
+               eww-mode-hook))
   (add-hook mode #'thb/disable-line-numbers))
 
 ;; Smooth scrolling — ultra-scroll replaces pixel-scroll-precision-mode
@@ -287,28 +288,25 @@
 (setq-default line-spacing 0.1)
 
 ;; Modeline — mood-line for a clean, lightweight status bar.
+;;
+;; Minimal segment set: just enough to know what file, where in it, and
+;; the major mode.  The previous workspace segment duplicated the buffer
+;; name (tab-bar default `name' is `buffer-name'), eating ~40 chars of
+;; modeline real estate showing the same string twice.  Tab-bar already
+;; renders workspaces visually at the top of the frame if used.
 (use-package mood-line
   :config
   (setq mood-line-glyph-alist
         (append '((:vc-added . ?+))          ; U+1F7A4 not in PragmataPro — use +
                 mood-line-glyphs-unicode))
 
-  ;; Workspace indicator in modeline — shows [workspace] before buffer name
-  (defun thb/modeline-workspace ()
-    "Return current workspace name for modeline."
-    (when-let ((tab (ignore-errors (tab-bar--current-tab))))
-      (propertize (format "[%s]" (alist-get 'name tab))
-                  'face 'font-lock-constant-face)))
-
-  ;; Set format BEFORE enabling mode
   (setq mood-line-format
         (mood-line-defformat
          :left  (((mood-line-segment-buffer-status) . " ")
-                 ((thb/modeline-workspace) . " ")
-                 ((mood-line-segment-buffer-name) . " ")
-                 ((mood-line-segment-vc) . " "))
-         :right (((mood-line-segment-cursor-position) . " ")
-                 ((mood-line-segment-major-mode) . " "))))
+                 ((mood-line-segment-buffer-name)   . "  ")
+                 ((mood-line-segment-vc)            . " "))
+         :right (((mood-line-segment-cursor-position) . "  ")
+                 ((mood-line-segment-major-mode)      . " "))))
 
   (mood-line-mode 1))
 
@@ -1656,6 +1654,27 @@ so relative paths in the source resolve against its directory."
         (let ((coding-system-for-write 'utf-8))
           (write-region (point-min) (point-max) html-file nil 'no-message)))))
 
+  (defun thb-markdown-ts-preview--apply-display-tweaks ()
+    "Apply preview-buffer display tweaks: hide eww chrome, kill fringes
+and line numbers, let shr fill the full window width.  Idempotent and
+safe to call repeatedly — we call it on every preview activation, both
+fresh and refresh, so changes survive across `eww-reload' and re-toggles
+that would otherwise reset buffer-local state."
+    ;; Hide eww's URL/title header line.
+    (setq-local eww-header-line-format nil)
+    (setq header-line-format nil)
+    ;; Strip fringes (and update any window already showing this buffer).
+    (setq-local left-fringe-width 0)
+    (setq-local right-fringe-width 0)
+    (when-let ((win (get-buffer-window (current-buffer))))
+      (set-window-fringes win 0 0))
+    ;; Let shr fill the window edge-to-edge.
+    (setq-local shr-width nil)
+    (setq-local shr-max-width nil)
+    (setq-local shr-indentation 0)
+    ;; Line numbers off (even though global-display-line-numbers-mode is on).
+    (display-line-numbers-mode -1))
+
   (defun thb-markdown-ts-preview--refresh ()
     "Re-render the source file into the HTML, then eww-reload the buffer.
 Must be called inside a live preview buffer."
@@ -1742,25 +1761,13 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
            ;; Refresh existing preview and re-show in current window.
            ((buffer-live-p existing)
             (switch-to-buffer existing)
+            (thb-markdown-ts-preview--apply-display-tweaks)
             (ignore-errors (eww-reload)))
            (t
             (eww-open-file html-file)
             ;; eww just made the new buffer current; rename + wire state.
             (rename-buffer preview-name)
-            ;; Hide eww's URL/title header line — it's pure noise for a
-            ;; "just show me the rendered markdown" preview.
-            (setq-local eww-header-line-format nil)
-            (setq header-line-format nil)
-            ;; Strip fringes and let shr fill the whole window width
-            ;; instead of word-wrapping inside a 120-char ceiling.  Removes
-            ;; visible left/right gutter so the preview reads edge-to-edge.
-            (setq-local left-fringe-width 0)
-            (setq-local right-fringe-width 0)
-            (when-let ((win (get-buffer-window (current-buffer))))
-              (set-window-fringes win 0 0))
-            (setq-local shr-width nil)
-            (setq-local shr-max-width nil)
-            (setq-local shr-indentation 0)
+            (thb-markdown-ts-preview--apply-display-tweaks)
             (setq-local thb-markdown-ts-preview--source-file src)
             (setq-local thb-markdown-ts-preview--html-file html-file)
             (setq-local thb-markdown-ts-preview--watch
