@@ -94,7 +94,7 @@ slightly more compact reading view than the editor default."
   :type 'integer
   :group 'thb-md-render)
 
-(defcustom thb-md-render-body-width 100
+(defcustom thb-md-render-body-width 120
   "Maximum body width (in characters) for the rendered preview.
 Content is centered in the window with the rest as margins, the way
 document viewers and reading apps do.  nil disables the constraint and
