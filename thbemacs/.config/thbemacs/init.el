@@ -238,6 +238,27 @@
                     :family "PragmataPro Mono Liga"
                     :height 1.0)
 
+;; variable-pitch — IBM Plex Sans for prose / proportional text rendering.
+;; Used by `shr' (eww / mu4e / our markdown-ts preview), mixed-pitch-mode,
+;; org-modern title rows, etc.  Modus themes inherit from this for the
+;; matching prose faces.
+(set-face-attribute 'variable-pitch nil
+                    :family "IBM Plex Sans"
+                    :height 1.0)
+
+;; Scale `shr-h*' headings so the rendered preview (eww / html email) has
+;; a real visual hierarchy.  `modus-themes-heading-N' provides the color
+;; and weight; we just set :height on top of that.  Web-ish ladder rather
+;; than the subtler markdown-ts source-buffer ladder — a rendered preview
+;; is supposed to look like a document, not the source.
+(with-eval-after-load 'shr
+  (set-face-attribute 'shr-h1 nil :height 2.0   :weight 'bold)
+  (set-face-attribute 'shr-h2 nil :height 1.5   :weight 'bold)
+  (set-face-attribute 'shr-h3 nil :height 1.25  :weight 'semi-bold)
+  (set-face-attribute 'shr-h4 nil :height 1.1   :weight 'semi-bold)
+  (set-face-attribute 'shr-h5 nil :height 1.0   :weight 'semi-bold)
+  (set-face-attribute 'shr-h6 nil :height 0.9   :weight 'semi-bold))
+
 ;; Font ligatures — PragmataPro Liga support via ligature.el
 ;; Doom's +pragmata-pro flag does this under the hood.
 (use-package ligature
