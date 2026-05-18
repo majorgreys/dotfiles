@@ -152,6 +152,20 @@
                eww-mode-hook))
   (add-hook mode #'thb/disable-line-numbers))
 
+;; Disable left + right fringes for prose modes (org, markdown-ts).  Both
+;; modes are read-and-edit text where fringes add visual gutter without
+;; carrying useful information.  We keep fringes everywhere else so things
+;; like diff-hl / flycheck indicators still have somewhere to render.
+(defun thb/disable-fringes ()
+  "Remove left and right fringes in the current buffer."
+  (setq-local left-fringe-width 0)
+  (setq-local right-fringe-width 0)
+  (when-let ((win (get-buffer-window (current-buffer))))
+    (set-window-fringes win 0 0)))
+(dolist (mode '(org-mode-hook
+               markdown-ts-mode-hook))
+  (add-hook mode #'thb/disable-fringes))
+
 ;; Smooth scrolling — ultra-scroll replaces pixel-scroll-precision-mode
 ;; with much smoother trackpad/mouse wheel behavior on macOS.
 (use-package ultra-scroll
@@ -261,7 +275,12 @@
   (set-face-attribute 'shr-h6 nil :height 0.9   :weight 'semi-bold)
   ;; Real Unicode bullet for <ul><li>.  Default is the literal string "* "
   ;; which leaves Markdown-source-looking asterisks in the rendered output.
-  (setq shr-bullet "• "))
+  (setq shr-bullet "• ")
+  ;; Simple box-drawing table borders.  Defaults are spaces (and nil for the
+  ;; horizontal line) so tables render as runs of cells with no visible grid.
+  (setq shr-table-horizontal-line ?─
+        shr-table-vertical-line   ?│
+        shr-table-corner          ?┼))
 
 ;; Font ligatures — PragmataPro Liga support via ligature.el
 ;; Doom's +pragmata-pro flag does this under the hood.
@@ -479,7 +498,13 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
   (evil-collection-init
    '(corfu consult dired embark ibuffer info magit minibuffer
      org org-roam vertico which-key diff-hl eglot
-     go-mode help custom tab-bar)))
+     go-mode help custom tab-bar))
+
+  ;; eww buffers are read-only by intent (browsing the web / previewing
+  ;; markdown).  Default `normal' state allows `i'/`a'/`o' to enter insert
+  ;; mode — confusing in a render-only view.  `motion' state has the same
+  ;; navigation bindings but no insert entries, so `i' just bells.
+  (evil-set-initial-state 'eww-mode 'motion))
 
 ;; General.el — the same library Doom uses for SPC leader bindings.
 ;; Defines a leader key (SPC in normal/visual, C-SPC in insert/emacs).
@@ -1269,6 +1294,18 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
   (defface thb-markdown-ts-url '((t :inherit (link shadow)))
     "Face for link destinations." :group 'thb-markdown-ts)
 
+  ;; Preview-only faces — applied by shr-tag advice (below) inside markdown
+  ;; preview eww buffers so we can give code blocks and table headers
+  ;; distinct backgrounds without affecting general eww browsing.
+  (defface thb-markdown-ts-preview-code-block
+    '((t :inherit fixed-pitch :extend t))
+    "Background face for <pre> code blocks in the markdown-ts preview."
+    :group 'thb-markdown-ts)
+  (defface thb-markdown-ts-preview-th
+    '((t :weight bold))
+    "Background face for <th> cells in markdown-ts preview tables."
+    :group 'thb-markdown-ts)
+
   (defun thb-markdown-ts--rules ()
     "Build the replacement `treesit-font-lock-rules' for `markdown-ts-mode'."
     (treesit-font-lock-rules
@@ -1339,13 +1376,46 @@ work in any frame type (terminal Emacs just approximates), and gating
 on the selected frame breaks `with-eval-after-load' / emacsclient calls
 that happen before the GUI frame is the selected one."
     (when (featurep 'modus-themes)
-      (let ((bg-code  (modus-themes-get-color-value 'bg-dim))
-            (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced)))
-        (set-face-attribute 'thb-markdown-ts-code-block nil :background bg-code)
-        (set-face-attribute 'thb-markdown-ts-blockquote nil :background bg-quote))))
+      (let ((bg-code     (modus-themes-get-color-value 'bg-dim))
+            (bg-quote    (modus-themes-get-color-value 'bg-blue-nuanced))
+            (bg-th       (modus-themes-get-color-value 'bg-inactive)))
+        (set-face-attribute 'thb-markdown-ts-code-block         nil :background bg-code)
+        (set-face-attribute 'thb-markdown-ts-blockquote         nil :background bg-quote)
+        ;; Preview faces.
+        (set-face-attribute 'thb-markdown-ts-preview-code-block nil :background bg-code)
+        (set-face-attribute 'thb-markdown-ts-preview-th         nil :background bg-th))))
 
   (with-eval-after-load 'modus-themes
     (thb/apply-markdown-ts-faces))
+
+  ;; Wrap shr's <pre> and <th> rendering in face overlays so code blocks
+  ;; get a visible background (distinct from inline `<code>') and table
+  ;; headers get a slightly stronger background than body cells.  Scoped
+  ;; to markdown-ts preview buffers via the buffer-local source-file var,
+  ;; so plain eww browsing is unaffected.
+  (defun thb-markdown-ts-preview--in-preview-buffer-p ()
+    (and (boundp 'thb-markdown-ts-preview--source-file)
+         thb-markdown-ts-preview--source-file))
+  (define-advice shr-tag-pre
+      (:around (orig dom) thb-markdown-ts-preview-block-bg)
+    "Wrap <pre> output in a code-block face overlay (preview only)."
+    (if (thb-markdown-ts-preview--in-preview-buffer-p)
+        (let ((start (point)))
+          (funcall orig dom)
+          (let ((ov (make-overlay start (point))))
+            (overlay-put ov 'face 'thb-markdown-ts-preview-code-block)
+            (overlay-put ov 'priority -50)))
+      (funcall orig dom)))
+  (define-advice shr-tag-th
+      (:around (orig dom) thb-markdown-ts-preview-th-bg)
+    "Wrap <th> output in a header face overlay (preview only)."
+    (if (thb-markdown-ts-preview--in-preview-buffer-p)
+        (let ((start (point)))
+          (funcall orig dom)
+          (let ((ov (make-overlay start (point))))
+            (overlay-put ov 'face 'thb-markdown-ts-preview-th)
+            (overlay-put ov 'priority -50)))
+      (funcall orig dom)))
 
   ;; --- Phase 3: checkbox prettify ----------------------------------------
   ;;
