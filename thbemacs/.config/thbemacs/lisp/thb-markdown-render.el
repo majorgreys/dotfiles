@@ -1046,6 +1046,11 @@ ALIGN is one of `left' / `right' / `center' / `default' (= left)."
   (when (and (numberp thb-md-render-text-scale)
              (not (zerop thb-md-render-text-scale)))
     (text-scale-set thb-md-render-text-scale))
+  ;; olivetti-reset-window (called on every window-config change before
+  ;; margins are reapplied) resets fringes to the global `fringe-mode',
+  ;; which clobbers our buffer-local 0/0 setting.  Set fringe-mode
+  ;; buffer-locally to 0 so olivetti's reset path sets fringes to 0/0.
+  (setq-local fringe-mode 0)
   ;; Constrain body to a comfortable reading width and center it in the
   ;; window, the way a document viewer would.  Olivetti handles margins
   ;; and follows window-size changes.  When the window is narrower than
