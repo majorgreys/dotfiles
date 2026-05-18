@@ -82,6 +82,18 @@ The default is a left-bar glyph that approximates a CSS border-left."
   :type '(alist :key-type string :value-type string)
   :group 'thb-md-render)
 
+(defcustom thb-md-render-text-scale -1
+  "Text scale steps applied to the render buffer.
+Matches the semantics of `text-scale-set' / `text-scale-adjust':
+  0   means \"same as the frame's default font height\";
+  -1 / -2 / ... step down (smaller, each step ~1/1.2x);
+  +1 / +2 / ... step up (larger).
+Applies to ALL faces in the buffer, so headings and body shrink/grow
+together keeping their proportional ladder.  Default -1 gives a
+slightly more compact reading view than the editor default."
+  :type 'integer
+  :group 'thb-md-render)
+
 (defcustom thb-md-render-body-width 100
   "Maximum body width (in characters) for the rendered preview.
 Content is centered in the window with the rest as margins, the way
@@ -1027,6 +1039,12 @@ ALIGN is one of `left' / `right' / `center' / `default' (= left)."
   ;; variable-pitch-mode default remap.  Code/table/rule faces inherit
   ;; fixed-pitch.  Both align with the buffer default for olivetti's
   ;; sake.
+
+  ;; Apply the configured text scale.  Affects all faces uniformly, so
+  ;; the heading ladder stays proportional.
+  (when (and (numberp thb-md-render-text-scale)
+             (not (zerop thb-md-render-text-scale)))
+    (text-scale-set thb-md-render-text-scale))
   ;; Constrain body to a comfortable reading width and center it in the
   ;; window, the way a document viewer would.  Olivetti handles margins
   ;; and follows window-size changes.  When the window is narrower than
