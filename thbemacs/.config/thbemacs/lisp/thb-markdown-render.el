@@ -168,7 +168,7 @@ font-lock-keywords which is always available."
 ;; though the buffer default is fixed-pitch.  Outline-N is inherited for
 ;; the per-level color from modus-themes.  Weight is semi-bold across
 ;; the ladder; size carries the hierarchy.
-(defface thb-md-render-h1 '((t :inherit (variable-pitch outline-1) :weight semi-bold :height 2.0))
+(defface thb-md-render-h1 '((t :inherit (variable-pitch outline-1) :weight semi-bold :height 1.75))
   "Face for H1 in the rendered preview."
   :group 'thb-md-render)
 (defface thb-md-render-h2 '((t :inherit (variable-pitch outline-2) :weight semi-bold :height 1.5))
