@@ -244,9 +244,9 @@ Fixed-pitch so the box-drawing rule character renders consistently."
   :group 'thb-md-render)
 
 (defface thb-md-render-table-header
-  '((t :inherit (bold fixed-pitch) :extend t))
-  "Face for the table header row.  Background is set by
-`thb-md-render-apply-theme'."
+  '((t :inherit (bold fixed-pitch)))
+  "Face for the table header row.  Bold weight + the horizontal rule
+below the header are the only visual cue; no background tint."
   :group 'thb-md-render)
 
 (defface thb-md-render-table-rule
@@ -259,11 +259,9 @@ Fixed-pitch so the box-drawing rule character renders consistently."
 Should be called after a theme toggle."
   (when (featurep 'modus-themes)
     (let ((bg-code  (modus-themes-get-color-value 'bg-dim))
-          (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced))
-          (bg-th    (modus-themes-get-color-value 'bg-inactive)))
-      (set-face-attribute 'thb-md-render-code-block    nil :background bg-code)
-      (set-face-attribute 'thb-md-render-blockquote    nil :background bg-quote)
-      (set-face-attribute 'thb-md-render-table-header  nil :background bg-th))))
+          (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced)))
+      (set-face-attribute 'thb-md-render-code-block nil :background bg-code)
+      (set-face-attribute 'thb-md-render-blockquote nil :background bg-quote))))
 
 (with-eval-after-load 'modus-themes
   (thb-md-render-apply-theme))
