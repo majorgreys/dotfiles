@@ -248,6 +248,20 @@ accumulate them across nested blocks."
   "Stack of currently-active inline faces while walking inline children.
 Outermost face is on top.  Used so nested emphasis inherits parent face.")
 
+(defvar thb-md-render--inline-children nil
+  "Vector of the inline parser root's children, cached for the duration
+of one render.  Bound by `thb-md-render-file' so per-paragraph
+`--inline-walk' calls don't re-fetch and re-filter the whole list.")
+
+(defvar thb-md-render--inline-cursor 0
+  "Monotonic index into `thb-md-render--inline-children'.
+Block-level walking proceeds top-to-bottom and inline children are in
+source order, so the cursor never needs to rewind.  Each call to
+`--inline-walk' advances it past the consumed range.")
+
+(defvar thb-md-render--inline-children-len 0
+  "Cached `length' of `thb-md-render--inline-children' (vector).")
+
 (defun thb-md-render--inline-face-for (type)
   "Return the inline face for an inline node TYPE (string), or nil."
   (pcase type
@@ -292,14 +306,34 @@ SKIP-TYPES is an optional list of node-type strings to ignore entirely
 
 (defun thb-md-render--inline-walk (start end)
   "Render inline content in source range START..END.
-Finds the markdown-inline parser's root and walks its direct children
-that fall within the range, gap-filling plain text between them."
-  (let* ((inline-parser (car (treesit-parser-list thb-md-render--src-buffer
-                                                  'markdown-inline)))
-         (children (when inline-parser
-                     (treesit-node-children
-                      (treesit-parser-root-node inline-parser)))))
-    (thb-md-render--walk-inline-range children start end)))
+Uses the cached `thb-md-render--inline-children' vector and the
+monotonic `thb-md-render--inline-cursor' to walk only the children
+that fall within this range.  Total work across one render is O(total
+inline children), not O(paragraphs * total inline children)."
+  (let ((cursor start)
+        (children thb-md-render--inline-children)
+        (len      thb-md-render--inline-children-len))
+    ;; Skip past any cached children entirely before this range (defensive;
+    ;; in normal top-down order this loop runs zero times).
+    (while (and (< thb-md-render--inline-cursor len)
+                (< (treesit-node-start
+                    (aref children thb-md-render--inline-cursor))
+                   start))
+      (cl-incf thb-md-render--inline-cursor))
+    ;; Walk children whose start falls within [start, end).
+    (while (and (< thb-md-render--inline-cursor len)
+                (< (treesit-node-start
+                    (aref children thb-md-render--inline-cursor))
+                   end))
+      (let* ((child (aref children thb-md-render--inline-cursor))
+             (cs (treesit-node-start child))
+             (ce (treesit-node-end   child)))
+        (thb-md-render--emit-plain cursor cs)
+        (thb-md-render--emit-inline-node child)
+        (setq cursor ce)
+        (cl-incf thb-md-render--inline-cursor)))
+    ;; Trailing plain text up to the range end.
+    (thb-md-render--emit-plain cursor end)))
 
 (defun thb-md-render--emit-inline-node (node)
   "Emit a single inline parser NODE (emphasis, code_span, link, etc.)."
@@ -658,14 +692,20 @@ Return the rendered buffer."
                          :host 'markdown
                          '((inline) @capture))))
           ;; Walk + emit
-          (let ((root (treesit-parser-root-node
-                       (car (treesit-parser-list src 'markdown)))))
+          (let* ((root (treesit-parser-root-node
+                        (car (treesit-parser-list src 'markdown))))
+                 (inline-root (treesit-parser-root-node
+                               (car (treesit-parser-list src 'markdown-inline))))
+                 (inline-vec (vconcat (treesit-node-children inline-root))))
             (with-current-buffer out
               (unless (derived-mode-p 'thb-md-render-mode)
                 (thb-md-render-mode))
               (let ((inhibit-read-only t))
                 (erase-buffer)
-                (let ((thb-md-render--src-buffer src))
+                (let ((thb-md-render--src-buffer src)
+                      (thb-md-render--inline-children inline-vec)
+                      (thb-md-render--inline-children-len (length inline-vec))
+                      (thb-md-render--inline-cursor 0))
                   (thb-md-render--walk root))
                 (goto-char (point-min)))
               (setq thb-md-render--source-file path))))
