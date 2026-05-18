@@ -166,23 +166,24 @@ font-lock-keywords which is always available."
 ;; Heading faces explicitly inherit `variable-pitch' (FIRST in the
 ;; inherit list so its :family wins) so headings stay proportional even
 ;; though the buffer default is fixed-pitch.  Outline-N is inherited for
-;; the per-level color from modus-themes.
-(defface thb-md-render-h1 '((t :inherit (variable-pitch outline-1) :weight bold :height 2.0))
+;; the per-level color from modus-themes.  Weights are LIGHT to give an
+;; airier display-typography feel; size carries the hierarchy.
+(defface thb-md-render-h1 '((t :inherit (variable-pitch outline-1) :weight light :height 2.0))
   "Face for H1 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h2 '((t :inherit (variable-pitch outline-2) :weight bold :height 1.5))
+(defface thb-md-render-h2 '((t :inherit (variable-pitch outline-2) :weight light :height 1.5))
   "Face for H2 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h3 '((t :inherit (variable-pitch outline-3) :weight semi-bold :height 1.25))
+(defface thb-md-render-h3 '((t :inherit (variable-pitch outline-3) :weight light :height 1.25))
   "Face for H3 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h4 '((t :inherit (variable-pitch outline-4) :weight semi-bold :height 1.1))
+(defface thb-md-render-h4 '((t :inherit (variable-pitch outline-4) :weight light :height 1.1))
   "Face for H4 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h5 '((t :inherit (variable-pitch outline-5) :weight semi-bold))
+(defface thb-md-render-h5 '((t :inherit (variable-pitch outline-5) :weight light))
   "Face for H5 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h6 '((t :inherit (variable-pitch outline-6) :weight semi-bold :height 0.9))
+(defface thb-md-render-h6 '((t :inherit (variable-pitch outline-6) :weight light :height 0.9))
   "Face for H6 in the rendered preview."
   :group 'thb-md-render)
 
