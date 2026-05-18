@@ -36,6 +36,9 @@
 (when (file-exists-p custom-file)
   (load custom-file 'noerror 'nomessage))
 
+;; Local lisp under thbemacs/lisp/ — homegrown modules live here.
+(add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
+
 
 
 ;;; ============================================================
@@ -1940,7 +1943,15 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
 
     ;; --- SPC m v: preview ---
     "mv"  '(:ignore t :which-key "preview")
-    "mvp" '(thb-markdown-ts-preview     :which-key "eww (auto-refresh)")))
+    "mvp" '(thb-markdown-ts-preview     :which-key "eww (shr render)")
+    "mvr" '(thb-md-render-toggle        :which-key "diy render (tree-sitter)")))
+
+;; DIY markdown renderer — bypasses HTML entirely and walks the
+;; tree-sitter-markdown AST to emit fontified text directly.  v0.1; sits
+;; alongside the shr-based `SPC m v p' preview for comparison.
+(use-package thb-markdown-render
+  :ensure nil
+  :commands (thb-md-render-file thb-md-render-toggle))
 
 
 ;;; ============================================================
