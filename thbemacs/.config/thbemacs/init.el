@@ -1564,11 +1564,14 @@ With an active region, TEXT defaults to the region's content."
   ;; a per-session temp directory and wrapped with `<base href>' pointing
   ;; at the source's directory so relative <img> / anchor links resolve.
   ;;
-  ;; The preview auto-refreshes via a 1-second mtime poll on the source
-  ;; file (kept simple — file-notify's kqueue descriptors get invalidated
-  ;; by eww-reload's internal buffer reset on macOS, so polling avoids the
-  ;; whole reentrancy mess).  Agent rewrites of the file update the
-  ;; rendered view within ~1s, with no manual reload.
+  ;; The preview auto-refreshes via `file-notify-add-watch' on the source
+  ;; file path so agent rewrites land in the preview essentially instantly.
+  ;; The callback is wrapped in `condition-case' to keep the watch alive
+  ;; across rendering errors, and — critically for atomic-rename rewrites
+  ;; (the common agent pattern: write `.tmp` then rename onto target) —
+  ;; the watch re-establishes itself on `stopped' / `deleted' / `renamed'
+  ;; events, because macOS kqueue watches the inode, not the path, and the
+  ;; original inode is gone after a rename.
 
   (defcustom thb-markdown-ts-preview-renderer
     '("md2html" "--github")
@@ -1581,20 +1584,13 @@ Swap for any fast md→html binary (e.g. cmark-gfm) if you prefer."
   (defvar thb-markdown-ts-preview--temp-dir nil
     "Per-Emacs-session temp directory for rendered preview HTML.")
 
-  (defcustom thb-markdown-ts-preview-poll-interval 1.0
-    "Seconds between mtime checks of the source file behind a preview.
-Lower = faster refresh but more disk stats; 1.0 is plenty responsive."
-    :type 'number
-    :group 'thb-markdown-ts)
-
   (defvar-local thb-markdown-ts-preview--source-file nil
     "Source markdown file the current preview buffer is rendering.")
   (defvar-local thb-markdown-ts-preview--html-file nil
     "Generated HTML file backing the current preview buffer.")
-  (defvar-local thb-markdown-ts-preview--last-mtime nil
-    "Last seen mtime of the source file; used to detect changes.")
-  (defvar-local thb-markdown-ts-preview--poll-timer nil
-    "Per-buffer timer driving mtime polling of the source file.")
+  (defvar-local thb-markdown-ts-preview--watch nil
+    "`file-notify' descriptor watching the source file.
+Replaced when the watch dies on rename/delete (see -on-change).")
 
   (defun thb-markdown-ts-preview--ensure-temp-dir ()
     (or (and thb-markdown-ts-preview--temp-dir
@@ -1636,48 +1632,61 @@ so relative paths in the source resolve against its directory."
         (let ((coding-system-for-write 'utf-8))
           (write-region (point-min) (point-max) html-file nil 'no-message)))))
 
-  (defun thb-markdown-ts-preview--mtime (file)
-    "Return FILE's mtime, or nil if FILE is unreadable."
-    (and (file-readable-p file)
-         (file-attribute-modification-time (file-attributes file))))
+  (defun thb-markdown-ts-preview--refresh ()
+    "Re-render the source file into the HTML, then eww-reload the buffer.
+Must be called inside a live preview buffer."
+    (let ((src  thb-markdown-ts-preview--source-file)
+          (html thb-markdown-ts-preview--html-file))
+      (when (and src html (file-readable-p src))
+        (thb-markdown-ts-preview--write-html src html)
+        (ignore-errors (eww-reload)))))
 
-  (defun thb-markdown-ts-preview--poll ()
-    "Timer tick: if the source file's mtime has advanced, re-render + reload.
-Runs in the preview buffer.  Safe to call in any state; bails out if the
-buffer state is incomplete (e.g. during teardown)."
-    (when (and (eq major-mode 'eww-mode)
-               thb-markdown-ts-preview--source-file
-               thb-markdown-ts-preview--html-file)
-      (let ((mtime (thb-markdown-ts-preview--mtime
-                    thb-markdown-ts-preview--source-file)))
-        (when (and mtime
-                   (or (null thb-markdown-ts-preview--last-mtime)
-                       (time-less-p thb-markdown-ts-preview--last-mtime mtime)))
-          (setq thb-markdown-ts-preview--last-mtime mtime)
-          (thb-markdown-ts-preview--write-html
-           thb-markdown-ts-preview--source-file
-           thb-markdown-ts-preview--html-file)
-          (ignore-errors (eww-reload))))))
+  (defun thb-markdown-ts-preview--watch-source (preview-buffer)
+    "Install (or re-install) a `file-notify' watch on PREVIEW-BUFFER's source.
+Returns the descriptor.  The callback dispatches on action:
 
-  (defun thb-markdown-ts-preview--start-poll ()
-    "Start the mtime-polling timer for the current preview buffer."
-    (let ((buf (current-buffer)))
-      (when (timerp thb-markdown-ts-preview--poll-timer)
-        (cancel-timer thb-markdown-ts-preview--poll-timer))
-      (setq-local thb-markdown-ts-preview--poll-timer
-                  (run-with-timer
-                   thb-markdown-ts-preview-poll-interval
-                   thb-markdown-ts-preview-poll-interval
-                   (lambda ()
-                     (when (buffer-live-p buf)
-                       (with-current-buffer buf
-                         (thb-markdown-ts-preview--poll))))))))
+  - `changed' / `attribute-changed' / `created' — re-render the preview.
+  - `stopped' / `deleted' / `renamed' — the kqueue watch is dead because
+    the watched inode is gone (typical with atomic rewrite: write `.tmp`
+    then rename onto target).  Schedule a re-watch on the path so we
+    keep seeing future changes, and re-render now to reflect the rename.
+
+The callback is wrapped in `condition-case' so rendering errors don't
+propagate and don't risk auto-removal of the watch."
+    (let ((src (buffer-local-value 'thb-markdown-ts-preview--source-file
+                                   preview-buffer)))
+      (file-notify-add-watch
+       src '(change attribute-change)
+       (lambda (event)
+         (condition-case err
+             (pcase-let ((`(,_descriptor ,action . ,_rest) event))
+               (when (buffer-live-p preview-buffer)
+                 (with-current-buffer preview-buffer
+                   (cond
+                    ;; Inode is gone (rename/delete).  Re-establish watch
+                    ;; after a short delay so the new file is in place.
+                    ((memq action '(stopped deleted renamed))
+                     (run-at-time
+                      0.05 nil
+                      (lambda ()
+                        (when (buffer-live-p preview-buffer)
+                          (with-current-buffer preview-buffer
+                            (when (file-readable-p
+                                   thb-markdown-ts-preview--source-file)
+                              (setq-local thb-markdown-ts-preview--watch
+                                          (thb-markdown-ts-preview--watch-source
+                                           preview-buffer))
+                              (thb-markdown-ts-preview--refresh)))))))
+                    ;; Normal in-place edit / attribute change.
+                    ((memq action '(changed attribute-changed created))
+                     (thb-markdown-ts-preview--refresh))))))
+           (error (message "markdown-ts preview watch error: %s" err)))))))
 
   (defun thb-markdown-ts-preview--cleanup ()
-    "Buffer-killed hook: cancel poll timer + scrub the HTML file."
-    (when (timerp thb-markdown-ts-preview--poll-timer)
-      (cancel-timer thb-markdown-ts-preview--poll-timer)
-      (setq thb-markdown-ts-preview--poll-timer nil))
+    "Buffer-killed hook: remove file-notify watch + scrub the HTML file."
+    (when thb-markdown-ts-preview--watch
+      (ignore-errors (file-notify-rm-watch thb-markdown-ts-preview--watch))
+      (setq thb-markdown-ts-preview--watch nil))
     (when (and thb-markdown-ts-preview--html-file
                (file-exists-p thb-markdown-ts-preview--html-file))
       (ignore-errors (delete-file thb-markdown-ts-preview--html-file))))
@@ -1716,9 +1725,8 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
             (rename-buffer preview-name)
             (setq-local thb-markdown-ts-preview--source-file src)
             (setq-local thb-markdown-ts-preview--html-file html-file)
-            (setq-local thb-markdown-ts-preview--last-mtime
-                        (thb-markdown-ts-preview--mtime src))
-            (thb-markdown-ts-preview--start-poll)
+            (setq-local thb-markdown-ts-preview--watch
+                        (thb-markdown-ts-preview--watch-source (current-buffer)))
             (add-hook 'kill-buffer-hook #'thb-markdown-ts-preview--cleanup nil t)
             ;; Local `q' override: evil's normal-state `q' is
             ;; `evil-record-macro' which shadows eww's quit binding.
