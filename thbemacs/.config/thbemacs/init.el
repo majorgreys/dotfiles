@@ -1427,6 +1427,24 @@ that happen before the GUI frame is the selected one."
             (overlay-put ov 'priority -50)))
       (funcall orig dom)))
 
+  ;; shr pads table cells with trailing whitespace to align column widths.
+  ;; The total row width often slightly exceeds the window because of that
+  ;; padding, which shows up as the `$' truncated-line indicator down the
+  ;; right edge of the preview — perceived as overflow even when no real
+  ;; content is off-screen.  Trim every trailing run of whitespace after
+  ;; eww finishes rendering; tables fit the window cleanly.
+  (defun thb-markdown-ts-preview--trim-trailing-whitespace ()
+    "Strip trailing whitespace from every line in the current buffer.
+Intended as an `eww-after-render-hook'.  No-op outside a markdown-ts
+preview buffer so general eww browsing is unaffected."
+    (when (thb-markdown-ts-preview--in-preview-buffer-p)
+      (save-excursion
+        (let ((inhibit-read-only t))
+          (goto-char (point-min))
+          (while (re-search-forward "[ \t]+$" nil t)
+            (replace-match ""))))))
+  (add-hook 'eww-after-render-hook #'thb-markdown-ts-preview--trim-trailing-whitespace)
+
   ;; --- Phase 3: checkbox prettify ----------------------------------------
   ;;
   ;; Render Markdown task-list checkboxes as Unicode glyphs via
@@ -1753,7 +1771,15 @@ that would otherwise reset buffer-local state."
     (setq-local shr-max-width nil)
     (setq-local shr-indentation 0)
     ;; Line numbers off (even though global-display-line-numbers-mode is on).
-    (display-line-numbers-mode -1))
+    (display-line-numbers-mode -1)
+    ;; Wrap visually instead of truncating with `$'.  shr uses pixel-based
+    ;; line widths against the variable-pitch font, but Emacs' truncation
+    ;; indicator uses character columns against the monospace baseline.
+    ;; The two can disagree by a few chars for proportional text — lines
+    ;; visually fit the window but the buffer has more chars than columns,
+    ;; so `$' flags non-existent overflow.  Wrapping avoids the artifact.
+    (setq-local truncate-lines nil)
+    (setq-local word-wrap t))
 
   (defun thb-markdown-ts-preview--refresh ()
     "Re-render the source file into the HTML, then eww-reload the buffer.
