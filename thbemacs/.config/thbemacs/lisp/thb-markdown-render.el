@@ -135,7 +135,7 @@ The default is a left-bar glyph that approximates a CSS border-left."
   :group 'thb-md-render)
 
 (defface thb-md-render-code-fence-info
-  '((t :inherit font-lock-type-face))
+  '((t :inherit (fixed-pitch font-lock-type-face)))
   "Face for the language tag in a fenced code block info string."
   :group 'thb-md-render)
 
@@ -166,8 +166,9 @@ The default is a left-bar glyph that approximates a CSS border-left."
   :group 'thb-md-render)
 
 (defface thb-md-render-thematic-break
-  '((t :inherit shadow :extend t))
-  "Face for a horizontal rule (---)."
+  '((t :inherit (fixed-pitch shadow) :extend t))
+  "Face for a horizontal rule (---).
+Fixed-pitch so the box-drawing rule character renders consistently."
   :group 'thb-md-render)
 
 (defun thb-md-render-apply-theme ()
@@ -659,6 +660,12 @@ ordered list (incremented per `list_item').")
     (set-window-fringes w 0 0))
   (setq-local header-line-format nil)
   (display-line-numbers-mode -1)
+  ;; Remap default face to variable-pitch so headings, list markers, and
+  ;; anything else that doesn't explicitly inherit fixed-pitch picks up
+  ;; the proportional body font (IBM Plex Sans in thbemacs).  Faces that
+  ;; want monospace -- code spans, code blocks, thematic break -- inherit
+  ;; fixed-pitch explicitly, which overrides this remap.
+  (variable-pitch-mode 1)
   (buffer-disable-undo))
 
 ;;;; Entry points -------------------------------------------------------
