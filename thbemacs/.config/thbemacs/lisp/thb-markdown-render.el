@@ -145,22 +145,26 @@ font-lock-keywords which is always available."
 
 ;;;; Faces ---------------------------------------------------------------
 
-(defface thb-md-render-h1 '((t :inherit outline-1 :weight bold :height 2.0))
+;; Heading faces explicitly inherit `variable-pitch' (FIRST in the
+;; inherit list so its :family wins) so headings stay proportional even
+;; though the buffer default is fixed-pitch.  Outline-N is inherited for
+;; the per-level color from modus-themes.
+(defface thb-md-render-h1 '((t :inherit (variable-pitch outline-1) :weight bold :height 2.0))
   "Face for H1 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h2 '((t :inherit outline-2 :weight bold :height 1.5))
+(defface thb-md-render-h2 '((t :inherit (variable-pitch outline-2) :weight bold :height 1.5))
   "Face for H2 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h3 '((t :inherit outline-3 :weight semi-bold :height 1.25))
+(defface thb-md-render-h3 '((t :inherit (variable-pitch outline-3) :weight semi-bold :height 1.25))
   "Face for H3 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h4 '((t :inherit outline-4 :weight semi-bold :height 1.1))
+(defface thb-md-render-h4 '((t :inherit (variable-pitch outline-4) :weight semi-bold :height 1.1))
   "Face for H4 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h5 '((t :inherit outline-5 :weight semi-bold))
+(defface thb-md-render-h5 '((t :inherit (variable-pitch outline-5) :weight semi-bold))
   "Face for H5 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h6 '((t :inherit outline-6 :weight semi-bold :height 0.9))
+(defface thb-md-render-h6 '((t :inherit (variable-pitch outline-6) :weight semi-bold :height 0.9))
   "Face for H6 in the rendered preview."
   :group 'thb-md-render)
 
@@ -201,28 +205,30 @@ font-lock-keywords which is always available."
   :group 'thb-md-render)
 
 (defface thb-md-render-blockquote
-  '((t :slant italic :extend t))
+  '((t :inherit variable-pitch :slant italic :extend t))
   "Face for block quote content.  Background is set by
 `thb-md-render-apply-theme'."
   :group 'thb-md-render)
 
 (defface thb-md-render-blockquote-marker
   '((t :inherit shadow))
-  "Face for the left-bar prefix of block quote lines."
+  "Face for the left-bar prefix of block quote lines.
+Fixed-pitch (via buffer default) so the ▎ glyph aligns column-wise."
   :group 'thb-md-render)
 
 (defface thb-md-render-list-marker
-  '((t :inherit shadow))
-  "Face for list bullets, ordered-list numbers, and task checkboxes."
+  '((t :inherit (variable-pitch shadow)))
+  "Face for list bullets, ordered-list numbers, and task checkboxes.
+Proportional so bullets match the prose they introduce."
   :group 'thb-md-render)
 
 (defface thb-md-render-link-text
-  '((t :inherit link))
+  '((t :inherit (variable-pitch link)))
   "Face for the visible text of an inline link or image description."
   :group 'thb-md-render)
 
 (defface thb-md-render-link-url
-  '((t :inherit (link shadow)))
+  '((t :inherit (variable-pitch link shadow)))
   "Face for the URL of an inline link, when shown."
   :group 'thb-md-render)
 
@@ -950,9 +956,14 @@ ALIGN is one of `left' / `right' / `center' / `default' (= left)."
               (cl-incf i))
             (insert "\n")
             ;; Apply table-content face over the whole row (fixed-pitch);
-            ;; layered with the per-cell faces emitted by the inline walk.
-            (font-lock-append-text-property row-start (point)
-                                            'face 'thb-md-render-table)
+            ;; PREPEND so the table's fixed-pitch family wins over the
+            ;; cell's body face (which inherits variable-pitch).  The
+            ;; cell foregrounds (code-inline, link, etc.) still come
+            ;; through because thb-md-render-table doesn't set any
+            ;; foreground -- attribute lookup falls through to the
+            ;; per-cell face.
+            (font-lock-prepend-text-property row-start (point)
+                                             'face 'thb-md-render-table)
             (when face
               (font-lock-prepend-text-property row-start (point)
                                                'face face))
@@ -1001,12 +1012,17 @@ ALIGN is one of `left' / `right' / `center' / `default' (= left)."
     (set-window-fringes w 0 0))
   (setq-local header-line-format nil)
   (display-line-numbers-mode -1)
-  ;; Remap default face to variable-pitch so headings, list markers, and
-  ;; anything else that doesn't explicitly inherit fixed-pitch picks up
-  ;; the proportional body font (IBM Plex Sans in thbemacs).  Faces that
-  ;; want monospace -- code spans, code blocks, thematic break -- inherit
-  ;; fixed-pitch explicitly, which overrides this remap.
-  (variable-pitch-mode 1)
+  ;; Buffer default stays fixed-pitch (PragmataPro from the user's global
+  ;; default) so olivetti's char-width measurement matches what tables
+  ;; render in.  Without this, olivetti measures based on the variable-
+  ;; pitch font (narrower per char) and tables in fixed-pitch overflow
+  ;; the body width, getting visually wrapped by visual-line-mode.
+  ;;
+  ;; Prose faces -- body, headings, blockquote, list-marker, link-text
+  ;; -- explicitly :inherit variable-pitch instead of relying on a
+  ;; variable-pitch-mode default remap.  Code/table/rule faces inherit
+  ;; fixed-pitch.  Both align with the buffer default for olivetti's
+  ;; sake.
   ;; Constrain body to a comfortable reading width and center it in the
   ;; window, the way a document viewer would.  Olivetti handles margins
   ;; and follows window-size changes.  When the window is narrower than
