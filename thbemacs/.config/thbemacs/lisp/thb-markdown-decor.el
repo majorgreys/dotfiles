@@ -195,15 +195,23 @@ Children outside the range are skipped."
 ;;;; Cursor reveal ------------------------------------------------------
 
 (defun thb-markdown-decor--decorated-parent-at (pos)
-  "Smallest ancestor at POS whose node-type is in `thb-markdown-decor-decorated-types'.
-Returns nil if no such ancestor or no inline parser."
+  "Smallest ancestor at POS whose node-type is in
+`thb-markdown-decor-decorated-types', AND that actually contains POS.
+
+Guard against `treesit-node-at' returning the next node when POS sits
+in plain text -- in that case `treesit-parent-until' happily walks up
+from a nearby node and we'd falsely reveal something the cursor isn't
+actually inside.  Verify range containment before returning."
   (when-let* ((parser (thb-markdown-decor--inline-parser))
-              (node (treesit-node-at pos 'markdown-inline)))
-    (treesit-parent-until
-     node
-     (lambda (n)
-       (member (treesit-node-type n) thb-markdown-decor-decorated-types))
-     t)))
+              (node (treesit-node-at pos 'markdown-inline))
+              (parent (treesit-parent-until
+                       node
+                       (lambda (n)
+                         (member (treesit-node-type n) thb-markdown-decor-decorated-types))
+                       t)))
+    (when (and (<= (treesit-node-start parent) pos)
+               (< pos (treesit-node-end parent)))
+      parent)))
 
 (defun thb-markdown-decor--reveal (node)
   "Reveal the decorations within NODE.
