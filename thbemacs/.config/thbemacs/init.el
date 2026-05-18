@@ -257,7 +257,10 @@
   (set-face-attribute 'shr-h3 nil :height 1.25  :weight 'semi-bold)
   (set-face-attribute 'shr-h4 nil :height 1.1   :weight 'semi-bold)
   (set-face-attribute 'shr-h5 nil :height 1.0   :weight 'semi-bold)
-  (set-face-attribute 'shr-h6 nil :height 0.9   :weight 'semi-bold))
+  (set-face-attribute 'shr-h6 nil :height 0.9   :weight 'semi-bold)
+  ;; Real Unicode bullet for <ul><li>.  Default is the literal string "* "
+  ;; which leaves Markdown-source-looking asterisks in the rendered output.
+  (setq shr-bullet "• "))
 
 ;; Font ligatures — PragmataPro Liga support via ligature.el
 ;; Doom's +pragmata-pro flag does this under the hood.
@@ -1744,6 +1747,20 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
             (eww-open-file html-file)
             ;; eww just made the new buffer current; rename + wire state.
             (rename-buffer preview-name)
+            ;; Hide eww's URL/title header line — it's pure noise for a
+            ;; "just show me the rendered markdown" preview.
+            (setq-local eww-header-line-format nil)
+            (setq header-line-format nil)
+            ;; Strip fringes and let shr fill the whole window width
+            ;; instead of word-wrapping inside a 120-char ceiling.  Removes
+            ;; visible left/right gutter so the preview reads edge-to-edge.
+            (setq-local left-fringe-width 0)
+            (setq-local right-fringe-width 0)
+            (when-let ((win (get-buffer-window (current-buffer))))
+              (set-window-fringes win 0 0))
+            (setq-local shr-width nil)
+            (setq-local shr-max-width nil)
+            (setq-local shr-indentation 0)
             (setq-local thb-markdown-ts-preview--source-file src)
             (setq-local thb-markdown-ts-preview--html-file html-file)
             (setq-local thb-markdown-ts-preview--watch
