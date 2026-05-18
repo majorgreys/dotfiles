@@ -1551,6 +1551,186 @@ With an active region, TEXT defaults to the region's content."
     (when (use-region-p) (delete-region (region-beginning) (region-end)))
     (insert (format "[%s](%s)" text url)))
 
+  ;; --- Phase 5: eww preview with auto-refresh ---------------------------
+  ;;
+  ;; `SPC m v p' toggles a rendered HTML view of the current markdown file
+  ;; in an `eww' buffer (same window, not split).  Calling the toggle from
+  ;; inside the preview returns to the source; `q' also works there via a
+  ;; local rebinding (evil's normal-state `q' otherwise records a macro).
+  ;;
+  ;; The renderer is `md2html --github' (md4c), ~300x faster than pandoc
+  ;; on a 33KB document, with GFM tables, task lists, strikethrough, and
+  ;; fenced code blocks with language classes.  Output HTML is written to
+  ;; a per-session temp directory and wrapped with `<base href>' pointing
+  ;; at the source's directory so relative <img> / anchor links resolve.
+  ;;
+  ;; The preview auto-refreshes via a 1-second mtime poll on the source
+  ;; file (kept simple — file-notify's kqueue descriptors get invalidated
+  ;; by eww-reload's internal buffer reset on macOS, so polling avoids the
+  ;; whole reentrancy mess).  Agent rewrites of the file update the
+  ;; rendered view within ~1s, with no manual reload.
+
+  (defcustom thb-markdown-ts-preview-renderer
+    '("md2html" "--github")
+    "Command + args to convert markdown to HTML on stdout.
+The source file path is appended as the final argument.
+Swap for any fast md→html binary (e.g. cmark-gfm) if you prefer."
+    :type '(repeat string)
+    :group 'thb-markdown-ts)
+
+  (defvar thb-markdown-ts-preview--temp-dir nil
+    "Per-Emacs-session temp directory for rendered preview HTML.")
+
+  (defcustom thb-markdown-ts-preview-poll-interval 1.0
+    "Seconds between mtime checks of the source file behind a preview.
+Lower = faster refresh but more disk stats; 1.0 is plenty responsive."
+    :type 'number
+    :group 'thb-markdown-ts)
+
+  (defvar-local thb-markdown-ts-preview--source-file nil
+    "Source markdown file the current preview buffer is rendering.")
+  (defvar-local thb-markdown-ts-preview--html-file nil
+    "Generated HTML file backing the current preview buffer.")
+  (defvar-local thb-markdown-ts-preview--last-mtime nil
+    "Last seen mtime of the source file; used to detect changes.")
+  (defvar-local thb-markdown-ts-preview--poll-timer nil
+    "Per-buffer timer driving mtime polling of the source file.")
+
+  (defun thb-markdown-ts-preview--ensure-temp-dir ()
+    (or (and thb-markdown-ts-preview--temp-dir
+             (file-directory-p thb-markdown-ts-preview--temp-dir)
+             thb-markdown-ts-preview--temp-dir)
+        (setq thb-markdown-ts-preview--temp-dir
+              (make-temp-file "thb-md-preview-" t))))
+
+  (defun thb-markdown-ts-preview--html-path-for (source-file)
+    "Return a stable per-source HTML path under the session temp dir."
+    (expand-file-name
+     (format "%s-%s.html"
+             (file-name-base source-file)
+             (substring (secure-hash 'sha1 (expand-file-name source-file)) 0 8))
+     (thb-markdown-ts-preview--ensure-temp-dir)))
+
+  (defun thb-markdown-ts-preview--buffer-name (source-file)
+    (format "*md preview: %s*" (file-name-nondirectory source-file)))
+
+  (defun thb-markdown-ts-preview--write-html (source-file html-file)
+    "Render SOURCE-FILE → HTML-FILE via `thb-markdown-ts-preview-renderer'.
+Wraps the renderer's output with a minimal document and `<base href>'
+so relative paths in the source resolve against its directory."
+    (let* ((cmd  (car thb-markdown-ts-preview-renderer))
+           (args (append (cdr thb-markdown-ts-preview-renderer)
+                         (list source-file)))
+           (src-dir (file-name-directory (expand-file-name source-file))))
+      (with-temp-buffer
+        (let ((status (apply #'call-process cmd nil (current-buffer) nil args)))
+          (unless (zerop status)
+            (error "%s exited %d: %s" cmd status
+                   (buffer-substring-no-properties (point-min) (point-max)))))
+        (goto-char (point-min))
+        (insert "<!DOCTYPE html><html><head>"
+                (format "<base href=\"file://%s\">" src-dir)
+                "<meta charset=\"utf-8\"></head><body>\n")
+        (goto-char (point-max))
+        (insert "\n</body></html>\n")
+        (let ((coding-system-for-write 'utf-8))
+          (write-region (point-min) (point-max) html-file nil 'no-message)))))
+
+  (defun thb-markdown-ts-preview--mtime (file)
+    "Return FILE's mtime, or nil if FILE is unreadable."
+    (and (file-readable-p file)
+         (file-attribute-modification-time (file-attributes file))))
+
+  (defun thb-markdown-ts-preview--poll ()
+    "Timer tick: if the source file's mtime has advanced, re-render + reload.
+Runs in the preview buffer.  Safe to call in any state; bails out if the
+buffer state is incomplete (e.g. during teardown)."
+    (when (and (eq major-mode 'eww-mode)
+               thb-markdown-ts-preview--source-file
+               thb-markdown-ts-preview--html-file)
+      (let ((mtime (thb-markdown-ts-preview--mtime
+                    thb-markdown-ts-preview--source-file)))
+        (when (and mtime
+                   (or (null thb-markdown-ts-preview--last-mtime)
+                       (time-less-p thb-markdown-ts-preview--last-mtime mtime)))
+          (setq thb-markdown-ts-preview--last-mtime mtime)
+          (thb-markdown-ts-preview--write-html
+           thb-markdown-ts-preview--source-file
+           thb-markdown-ts-preview--html-file)
+          (ignore-errors (eww-reload))))))
+
+  (defun thb-markdown-ts-preview--start-poll ()
+    "Start the mtime-polling timer for the current preview buffer."
+    (let ((buf (current-buffer)))
+      (when (timerp thb-markdown-ts-preview--poll-timer)
+        (cancel-timer thb-markdown-ts-preview--poll-timer))
+      (setq-local thb-markdown-ts-preview--poll-timer
+                  (run-with-timer
+                   thb-markdown-ts-preview-poll-interval
+                   thb-markdown-ts-preview-poll-interval
+                   (lambda ()
+                     (when (buffer-live-p buf)
+                       (with-current-buffer buf
+                         (thb-markdown-ts-preview--poll))))))))
+
+  (defun thb-markdown-ts-preview--cleanup ()
+    "Buffer-killed hook: cancel poll timer + scrub the HTML file."
+    (when (timerp thb-markdown-ts-preview--poll-timer)
+      (cancel-timer thb-markdown-ts-preview--poll-timer)
+      (setq thb-markdown-ts-preview--poll-timer nil))
+    (when (and thb-markdown-ts-preview--html-file
+               (file-exists-p thb-markdown-ts-preview--html-file))
+      (ignore-errors (delete-file thb-markdown-ts-preview--html-file))))
+
+  (defun thb-markdown-ts-preview ()
+    "Toggle a live-rendered HTML preview of the current markdown buffer.
+
+In `markdown-ts-mode' → swap the current window to an `eww' preview of
+the source file.  In a markdown-ts-mode preview buffer → quit back to the
+source.  The preview auto-refreshes whenever the source file changes on
+disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
+    (interactive)
+    (cond
+     ;; Already inside a preview buffer: quit back.
+     ((and (eq major-mode 'eww-mode)
+           (local-variable-p 'thb-markdown-ts-preview--source-file)
+           thb-markdown-ts-preview--source-file)
+      (quit-window))
+     ;; In markdown source: render + show.
+     ((eq major-mode 'markdown-ts-mode)
+      (let ((src (buffer-file-name)))
+        (unless src (user-error "Buffer is not visiting a file"))
+        (when (buffer-modified-p) (save-buffer))
+        (let* ((html-file    (thb-markdown-ts-preview--html-path-for src))
+               (preview-name (thb-markdown-ts-preview--buffer-name src))
+               (existing     (get-buffer preview-name)))
+          (thb-markdown-ts-preview--write-html src html-file)
+          (cond
+           ;; Refresh existing preview and re-show in current window.
+           ((buffer-live-p existing)
+            (switch-to-buffer existing)
+            (ignore-errors (eww-reload)))
+           (t
+            (eww-open-file html-file)
+            ;; eww just made the new buffer current; rename + wire state.
+            (rename-buffer preview-name)
+            (setq-local thb-markdown-ts-preview--source-file src)
+            (setq-local thb-markdown-ts-preview--html-file html-file)
+            (setq-local thb-markdown-ts-preview--last-mtime
+                        (thb-markdown-ts-preview--mtime src))
+            (thb-markdown-ts-preview--start-poll)
+            (add-hook 'kill-buffer-hook #'thb-markdown-ts-preview--cleanup nil t)
+            ;; Local `q' override: evil's normal-state `q' is
+            ;; `evil-record-macro' which shadows eww's quit binding.
+            (when (boundp 'evil-normal-state-local-map)
+              (setq-local evil-normal-state-local-map
+                          (let ((map (make-sparse-keymap)))
+                            (set-keymap-parent map (or evil-normal-state-local-map
+                                                       (make-sparse-keymap)))
+                            (define-key map (kbd "q") #'thb-markdown-ts-preview)
+                            map))))))))
+     (t (user-error "Not in markdown-ts-mode or its preview"))))
+
   ;; --- SPC m leader bindings -------------------------------------------
   (thb/leader
     :keymaps 'markdown-ts-mode-map
@@ -1571,7 +1751,11 @@ With an active region, TEXT defaults to the region's content."
     ;; --- SPC m l: links ---
     "ml"  '(:ignore t :which-key "links")
     "mlo" '(thb-markdown-ts-open-link   :which-key "open at point")
-    "mll" '(thb-markdown-ts-insert-link :which-key "insert link")))
+    "mll" '(thb-markdown-ts-insert-link :which-key "insert link")
+
+    ;; --- SPC m v: preview ---
+    "mv"  '(:ignore t :which-key "preview")
+    "mvp" '(thb-markdown-ts-preview     :which-key "eww (auto-refresh)")))
 
 
 ;;; ============================================================
