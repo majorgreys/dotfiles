@@ -149,6 +149,9 @@
 (dolist (mode '(org-mode-hook
                org-agenda-mode-hook
                markdown-ts-mode-hook
+               thb-md-render-mode-hook  ; derived from special-mode but
+                                        ; define-derived-mode doesn't run
+                                        ; parent hooks, so list explicitly
                special-mode-hook
                term-mode-hook
                eshell-mode-hook
@@ -166,7 +169,8 @@
   (when-let ((win (get-buffer-window (current-buffer))))
     (set-window-fringes win 0 0)))
 (dolist (mode '(org-mode-hook
-               markdown-ts-mode-hook))
+               markdown-ts-mode-hook
+               thb-md-render-mode-hook))
   (add-hook mode #'thb/disable-fringes))
 
 ;; Smooth scrolling — ultra-scroll replaces pixel-scroll-precision-mode
