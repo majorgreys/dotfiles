@@ -276,11 +276,21 @@
   ;; Real Unicode bullet for <ul><li>.  Default is the literal string "* "
   ;; which leaves Markdown-source-looking asterisks in the rendered output.
   (setq shr-bullet "• ")
-  ;; Simple box-drawing table borders.  Defaults are spaces (and nil for the
-  ;; horizontal line) so tables render as runs of cells with no visible grid.
+  ;; Table borders — horizontal rule only, no verticals.
+  ;;
+  ;; shr renders tables by computing per-cell pixel widths from the
+  ;; variable-pitch font.  Box-drawing vertical lines (│) are monospace,
+  ;; so they don't align with proportional cell content — you end up with
+  ;; doubled `││' at row starts, misaligned corners, and a table that
+  ;; overflows the window because each cell carries 2ch of border weight.
+  ;;
+  ;; Keep ─ for horizontal separators (these align fine; they're row-wide
+  ;; rules, not column-wise), and use space for verticals + corners.  Net
+  ;; result is a GitHub-style "horizontal-rules between rows, no column
+  ;; lines" layout that fits the window and reads cleanly.
   (setq shr-table-horizontal-line ?─
-        shr-table-vertical-line   ?│
-        shr-table-corner          ?┼))
+        shr-table-vertical-line   ?\s
+        shr-table-corner          ?\s))
 
 ;; Font ligatures — PragmataPro Liga support via ligature.el
 ;; Doom's +pragmata-pro flag does this under the hood.
