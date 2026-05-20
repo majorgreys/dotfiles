@@ -102,6 +102,42 @@ the region is re-hidden.")
   (seq-find (lambda (c) (equal (treesit-node-type c) type))
             (treesit-node-children parent)))
 
+(defun thb-markdown-decor--double-tilde-strikethrough-p (node)
+  "Return non-nil when NODE is an exact ~~strikethrough~~ node.
+
+The markdown-inline grammar also treats single-tilde `~foo~' spans as
+`strikethrough'.  Do not decorate those: single tildes are common in notes
+and paths, and false positives make large regions look deleted.  Triple-or-
+longer tilde runs are also left alone instead of guessed at."
+  (let ((start (treesit-node-start node))
+        (end   (treesit-node-end node)))
+    (and (equal (treesit-node-type node) "strikethrough")
+         ;; Minimum non-empty exact form: ~~a~~.
+         (>= (- end start) 5)
+         (not (eq (char-before start) ?~))
+         (eq (char-after start) ?~)
+         (eq (char-after (1+ start)) ?~)
+         (not (eq (char-after (+ start 2)) ?~))
+         (eq (char-before end) ?~)
+         (eq (char-before (1- end)) ?~)
+         (not (eq (char-before (- end 2)) ?~))
+         (not (eq (char-after end) ?~)))))
+
+(defun thb-markdown-decor--decoratable-node-p (node)
+  "Return non-nil when NODE is one this mode should decorate."
+  (let ((type (treesit-node-type node)))
+    (and (member type thb-markdown-decor-decorated-types)
+         (or (not (equal type "strikethrough"))
+             (thb-markdown-decor--double-tilde-strikethrough-p node)))))
+
+(defun thb-markdown-decor--hide-emphasis-delimiters (node)
+  "Hide all `emphasis_delimiter' descendants under NODE."
+  (dolist (c (treesit-node-children node))
+    (if (equal (treesit-node-type c) "emphasis_delimiter")
+        (thb-markdown-decor--hide-range
+         (treesit-node-start c) (treesit-node-end c))
+      (thb-markdown-decor--hide-emphasis-delimiters c))))
+
 (defun thb-markdown-decor--hide-range (start end)
   "Mark [START, END) invisible under our spec symbol.
 Idempotent; calling twice is fine."
@@ -113,12 +149,14 @@ Idempotent; calling twice is fine."
   "Apply decoration text-properties to NODE."
   (let ((type (treesit-node-type node)))
     (cond
-     ;; emphasis-family containers: hide all emphasis_delimiter children.
-     ((member type '("emphasis" "strong_emphasis" "strikethrough"))
-      (dolist (c (treesit-node-children node))
-        (when (equal (treesit-node-type c) "emphasis_delimiter")
-          (thb-markdown-decor--hide-range
-           (treesit-node-start c) (treesit-node-end c)))))
+     ;; Emphasis-family containers: hide delimiter children.  For
+     ;; strikethrough, only accept the GFM double-tilde form; the grammar also
+     ;; parses `~foo~', which is too eager for source-buffer decoration.
+     ((member type '("emphasis" "strong_emphasis"))
+      (thb-markdown-decor--hide-emphasis-delimiters node))
+     ((equal type "strikethrough")
+      (when (thb-markdown-decor--double-tilde-strikethrough-p node)
+        (thb-markdown-decor--hide-emphasis-delimiters node)))
      ;; code_span: hide its code_span_delimiter children.
      ((equal type "code_span")
       (dolist (c (treesit-node-children node))
@@ -159,8 +197,7 @@ Children outside the range are skipped."
       (dolist (child (treesit-node-children root))
         (let ((cs (treesit-node-start child)))
           (when (and (>= cs start) (< cs end))
-            (when (member (treesit-node-type child)
-                          thb-markdown-decor-decorated-types)
+            (when (thb-markdown-decor--decoratable-node-p child)
               (thb-markdown-decor--decorate-node child))))))))
 
 (defun thb-markdown-decor--apply ()
@@ -206,8 +243,7 @@ actually inside.  Verify range containment before returning."
               (node (treesit-node-at pos 'markdown-inline))
               (parent (treesit-parent-until
                        node
-                       (lambda (n)
-                         (member (treesit-node-type n) thb-markdown-decor-decorated-types))
+                       #'thb-markdown-decor--decoratable-node-p
                        t)))
     (when (and (<= (treesit-node-start parent) pos)
                (< pos (treesit-node-end parent)))
