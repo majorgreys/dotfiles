@@ -670,8 +670,12 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 ;; Which-key — show available keybindings after pressing a prefix.
 (use-package which-key
   :config
-  (setq which-key-idle-delay 0.4        ; faster than default (1.0)
-        which-key-sort-order 'which-key-key-order-alpha)
+  (setq which-key-idle-delay 0.25       ; faster than default (1.0)
+        which-key-idle-secondary-delay 0.05
+        which-key-sort-order 'which-key-key-order-alpha
+        which-key-max-description-length 45
+        which-key-side-window-location 'bottom
+        which-key-side-window-max-height 0.45)
   (which-key-mode 1))
 
 
@@ -726,6 +730,14 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
         corfu-auto-prefix 1       ; trigger after 1 character
         corfu-cycle t             ; cycle through candidates
         corfu-preselect 'prompt)) ; don't auto-select first candidate
+
+;; Cape — extra completion-at-point sources for Corfu.
+;; Append these as fallbacks so mode-specific CAPFs like Eglot still win.
+(use-package cape
+  :init
+  (add-to-list 'completion-at-point-functions #'cape-file t)
+  (add-to-list 'completion-at-point-functions #'cape-dabbrev t)
+  (add-to-list 'completion-at-point-functions #'cape-keyword t))
 
 
 ;;; ============================================================
@@ -1314,6 +1326,76 @@ text between two filled rows." :group 'thb-markdown-ts)
   (defface thb-markdown-ts-url '((t :inherit (link shadow)))
     "Face for link destinations." :group 'thb-markdown-ts)
 
+  (defun thb-markdown-ts--double-tilde-strikethrough-p (node)
+    "Return non-nil when NODE is an exact ~~strikethrough~~ node.
+
+The markdown-inline grammar also parses single-tilde spans (`~foo~') as
+`strikethrough'.  That is too broad for everyday notes because literal
+home paths and prose tildes can be mis-highlighted across large regions.
+Only render strikethrough for the unambiguous double-tilde form, and do
+not treat triple-or-longer tilde runs as a clean match."
+    (let ((start (treesit-node-start node))
+          (end   (treesit-node-end node)))
+      (and (equal (treesit-node-type node) "strikethrough")
+           ;; Minimum non-empty exact form: ~~a~~.
+           (>= (- end start) 5)
+           (not (eq (char-before start) ?~))
+           (eq (char-after start) ?~)
+           (eq (char-after (1+ start)) ?~)
+           (not (eq (char-after (+ start 2)) ?~))
+           (eq (char-before end) ?~)
+           (eq (char-before (1- end)) ?~)
+           (not (eq (char-before (- end 2)) ?~))
+           (not (eq (char-after end) ?~)))))
+
+  (defun thb-markdown-ts--fontify-strikethrough (node override start end &rest _)
+    "Fontify NODE as strikethrough only for double-tilde spans."
+    (when (thb-markdown-ts--double-tilde-strikethrough-p node)
+      (treesit-fontify-with-override
+       (max (treesit-node-start node) start)
+       (min (treesit-node-end node) end)
+       'thb-markdown-ts-strikethrough
+       override)))
+
+  (defun thb-markdown-ts--child-of-type (node type)
+    "Return the first direct child of NODE whose type is TYPE."
+    (seq-find (lambda (child) (equal (treesit-node-type child) type))
+              (treesit-node-children node)))
+
+  (defun thb-markdown-ts--task-marker-child (node)
+    "Return NODE's standard task-list marker child, or nil."
+    (or (thb-markdown-ts--child-of-type node "task_list_marker_unchecked")
+        (thb-markdown-ts--child-of-type node "task_list_marker_checked")))
+
+  (defun thb-markdown-ts--list-marker-child (node)
+    "Return NODE's list marker child, or nil."
+    (seq-find (lambda (child)
+                (string-prefix-p "list_marker_" (treesit-node-type child)))
+              (treesit-node-children node)))
+
+  (defun thb-markdown-ts--fontify-task-list-item (node override start end &rest _)
+    "Render a semantic Markdown task-list marker in NODE as a checkbox glyph.
+
+Unlike `prettify-symbols-mode', this only runs for tree-sitter
+`task_list_marker_*' nodes, so literal `- [ ]' text inside code blocks stays
+literal."
+    (when-let* ((list-marker (thb-markdown-ts--list-marker-child node))
+                (task-marker (thb-markdown-ts--task-marker-child node))
+                (range-start (treesit-node-start list-marker))
+                (range-end   (treesit-node-end task-marker))
+                (glyph (if (equal (treesit-node-type task-marker)
+                                  "task_list_marker_checked")
+                           "☑"
+                         "☐")))
+      (treesit-fontify-with-override
+       (max range-start start)
+       (min range-end end)
+       'thb-markdown-ts-marker
+       override)
+      (put-text-property range-start range-end
+                         'display
+                         (propertize glyph 'face 'thb-markdown-ts-marker))))
+
   ;; Preview-only faces — applied by shr-tag advice (below) inside markdown
   ;; preview eww buffers so we can give code blocks and table headers
   ;; distinct backgrounds without affecting general eww browsing.
@@ -1360,13 +1442,21 @@ text between two filled rows." :group 'thb-markdown-ts)
        (fenced_code_block (info_string (language) @thb-markdown-ts-info-language))
        (fenced_code_block (code_fence_content) @thb-markdown-ts-code-block)
        (indented_code_block) @thb-markdown-ts-code-block
-       ;; Lists and tasks.
+       ;; Lists and tasks.  Task-list checkboxes are rendered from semantic
+       ;; task_list_marker_* nodes rather than text patterns, so code blocks
+       ;; containing literal `- [ ]' remain untouched.
        (list_item (list_marker_minus) @thb-markdown-ts-marker)
        (list_item (list_marker_plus) @thb-markdown-ts-marker)
        (list_item (list_marker_star) @thb-markdown-ts-marker)
        (list_item (list_marker_dot) @thb-markdown-ts-marker)
-       (list_item (task_list_marker_unchecked) @thb-markdown-ts-marker)
-       (list_item (task_list_marker_checked) @thb-markdown-ts-marker)
+       (list_item (list_marker_minus) (task_list_marker_unchecked)) @thb-markdown-ts--fontify-task-list-item
+       (list_item (list_marker_plus) (task_list_marker_unchecked)) @thb-markdown-ts--fontify-task-list-item
+       (list_item (list_marker_star) (task_list_marker_unchecked)) @thb-markdown-ts--fontify-task-list-item
+       (list_item (list_marker_dot) (task_list_marker_unchecked)) @thb-markdown-ts--fontify-task-list-item
+       (list_item (list_marker_minus) (task_list_marker_checked)) @thb-markdown-ts--fontify-task-list-item
+       (list_item (list_marker_plus) (task_list_marker_checked)) @thb-markdown-ts--fontify-task-list-item
+       (list_item (list_marker_star) (task_list_marker_checked)) @thb-markdown-ts--fontify-task-list-item
+       (list_item (list_marker_dot) (task_list_marker_checked)) @thb-markdown-ts--fontify-task-list-item
        ;; Blockquotes and horizontal rules.
        (block_quote (block_quote_marker) @thb-markdown-ts-marker)
        (block_quote (paragraph) @thb-markdown-ts-blockquote)
@@ -1377,7 +1467,7 @@ text between two filled rows." :group 'thb-markdown-ts)
      :feature 'paragraph-inline
      '((emphasis) @thb-markdown-ts-emphasis
        (strong_emphasis) @thb-markdown-ts-strong
-       (strikethrough) @thb-markdown-ts-strikethrough
+       (strikethrough) @thb-markdown-ts--fontify-strikethrough
        (emphasis_delimiter) @thb-markdown-ts-marker
        (code_span) @thb-markdown-ts-code-inline
        (code_span_delimiter) @thb-markdown-ts-marker
@@ -1482,57 +1572,108 @@ Two passes:
                 (forward-line 1))))))))
   (add-hook 'eww-after-render-hook #'thb-markdown-ts-preview--post-render-cleanup)
 
-  ;; --- Phase 3: checkbox prettify ----------------------------------------
+  ;; --- Phase 3: semantic checkbox rendering -----------------------------
   ;;
-  ;; Render Markdown task-list checkboxes as Unicode glyphs via
-  ;; `prettify-symbols-mode'.  Pattern-based (not semantic) — a literal
-  ;; `- [ ]' inside a code block or blockquote will also render as ☐, which
-  ;; matches the rendered-Markdown intent.  Composes with PragmataPro
-  ;; ligatures (ligatures handle prog-mode glyphs; this handles markdown
-  ;; checkbox tokens).
+  ;; Task-list checkboxes are rendered in `thb-markdown-ts--rules' from
+  ;; tree-sitter's `task_list_marker_unchecked' / `task_list_marker_checked'
+  ;; nodes.  Avoid `prettify-symbols-mode' here: it is text-pattern based and
+  ;; will happily prettify literal `- [ ]' inside fenced code blocks.
 
-  (defvar thb-markdown-ts-prettify-symbols
-    '(("- [ ]" . ?☐)
-      ("- [x]" . ?☑)
-      ("- [X]" . ?☑)
-      ("- [-]" . ?◐)
-      ("* [ ]" . ?☐)
-      ("* [x]" . ?☑)
-      ("* [X]" . ?☑)
-      ("* [-]" . ?◐)
-      ("+ [ ]" . ?☐)
-      ("+ [x]" . ?☑)
-      ("+ [X]" . ?☑)
-      ("+ [-]" . ?◐))
-    "Markdown task-list checkbox tokens shown as Unicode glyphs.
-☐ unchecked  ☑ checked  ◐ in-progress (- [-] is a common GFM-ish convention).")
+  ;; --- Phase 3b: heading folding via outline-minor-mode ------------------
+  ;;
+  ;; Evil's z* fold commands know how to talk to `outline-minor-mode'.  Enable
+  ;; it for markdown-ts buffers and teach outline how to find ATX headings.
+  ;; The search function validates regex candidates against the tree-sitter
+  ;; parse so a literal "# heading" inside a fenced code block is not treated
+  ;; as a foldable document heading.
+
+  (defconst thb-markdown-ts-outline-regexp
+    "^[ \t]*\\(#\\{1,6\\}\\)\\(?:[ \t]+\\|$\\)"
+    "Regexp matching ATX Markdown headings for `outline-minor-mode'.")
+
+  (defun thb-markdown-ts-outline-level ()
+    "Return outline level for the current ATX Markdown heading."
+    (length (match-string 1)))
+
+  (defun thb-markdown-ts--atx-heading-match-p ()
+    "Return non-nil when the current outline regexp match is an ATX heading."
+    (when-let* ((pos (match-beginning 1))
+                (node (treesit-node-at pos 'markdown))
+                (heading (treesit-parent-until
+                          node
+                          (lambda (n) (equal (treesit-node-type n) "atx_heading"))
+                          t)))
+      (and (<= (treesit-node-start heading) pos)
+           (< pos (treesit-node-end heading)))))
+
+  (defun thb-markdown-ts--outline-search (&optional bound move backward looking-at)
+    "Search for a semantic Markdown outline heading.
+
+Implements `outline-search-function' by trying `outline-regexp' matches and
+keeping only those backed by a tree-sitter `atx_heading' node.  When MOVE is
+non-nil and no heading is found, move to BOUND or the buffer edge, matching
+`re-search-forward' / `re-search-backward' with a non-nil noerror move arg."
+    (cond
+     (looking-at
+      (and (looking-at outline-regexp)
+           (thb-markdown-ts--atx-heading-match-p)))
+     (backward
+      (catch 'found
+        (while (re-search-backward outline-regexp bound t)
+          (when (thb-markdown-ts--atx-heading-match-p)
+            (throw 'found t)))
+        (when move (goto-char (or bound (point-min))))
+        nil))
+     (t
+      (catch 'found
+        (while (re-search-forward outline-regexp bound t)
+          (when (thb-markdown-ts--atx-heading-match-p)
+            (throw 'found t)))
+        (when move (goto-char (or bound (point-max))))
+        nil))))
+
+  (defun thb-markdown-ts-setup-outline ()
+    "Enable outline folding for `markdown-ts-mode'."
+    (setq-local outline-regexp thb-markdown-ts-outline-regexp)
+    (setq-local outline-level #'thb-markdown-ts-outline-level)
+    (setq-local outline-search-function #'thb-markdown-ts--outline-search)
+    (outline-minor-mode 1))
+
+  (with-eval-after-load 'evil
+    (evil-define-key 'normal markdown-ts-mode-map (kbd "TAB") #'evil-toggle-fold)
+    (evil-define-key 'normal markdown-ts-mode-map (kbd "<tab>") #'evil-toggle-fold))
+
+  (defun thb-markdown-ts--range-settings ()
+    "Return range settings that keep markdown-inline inside inline nodes."
+    (treesit-range-rules
+     :embed 'markdown-inline
+     :host 'markdown
+     '((inline) @capture)))
+
+  ;; `markdown-ts-mode' calls `treesit-major-mode-setup' before mode hooks.
+  ;; Range settings must therefore be present before `markdown-ts-setup' runs;
+  ;; setting them only in `markdown-ts-mode-hook' leaves the inline parser over
+  ;; the whole buffer, where tildes/backticks from unrelated paragraphs can be
+  ;; misparsed as giant inline spans.
+  (setq markdown-ts--treesit-settings (thb-markdown-ts--rules))
+  (defun thb-markdown-ts--pre-setup ()
+    "Install parser range settings before `treesit-major-mode-setup'."
+    (setq-local treesit-range-settings (thb-markdown-ts--range-settings)))
+  (advice-add 'markdown-ts-setup :before #'thb-markdown-ts--pre-setup)
 
   (defun thb/markdown-setup ()
-    "Per-buffer markdown setup: visual line wrapping and custom font-lock rules.
+    "Per-buffer markdown setup: visual line wrapping and source prettification.
 
-Replaces `markdown-ts--treesit-settings' with our richer rule set so each
-heading level, markers, code, blockquotes, and inlines get their own faces.
-
-Also installs `treesit-range-settings' restricting the markdown-inline
-parser to (inline) nodes from the markdown grammar. Without this, the
-MELPA package runs both parsers across the whole buffer and the inline
-parser misclassifies fenced code-block content as `code_span', stealing
-fontification from the block-level rules."
+Custom font-lock rules and parser ranges are installed before
+`treesit-major-mode-setup' via `markdown-ts--treesit-settings' and
+`thb-markdown-ts--pre-setup'.  This hook handles display-only toggles that
+can safely run after the major mode is initialized."
     (visual-line-mode 1)
-    (setq-local treesit-range-settings
-                (treesit-range-rules
-                 :embed 'markdown-inline
-                 :host 'markdown
-                 '((inline) @capture)))
-    (setq-local treesit-font-lock-settings (thb-markdown-ts--rules))
-    (when (fboundp 'treesit-font-lock-recompute-features)
-      (treesit-font-lock-recompute-features))
-    ;; Prettify checkboxes.  Append to (don't replace) prettify-symbols-alist
-    ;; so any future additions from other minor modes still work.
-    (setq-local prettify-symbols-alist
-                (append thb-markdown-ts-prettify-symbols
-                        prettify-symbols-alist))
-    (prettify-symbols-mode 1)
+    (thb-markdown-ts-setup-outline)
+    ;; `display' is used by the semantic checkbox renderer.  Tell font-lock to
+    ;; clear it before refontifying changed regions, otherwise stale checkbox
+    ;; glyphs can survive edits that turn a task item into plain text.
+    (add-to-list 'font-lock-extra-managed-props 'display)
     (when (treesit-parser-list)
       (treesit-font-lock-fontify-region (point-min) (point-max))))
   (add-hook 'markdown-ts-mode-hook #'thb/markdown-setup)
@@ -1938,6 +2079,7 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
     "ms"  '(:ignore t :which-key "subtree")
     "msh" '(thb-markdown-ts-promote-heading   :which-key "promote")
     "msl" '(thb-markdown-ts-demote-heading    :which-key "demote")
+    "mst" '(evil-toggle-fold                  :which-key "toggle fold")
     "msj" '(thb-markdown-ts-move-subtree-down :which-key "move down")
     "msk" '(thb-markdown-ts-move-subtree-up   :which-key "move up")
     "msn" '(thb-markdown-ts-narrow-to-subtree :which-key "narrow")
