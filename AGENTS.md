@@ -99,6 +99,15 @@ For more details, see README.md and docs/QUICKSTART.md.
 
 <!-- END BEADS INTEGRATION -->
 
+## Committing changes to this repo (~/.dotfiles)
+
+- Once a change made in this repo is verified working, commit it and push to `origin` so it is not left only in the working tree.
+- Workflow: `git add` the relevant files, write a concise commit message describing the change, `git commit`, then `git push`.
+- Only commit files you intentionally changed for the task; do not sweep up unrelated dirty files. Run `git status` and `git diff --stat` first to confirm scope.
+- If the change is not yet verified (config not reloaded, behaviour not confirmed, tests/linters not run where applicable), do not commit yet — finish verification first, then commit and push.
+- If a commit or push fails (e.g. pre-commit hook, non-fast-forward), surface the error and ask before force-pushing or bypassing hooks.
+- `bd sync` runs automatically; you generally don't need to invoke it manually before pushing, but if you've touched issues, a `bd sync` before `git push` won't hurt.
+
 ## Landing the Plane (Session Completion)
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
