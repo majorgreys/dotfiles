@@ -48,7 +48,7 @@ sbar.bar({
   height           = 38,
   position         = "top",
   sticky           = "on",
-  topmost          = "window",
+  topmost          = "on",
   padding_left     = 6,
   padding_right    = 6,
   color            = Colors.bg,
