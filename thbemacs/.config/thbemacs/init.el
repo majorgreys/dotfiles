@@ -2173,7 +2173,15 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
         beads-autoupdate-enable t
         beads-list-highlight-p0-rows t
         beads-detail-render-markdown t
-        beads-verbose t)
+        beads-verbose t
+        ;; Hierarchical IDs like `apm-skills-hardener-eval-cleanup.4'
+        ;; overflow the default 15-char cap. 30 fits every id currently
+        ;; in the global workspace without making the column oppressive.
+        beads-list-id-column-max-width 30
+        ;; Single global workspace means there's no useful per-project
+        ;; partitioning; the auto buffer name (`*Beads: <project>*') is
+        ;; misleading because the contents are global, not project-scoped.
+        beads-project-per-project-buffers nil)
 
   (with-eval-after-load 'beads-backend-bd
     (define-advice beads-backend-bd--cli-extra-flags
@@ -2190,7 +2198,41 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
                     (apply real-call-process program infile
                            (if (eq destination t) (list t nil) destination)
                            display argv))))
-        (apply orig args)))))
+        (apply orig args))))
+
+  ;; bd 1.x JSON envelope adjustments. `bd show' accepts multiple IDs and
+  ;; therefore always returns an array, even for a single-ID lookup. `bd
+  ;; stats' nests its fields under `summary'. beads.el's detail-view and
+  ;; mode-line-stats callers were designed for the older flat-shape
+  ;; envelopes (a bare issue alist, and a flat stats alist with
+  ;; `total_issues' / `open_issues' / ... at the top level). Without these
+  ;; unwraps, RET on a list row errors and the mode line shows
+  ;; `0 total | 0 open | ...' regardless of the real counts.
+  (with-eval-after-load 'beads-client
+    (define-advice beads-client-show
+        (:filter-return (result) thb/unwrap-bd-show)
+      (if (and (listp result)
+               (= (length result) 1)
+               (consp (car result))
+               (consp (car (car result))))
+          (car result)
+        result))
+    (define-advice beads-client-stats
+        (:filter-return (result) thb/unwrap-bd-stats)
+      (or (alist-get 'summary result) result)))
+
+  ;; Widen the Title column from the upstream default of 50. tabulated-
+  ;; list-mode truncates to column width, so 80 covers most titles in the
+  ;; workspace without wrapping. The accompanying formatter
+  ;; `beads-list--format-title' has its own hard 50-char cap (substring
+  ;; 0 47 + "..."); override it to defer truncation to tabulated-list-mode
+  ;; entirely so the column width is the single knob.
+  (with-eval-after-load 'beads-list
+    (when-let* ((title-def (alist-get 'title beads-list--column-defs)))
+      (setf (nth 1 title-def) 80))
+    (defun beads-list--format-title (issue)
+      "Return ISSUE's title verbatim; column-level truncation handles overflow."
+      (or (alist-get 'title issue) ""))))
 
 ;;; ============================================================
 ;;; Version Control + Local Overrides
