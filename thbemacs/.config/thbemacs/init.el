@@ -2144,6 +2144,20 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
   ;;   3. Arg injection. Prepend --global on every bd invocation via
   ;;      :filter-return advice on the bd backend's :cli-extra-flags slot.
   ;;
+  ;;   4. Stderr suppression. bd emits warnings ("beads.role not configured"
+  ;;      when cwd's git config lacks the key, "Showing N issues..." on
+  ;;      truncated lists) on stderr. beads.el's `call-process' uses
+  ;;      destination=`t' which mixes stderr into the same buffer as
+  ;;      stdout, so `json-read' from point-min trips on the leading
+  ;;      stderr text and reports a parse error (the whole buffer,
+  ;;      including the valid JSON tail, ends up in *Messages*).
+  ;;      An :around advice on `beads-backend-cli-execute' rebinds
+  ;;      `call-process' for the dynamic extent of that one call so the
+  ;;      destination becomes `(t nil)' (stdout to buffer, stderr
+  ;;      discarded). For --json calls (which beads.el always issues),
+  ;;      genuine errors arrive on stdout as `{"error": ...}', so
+  ;;      discarding stderr doesn't hide real failure modes.
+  ;;
   ;; The previous autoupdate-skip-when-no-.beads guard is dropped: with
   ;; `bd --global' the database is always reachable, so cli-fallback's
   ;; nil-project-root branch is harmless and refresh just works.
@@ -2164,7 +2178,19 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
   (with-eval-after-load 'beads-backend-bd
     (define-advice beads-backend-bd--cli-extra-flags
         (:filter-return (extra) thb/prepend-global)
-      (cons "--global" extra))))
+      (cons "--global" extra)))
+
+  (with-eval-after-load 'beads-backend
+    (require 'cl-lib)
+    (define-advice beads-backend-cli-execute
+        (:around (orig &rest args) thb/discard-bd-stderr)
+      (cl-letf* ((real-call-process (symbol-function 'call-process))
+                 ((symbol-function 'call-process)
+                  (lambda (program &optional infile destination display &rest argv)
+                    (apply real-call-process program infile
+                           (if (eq destination t) (list t nil) destination)
+                           display argv))))
+        (apply orig args)))))
 
 ;;; ============================================================
 ;;; Version Control + Local Overrides
