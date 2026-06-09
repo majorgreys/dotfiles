@@ -2119,8 +2119,7 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
 (use-package hierarchy)
 
 (use-package beads
-  :ensure nil
-  :load-path "~/src/beads.el/lisp"
+  :vc (:url "https://github.com/ChristianTietze/beads.el" :lisp-dir "lisp" :rev :newest)
   :commands (beads beads-project-list beads-create-issue beads-activity beads-stats)
   :config
   ;; Pin to br backend.  Auto-detect prefers bd when both are on PATH, but
