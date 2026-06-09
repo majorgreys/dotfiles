@@ -2301,8 +2301,21 @@ operates on the displayed issue. Buffer is fontified with
                   ((fboundp 'markdown-mode)    (markdown-mode))
                   (t (text-mode)))
             (read-only-mode 1)
-            ;; `q' buries the buffer; major-modes here don't bind it.
-            (local-set-key (kbd "q") #'quit-window))
+            ;; Bind `q' on the buffer-local map AND in evil's normal +
+            ;; motion + visual state maps for this buffer. Without the
+            ;; evil bindings, evil-normal-state's `q' (evil-record-macro)
+            ;; shadows the local map and the notes buffer becomes a
+            ;; one-way trip. Switch the buffer's initial state to motion
+            ;; (read-only-friendly; matches the pattern this config
+            ;; already uses for eww), so vim-style navigation still works
+            ;; but `q' resolves cleanly through the local map.
+            (local-set-key (kbd "q") #'quit-window)
+            (when (and (fboundp 'evil-define-key*)
+                       (bound-and-true-p evil-mode))
+              (evil-define-key* '(normal motion visual) 'local
+                (kbd "q") #'quit-window))
+            (when (fboundp 'evil-motion-state)
+              (evil-motion-state)))
           (pop-to-buffer-same-window buf))))
     (define-key beads-list-mode-map (kbd "v") #'thb/beads-view-notes))
 
