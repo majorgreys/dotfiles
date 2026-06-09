@@ -2260,7 +2260,51 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
     (defun thb/beads-enable-preview-mode ()
       "Enable `beads-preview-mode' in fresh `beads-list-mode' buffers."
       (beads-preview-mode 1))
-    (add-hook 'beads-list-mode-hook #'thb/beads-enable-preview-mode))
+    (add-hook 'beads-list-mode-hook #'thb/beads-enable-preview-mode)
+
+    ;; Open the issue's `notes' content (bd's primary long-form field) in
+    ;; a dedicated read-only buffer for distraction-free reading. The
+    ;; bottom-pane preview is great for scanning, but at 40% height it's
+    ;; cramped for the multi-thousand-character RFC-style notes some
+    ;; issues carry (e.g. tb-k4hq.5 ~ 12k chars). `v' pops the notes
+    ;; into a full-window buffer fontified with the user's configured
+    ;; markdown major mode (`markdown-ts-mode'); `q' buries it.
+    (defun thb/beads-view-notes ()
+      "Open the current issue's `notes' content in `*Beads Notes: <id>*'.
+From `beads-list-mode' operates on the issue at point. From any
+beads detail buffer (`beads-detail-mode' / `beads-detail-vui-mode')
+operates on the displayed issue. Buffer is fontified with
+`markdown-ts-mode' when available, read-only, and `q' buries it."
+      (interactive)
+      (let* ((id (cond
+                  ((derived-mode-p 'beads-list-mode)
+                   (alist-get 'id (beads-list--get-issue-at-point)))
+                  ((and (boundp 'beads-detail--current-issue-id)
+                        beads-detail--current-issue-id))
+                  (t nil))))
+        (unless id (user-error "No beads issue at point"))
+        (let* ((issue (or (beads-client-show id)
+                          (user-error "Could not fetch %s" id)))
+               (notes (alist-get 'notes issue))
+               (title (or (alist-get 'title issue) ""))
+               (buf-name (format "*Beads Notes: %s*" id))
+               (buf (get-buffer-create buf-name)))
+          (unless (and notes (not (string-empty-p notes)))
+            (user-error "Issue %s has no notes" id))
+          (with-current-buffer buf
+            (let ((inhibit-read-only t))
+              (erase-buffer)
+              (insert (format "# %s\n\n*%s*\n\n---\n\n" title id))
+              (insert notes)
+              (goto-char (point-min)))
+            (cond ((fboundp 'markdown-ts-mode) (markdown-ts-mode))
+                  ((fboundp 'markdown-mode)    (markdown-mode))
+                  (t (text-mode)))
+            (read-only-mode 1)
+            ;; `q' buries the buffer; major-modes here don't bind it.
+            (local-set-key (kbd "q") #'quit-window))
+          (pop-to-buffer-same-window buf))))
+    (define-key beads-list-mode-map (kbd "v") #'thb/beads-view-notes))
 
   ;; Upstream `beads-detail-show' (the preview-mode display path) opens
   ;; the preview buffer in a right-side window hardcoded at 40% width.
@@ -2282,7 +2326,15 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
                              (mode . beads-detail-mode)
                              (window-height . 0.4))
                            rest))))
-        (funcall orig issue))))
+        (funcall orig issue)))
+    ;; `v' opens the current issue's notes in a dedicated read-only
+    ;; buffer; available from both detail modes. (Function defined inside
+    ;; the `beads-list' eval-after-load above; it's loaded by the time
+    ;; either detail mode is entered.)
+    (when (boundp 'beads-detail-mode-map)
+      (define-key beads-detail-mode-map (kbd "v") #'thb/beads-view-notes))
+    (when (boundp 'beads-detail-vui-mode-map)
+      (define-key beads-detail-vui-mode-map (kbd "v") #'thb/beads-view-notes)))
 
   ;; bd 1.x stores the primary long-form content in `notes' (12k+ chars
   ;; for many workspace issues, e.g. tb-k4hq.5); the upstream vui
