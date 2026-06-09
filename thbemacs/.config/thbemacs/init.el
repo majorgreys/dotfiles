@@ -2234,20 +2234,42 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
       "Return ISSUE's title verbatim; column-level truncation handles overflow."
       (or (alist-get 'title issue) ""))
 
-    ;; beads.el ships a hardcoded `#ffe0e0' (light) / `#4a1a1a' (dark)
-    ;; background for `beads-list-row-p0' because Emacs has no portable
-    ;; cross-theme palette abstraction. On `modus-operandi-tinted' the
-    ;; default sits at the same hue as modus's `bg-hl-line' (#f1d5d0), so
-    ;; the cursor row's hl-line overlay stacks invisibly on the pink P0
-    ;; background and you can't tell which row point is on. Rebind to
-    ;; `bg-red-subtle' (#ffcfbf on operandi-tinted; theme-appropriate dark
-    ;; red on the vivendi variants) which is meaningfully more saturated,
-    ;; so hl-line stays visible on top, and comes from the same palette as
-    ;; the rest of the theme. Re-runs on `enable-theme-functions' so
-    ;; toggling between modus variants picks up the right red, and
-    ;; restores the upstream defface defaults under any non-modus theme
-    ;; (so we don't leave a stale modus-tinted override behind).
-    (defun thb/beads-recolor-row-faces (&rest _)
+    ;; beads.el's status + P0 faces use raw color choices that don't
+    ;; account for theme palette:
+    ;;   - `beads-status-in-progress' is a bare `"yellow"' foreground with
+    ;;     no light/dark split. On a light theme it sits at near-zero
+    ;;     contrast against `bg-main' (the status column is unreadable).
+    ;;     Same shape (lesser severity) for `beads-status-closed' (green),
+    ;;     `beads-status-blocked' (red), `beads-status-hooked' (cyan).
+    ;;   - `beads-list-row-p0' uses `#ffe0e0' (light) / `#4a1a1a' (dark);
+    ;;     on modus-operandi-tinted the light value sits at almost
+    ;;     exactly the same hue as `bg-hl-line' (#f1d5d0), so the cursor
+    ;;     row's hl-line overlay stacks invisibly on the pink P0
+    ;;     background.
+    ;;
+    ;; Rebind all five to modus palette keys so the colors come from the
+    ;; theme's own AAA-contrast palette. The status foregrounds use
+    ;; modus's primary color names (`yellow', `red', `green', `cyan'),
+    ;; which are calibrated against `bg-main' for accessibility on every
+    ;; modus variant. `bg-red-subtle' for P0 is meaningfully more
+    ;; saturated than the upstream `#ffe0e0', so hl-line stays visible
+    ;; on top.
+    ;;
+    ;; Hooked on `enable-theme-functions' so toggling between modus
+    ;; variants re-resolves against the now-active palette. Under any
+    ;; non-modus theme we restore the upstream defface defaults via
+    ;; `face-spec-set' so we don't leave stale modus colors behind.
+    (defvar thb/beads-modus-face-bindings
+      '((beads-list-row-p0         :background bg-red-subtle :extend t)
+        (beads-status-in-progress  :foreground yellow)
+        (beads-status-closed       :foreground green)
+        (beads-status-blocked      :foreground red)
+        (beads-status-hooked       :foreground cyan))
+      "Beads.el faces rebound to modus palette keys by `thb/beads-recolor-faces'.
+  Each entry is `(FACE :ATTR PALETTE-KEY-OR-LITERAL ...)'. Symbols are
+  resolved through `modus-themes-get-color-value'; non-symbol values
+  (like `:extend t') pass through unchanged.")
+    (defun thb/beads-recolor-faces (&rest _)
       (let ((modus-active
              (and (featurep 'modus-themes)
                   (memq (car custom-enabled-themes)
@@ -2255,15 +2277,24 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
                           modus-operandi-deuteranopia modus-operandi-tritanopia
                           modus-vivendi modus-vivendi-tinted
                           modus-vivendi-deuteranopia modus-vivendi-tritanopia)))))
-        (if modus-active
-            (set-face-attribute 'beads-list-row-p0 nil
-                                :background (modus-themes-get-color-value 'bg-red-subtle)
-                                :extend t)
-          (face-spec-set 'beads-list-row-p0
-                         (get 'beads-list-row-p0 'face-defface-spec)
-                         'face-defface-spec))))
-    (thb/beads-recolor-row-faces)
-    (add-hook 'enable-theme-functions #'thb/beads-recolor-row-faces)))
+        (dolist (binding thb/beads-modus-face-bindings)
+          (let ((face (car binding)))
+            (if modus-active
+                (let ((resolved
+                       (cl-loop for (k v) on (cdr binding) by #'cddr
+                                append (list k (if (symbolp v)
+                                                   (modus-themes-get-color-value v)
+                                                 v)))))
+                  (apply #'set-face-attribute face nil resolved))
+              (face-spec-set face
+                             (get face 'face-defface-spec)
+                             'face-defface-spec))))))
+    (thb/beads-recolor-faces)
+    (add-hook 'enable-theme-functions #'thb/beads-recolor-faces)
+    ;; Drop the prior, narrower hook entry if eval-buffer'd onto a live
+    ;; Emacs (from before this rebind covered status faces).
+    (when (fboundp 'thb/beads-recolor-row-faces)
+      (remove-hook 'enable-theme-functions #'thb/beads-recolor-row-faces))))
 
 ;;; ============================================================
 ;;; Version Control + Local Overrides
