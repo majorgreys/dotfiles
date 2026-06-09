@@ -2232,7 +2232,38 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
       (setf (nth 1 title-def) 80))
     (defun beads-list--format-title (issue)
       "Return ISSUE's title verbatim; column-level truncation handles overflow."
-      (or (alist-get 'title issue) ""))))
+      (or (alist-get 'title issue) ""))
+
+    ;; beads.el ships a hardcoded `#ffe0e0' (light) / `#4a1a1a' (dark)
+    ;; background for `beads-list-row-p0' because Emacs has no portable
+    ;; cross-theme palette abstraction. On `modus-operandi-tinted' the
+    ;; default sits at the same hue as modus's `bg-hl-line' (#f1d5d0), so
+    ;; the cursor row's hl-line overlay stacks invisibly on the pink P0
+    ;; background and you can't tell which row point is on. Rebind to
+    ;; `bg-red-subtle' (#ffcfbf on operandi-tinted; theme-appropriate dark
+    ;; red on the vivendi variants) which is meaningfully more saturated,
+    ;; so hl-line stays visible on top, and comes from the same palette as
+    ;; the rest of the theme. Re-runs on `enable-theme-functions' so
+    ;; toggling between modus variants picks up the right red, and
+    ;; restores the upstream defface defaults under any non-modus theme
+    ;; (so we don't leave a stale modus-tinted override behind).
+    (defun thb/beads-recolor-row-faces (&rest _)
+      (let ((modus-active
+             (and (featurep 'modus-themes)
+                  (memq (car custom-enabled-themes)
+                        '(modus-operandi modus-operandi-tinted
+                          modus-operandi-deuteranopia modus-operandi-tritanopia
+                          modus-vivendi modus-vivendi-tinted
+                          modus-vivendi-deuteranopia modus-vivendi-tritanopia)))))
+        (if modus-active
+            (set-face-attribute 'beads-list-row-p0 nil
+                                :background (modus-themes-get-color-value 'bg-red-subtle)
+                                :extend t)
+          (face-spec-set 'beads-list-row-p0
+                         (get 'beads-list-row-p0 'face-defface-spec)
+                         'face-defface-spec))))
+    (thb/beads-recolor-row-faces)
+    (add-hook 'enable-theme-functions #'thb/beads-recolor-row-faces)))
 
 ;;; ============================================================
 ;;; Version Control + Local Overrides
