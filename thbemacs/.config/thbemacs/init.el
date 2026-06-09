@@ -2181,7 +2181,20 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
         ;; Single global workspace means there's no useful per-project
         ;; partitioning; the auto buffer name (`*Beads: <project>*') is
         ;; misleading because the contents are global, not project-scoped.
-        beads-project-per-project-buffers nil)
+        beads-project-per-project-buffers nil
+        ;; Drop the Date column from the default list shape. Date eats
+        ;; ~10 chars for low everyday signal (the workspace is sorted by
+        ;; section + priority, not date), so reclaim the horizontal
+        ;; space for Title.
+        beads-list-columns '(id status priority type title)
+        ;; Compact issue-type rendering. `short' shortens the longer
+        ;; names (feature -> feat, chore -> chor, convoy -> conv,
+        ;; agent -> agnt); `beads-type-glyph t' prefixes a unicode
+        ;; marker for the special types (gate, convoy, agent, role,
+        ;; rig). Combined with the column tightening below, the Type
+        ;; column drops from 8 chars to 5.
+        beads-type-style 'short
+        beads-type-glyph t)
 
   (with-eval-after-load 'beads-backend-bd
     (define-advice beads-backend-bd--cli-extra-flags
@@ -2230,9 +2243,83 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
   (with-eval-after-load 'beads-list
     (when-let* ((title-def (alist-get 'title beads-list--column-defs)))
       (setf (nth 1 title-def) 80))
+    ;; Tighten the Type column to 5 chars: `beads-type-style 'short'
+    ;; caps the label at 4 letters and the optional glyph adds one slot.
+    (when-let* ((type-def (alist-get 'type beads-list--column-defs)))
+      (setf (nth 1 type-def) 5))
     (defun beads-list--format-title (issue)
       "Return ISSUE's title verbatim; column-level truncation handles overflow."
       (or (alist-get 'title issue) ""))
+
+    ;; Auto-enable `beads-preview-mode' in every fresh `beads-list-mode'
+    ;; buffer so the detail pane stays in sync with point as the cursor
+    ;; moves through the list (no manual RET between rows). The mode is
+    ;; defined in beads-preview, which `beads' does not require
+    ;; transitively, so pull it in explicitly.
+    (require 'beads-preview)
+    (defun thb/beads-enable-preview-mode ()
+      "Enable `beads-preview-mode' in fresh `beads-list-mode' buffers."
+      (beads-preview-mode 1))
+    (add-hook 'beads-list-mode-hook #'thb/beads-enable-preview-mode))
+
+  ;; Upstream `beads-detail-show' (the preview-mode display path) opens
+  ;; the preview buffer in a right-side window hardcoded at 40% width.
+  ;; Redirect that to a below-selected pane at 40% height -- same shape
+  ;; `beads-detail-open' (the RET-on-row path) uses -- so the list owns
+  ;; the full window width and the detail lives in a single bottom pane.
+  ;; cl-letf the one `display-buffer' call inside `beads-detail-show'
+  ;; (it only calls it once at the end) rather than redefining the whole
+  ;; function, so any upstream tweaks to the render path keep working.
+  (with-eval-after-load 'beads-detail
+    (define-advice beads-detail-show
+        (:around (orig issue) thb/preview-below)
+      (cl-letf* ((real-display-buffer (symbol-function 'display-buffer))
+                 ((symbol-function 'display-buffer)
+                  (lambda (buf &optional _action &rest rest)
+                    (apply real-display-buffer buf
+                           '((display-buffer-reuse-mode-window
+                              display-buffer-below-selected)
+                             (mode . beads-detail-mode)
+                             (window-height . 0.4))
+                           rest))))
+        (funcall orig issue))))
+
+  ;; bd 1.x stores the primary long-form content in `notes' (12k+ chars
+  ;; for many workspace issues, e.g. tb-k4hq.5); the upstream vui
+  ;; content-sections component renders only `description', `design',
+  ;; `acceptance_criteria', so the actual content is invisible in the
+  ;; detail view while bv shows it fine. Re-define
+  ;; `beads-vui-content-sections' to render Notes FIRST (it's the most
+  ;; likely populated section for bd workspaces) and keep the original
+  ;; three sections after. `vui-defcomponent' is a regular defmacro;
+  ;; re-evaluating it cleanly replaces the prior definition.
+  (with-eval-after-load 'beads-vui
+    (vui-defcomponent beads-vui-content-sections (issue &key editable on-refresh)
+      "Render notes + description + design + acceptance for ISSUE.
+Overrides the upstream component (which omits notes) so bd's primary
+content field is visible in the detail view."
+      :render
+      (vui-fragment
+       (vui-component 'beads-vui-content-section
+                      :title "Notes"
+                      :content (alist-get 'notes issue)
+                      :on-edit (when editable
+                                 (beads-vui-make-edit-handler issue 'notes on-refresh)))
+       (vui-component 'beads-vui-content-section
+                      :title "Description"
+                      :content (alist-get 'description issue)
+                      :on-edit (when editable
+                                 (beads-vui-make-edit-handler issue 'description on-refresh)))
+       (vui-component 'beads-vui-content-section
+                      :title "Design Notes"
+                      :content (alist-get 'design issue)
+                      :on-edit (when editable
+                                 (beads-vui-make-edit-handler issue 'design on-refresh)))
+       (vui-component 'beads-vui-content-section
+                      :title "Acceptance Criteria"
+                      :content (alist-get 'acceptance_criteria issue)
+                      :on-edit (when editable
+                                 (beads-vui-make-edit-handler issue 'acceptance_criteria on-refresh))))))
 
     ;; beads.el's status + P0 faces use raw color choices that don't
     ;; account for theme palette:
