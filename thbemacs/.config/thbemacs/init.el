@@ -2122,23 +2122,49 @@ disk (e.g. when an agent rewrites it).  `q' in the preview also quits."
   :vc (:url "https://github.com/ChristianTietze/beads.el" :lisp-dir "lisp" :rev :newest)
   :commands (beads beads-project-list beads-create-issue beads-activity beads-stats)
   :config
-  ;; Pin to br backend.  Auto-detect prefers bd when both are on PATH, but
-  ;; bd >=0.58 dropped the `daemon' subcommand, so the bd-backend daemon
-  ;; start fails with exit code 1 and the viewer dies on launch.  br has
-  ;; no daemon support and beads-client falls back to direct CLI.
-  (setq beads-cli-program "br"
+  ;; Route every beads.el call through `bd --global' so M-x beads opens
+  ;; the tb-workflow shared-server dolt database (beads_global) — the
+  ;; same workspace the pi agent's tbwf_* tools read/write. Three pieces
+  ;; of plumbing:
+  ;;
+  ;;   1. CLI selection. Switch from `br' to `bd' since only `bd --global'
+  ;;      reaches the shared-server dolt DB; `br' uses its own SQLite at
+  ;;      ~/.beads/beads.db. Force `cli' connection strategy because bd 1.x
+  ;;      dropped the `daemon' subcommand — the previous br pin existed
+  ;;      only because auto-detect kept trying to start that missing daemon.
+  ;;
+  ;;   2. Env. BEADS_DOLT_SHARED_SERVER=1 unlocks --global in bd. BEADS_DIR
+  ;;      points at tb-workflow's dedicated host workspace (mirrors
+  ;;      defaultGlobalHostDir in extensions/tb-workflow/src/config.ts) to
+  ;;      work around the bd 1.0.4 PROJECT IDENTITY MISMATCH bug — see
+  ;;      gastownhall/beads#3476. setenv leaks into Emacs child processes,
+  ;;      which is the intent: any bd call from M-x shell or org-babel
+  ;;      should also land in the global workspace.
+  ;;
+  ;;   3. Arg injection. Prepend --global on every bd invocation via
+  ;;      :filter-return advice on the bd backend's :cli-extra-flags slot.
+  ;;
+  ;; The previous autoupdate-skip-when-no-.beads guard is dropped: with
+  ;; `bd --global' the database is always reachable, so cli-fallback's
+  ;; nil-project-root branch is harmless and refresh just works.
+  (setenv "BEADS_DOLT_SHARED_SERVER" "1")
+  (setenv "BEADS_DIR"
+          (expand-file-name
+           ".beads"
+           (format "/var/tmp/tb-workflow-%s/bd-global-host"
+                   (or (getenv "USER") (user-login-name)))))
+
+  (setq beads-cli-program "bd"
+        beads-client-connection-strategy 'cli
         beads-autoupdate-enable t
         beads-list-highlight-p0-rows t
         beads-detail-render-markdown t
         beads-verbose t)
 
-  ;; Silently skip autoupdate when no .beads/ is reachable from the buffer's
-  ;; default-directory.  Prevents recurring "No Beads database found" errors
-  ;; in list buffers opened from a non-project path (e.g. ~/org/roam/).
-  (with-eval-after-load 'beads-autoupdate
-    (define-advice beads-autoupdate--refresh (:around (orig &rest args) skip-no-db)
-      (when (ignore-errors (beads-client--find-database))
-        (apply orig args)))))
+  (with-eval-after-load 'beads-backend-bd
+    (define-advice beads-backend-bd--cli-extra-flags
+        (:filter-return (extra) thb/prepend-global)
+      (cons "--global" extra))))
 
 ;;; ============================================================
 ;;; Version Control + Local Overrides
