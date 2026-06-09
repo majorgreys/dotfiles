@@ -46,9 +46,9 @@ Fonts = {
 
 sbar.bar({
   height           = 38,
-  position         = "top",
+  position         = "bottom",
   sticky           = "on",
-  topmost          = "on",
+  topmost          = "window",
   padding_left     = 6,
   padding_right    = 6,
   color            = Colors.bg,
