@@ -1463,7 +1463,11 @@ literal."
        (thematic_break) @thb-markdown-ts-marker)
 
      :language 'markdown-inline
-     :override t
+     ;; `append' (not `t') so inline emphasis COMPOSES with an underlying
+     ;; block face instead of replacing it -- bold / code / links inside a
+     ;; block quote keep the quote's italic slant and background tint, only
+     ;; adding their own weight / family / foreground.
+     :override 'append
      :feature 'paragraph-inline
      '((emphasis) @thb-markdown-ts-emphasis
        (strong_emphasis) @thb-markdown-ts-strong
