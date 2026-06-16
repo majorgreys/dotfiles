@@ -1457,9 +1457,12 @@ literal."
        (list_item (list_marker_plus) (task_list_marker_checked)) @thb-markdown-ts--fontify-task-list-item
        (list_item (list_marker_star) (task_list_marker_checked)) @thb-markdown-ts--fontify-task-list-item
        (list_item (list_marker_dot) (task_list_marker_checked)) @thb-markdown-ts--fontify-task-list-item
-       ;; Blockquotes and horizontal rules.
-       (block_quote (block_quote_marker) @thb-markdown-ts-marker)
-       (block_quote (paragraph) @thb-markdown-ts-blockquote)
+       ;; Block quotes render as a full-width box (like code blocks): face
+       ;; the WHOLE node so the background + `:extend' fill every line from
+       ;; the `>' marker to the right window edge, instead of only tinting
+       ;; the paragraph text.  Inline emphasis composes on top via the
+       ;; `append' paragraph-inline feature.
+       (block_quote) @thb-markdown-ts-blockquote
        (thematic_break) @thb-markdown-ts-marker)
 
      :language 'markdown-inline
