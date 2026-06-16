@@ -849,11 +849,17 @@ reads as a continuous card rather than a strip behind the code only."
 ;; `thb-md-render-file' so cells get tokenized like paragraph content.
 ;;
 ;; Render strategy: tables go in `thb-md-render-table' (fixed-pitch) so
-;; columns align visually with monospace.  Column widths computed from
-;; the longest source text per column.  Header row gets a background
-;; tint via `thb-md-render-table-header'; a horizontal rule sits below
-;; the header; body rows are plain.  No vertical separators — they cause
-;; alignment issues with our shr fix and weren't needed here either.
+;; columns align visually with monospace.  Each cell's inline content is
+;; rendered to a propertized string first (pass 1), so column widths are
+;; measured from the *rendered* display width -- not the source markdown
+;; (which over-counts `[text](url)' links and `code' backticks).  Those
+;; natural widths are then fit to the body-width budget (pass 2/3):
+;; narrow columns keep their width while long prose columns get the
+;; remaining space and word-wrap across multiple lines, so a wide
+;; description column never blows the table past the reading width.
+;; Header row is bold; a horizontal rule sits below the header; body rows
+;; are plain.  No vertical separators — they cause alignment issues with
+;; our shr fix and weren't needed here either.
 ;;
 ;; GFM cell alignment is encoded in the delimiter row's cell text:
 ;;   `:---'   left   (default)
@@ -862,10 +868,6 @@ reads as a continuous card rather than a strip behind the code only."
 ;;   `---'    default (left)
 ;; We parse those into a vector of alignment symbols and pad cells
 ;; accordingly when emitting.
-
-(defun thb-md-render--cell-text (cell)
-  "Return CELL's source text, trimmed."
-  (string-trim (thb-md-render--node-text cell)))
 
 (defun thb-md-render--table-cell-alignment (delim-cell)
   "Return `left', `center', `right', or `default' for a delimiter cell.
@@ -910,115 +912,229 @@ Subsequent elements are body rows (face = nil)."
       (push (cons (thb-md-render--children-of-type r "pipe_table_cell") nil) rows))
     (nreverse rows)))
 
-(defun thb-md-render--table-col-widths (rows n-cols)
-  "Return a vector of length N-COLS with the max cell-text width per column."
-  (let ((widths (make-vector n-cols 0)))
-    (dolist (row rows)
-      (let ((i 0))
-        (dolist (cell (car row))
-          (when (< i n-cols)
-            (let ((w (length (thb-md-render--cell-text cell))))
-              (when (> w (aref widths i))
-                (aset widths i w))))
-          (cl-incf i))))
-    widths))
-
-(defun thb-md-render--table-emit-cell-inline (cell)
-  "Emit CELL's content via the inline cursor, then return chars emitted.
-Uses `thb-md-render--inline-walk' so code spans / emphasis / links inside
-cells are tokenized and faced like body inline content.  The inline
-parser must have been configured to parse pipe_table_cell ranges."
-  (let ((start (point)))
+(defun thb-md-render--table-render-cell (cell)
+  "Render CELL's inline content to a trimmed, propertized string.
+Walks the markdown-inline parse for CELL's source range (advancing the
+shared inline cursor) into a scratch buffer, so emphasis / code-spans /
+links survive as text properties on the returned string.  Width
+measurement and wrapping then operate on the rendered text rather than
+the raw source markdown.  Cells must be visited in source order so the
+monotonic inline cursor stays aligned with the inline parse."
+  (with-temp-buffer
     (thb-md-render--inline-walk (treesit-node-start cell)
                                 (treesit-node-end   cell))
-    ;; Trim any leading/trailing whitespace from emitted content; cells
-    ;; in the source typically have a space of inner padding.
-    (save-excursion
-      (goto-char start)
-      (when (looking-at "\\s-+")
-        (delete-region start (match-end 0))))
-    (save-excursion
-      (goto-char (point))
-      (skip-chars-backward " \t")
-      (delete-region (point) (line-end-position)))
-    (- (point) start)))
+    (string-trim (buffer-string))))
 
-(defun thb-md-render--table-emit-padded-cell (cell width align)
-  "Emit CELL's inline content padded to WIDTH columns per ALIGN.
-ALIGN is one of `left' / `right' / `center' / `default' (= left)."
-  (cond
-   ((eq align 'right)
-    ;; Pad before content: figure out width first by rendering into a
-    ;; throwaway position, but inline-walk advances the cursor and
-    ;; emits text, so we render first then move the result.  Simpler:
-    ;; render, then count chars emitted, then prepend pad by inserting
-    ;; at the cell's start position.
-    (let* ((start (point))
-           (written (thb-md-render--table-emit-cell-inline cell))
-           (pad (max 0 (- width written))))
-      (when (> pad 0)
-        (save-excursion
-          (goto-char start)
-          (insert (make-string pad ?\s))))))
-   ((eq align 'center)
-    (let* ((start (point))
-           (written (thb-md-render--table-emit-cell-inline cell))
-           (pad (max 0 (- width written)))
-           (left-pad (/ pad 2))
-           (right-pad (- pad left-pad)))
-      (when (> left-pad 0)
-        (save-excursion (goto-char start) (insert (make-string left-pad ?\s))))
-      (when (> right-pad 0)
-        (insert (make-string right-pad ?\s)))))
-   (t  ; left or default
-    (let* ((written (thb-md-render--table-emit-cell-inline cell))
-           (pad (max 0 (- width written))))
-      (when (> pad 0)
-        (insert (make-string pad ?\s)))))))
+(defun thb-md-render--hard-split (word width)
+  "Split WORD (a propertized string) into chunks of display width <= WIDTH.
+Used for tokens longer than the column.  Preserves text properties and
+always makes progress (at least one character per chunk)."
+  (let ((chunks nil) (i 0) (n (length word)))
+    (while (< i n)
+      (let ((j i) (w 0))
+        (while (and (< j n)
+                    (<= (+ w (char-width (aref word j))) width))
+          (setq w (+ w (char-width (aref word j))))
+          (cl-incf j))
+        (when (= j i) (setq j (1+ i)))   ; force progress on a too-wide glyph
+        (push (substring word i j) chunks)
+        (setq i j)))
+    (nreverse chunks)))
+
+(defun thb-md-render--string-wrap (s width)
+  "Word-wrap propertized string S into lines of display width <= WIDTH.
+Returns a list of propertized substrings (no trailing newlines).  Breaks
+on ASCII spaces, collapsing the break space; over-long words are
+hard-split via `thb-md-render--hard-split'.  Text properties from S are
+preserved on the emitted pieces."
+  (setq width (max 1 width))
+  (let ((out nil))
+    (dolist (seg (split-string s "\n"))
+      (if (= 0 (length seg))
+          (push "" out)
+        (let ((i 0) (n (length seg)) (line "") (line-w 0) (emitted nil))
+          (while (< i n)
+            ;; Skip the run of spaces separating the previous word.
+            (while (and (< i n) (eq (aref seg i) ?\s)) (cl-incf i))
+            (let ((word-start i))
+              (while (and (< i n) (not (eq (aref seg i) ?\s))) (cl-incf i))
+              (when (> i word-start)
+                (let* ((word (substring seg word-start i))
+                       (ww   (string-width word)))
+                  (cond
+                   ;; Fits on the current line after a separating space.
+                   ((and (> line-w 0) (<= (+ line-w 1 ww) width))
+                    (setq line (concat line " " word)
+                          line-w (+ line-w 1 ww)))
+                   ;; Fits on a fresh line on its own.
+                   ((<= ww width)
+                    (when (> line-w 0) (push line out))
+                    (setq line word line-w ww emitted t))
+                   ;; Over-long word: flush the current line, then split it.
+                   (t
+                    (when (> line-w 0) (push line out))
+                    (let ((chunks (thb-md-render--hard-split word width)))
+                      (while (cdr chunks)
+                        (push (car chunks) out)
+                        (setq chunks (cdr chunks)))
+                      (setq line (car chunks)
+                            line-w (string-width (car chunks))
+                            emitted t))))))))
+          (when (or (> (length line) 0) (not emitted))
+            (push line out)))))
+    (nreverse out)))
+
+(defun thb-md-render--table-available-width ()
+  "Best estimate of the usable text width (display columns) for a table.
+Prefer the configured body width (what olivetti targets in the preview);
+fall back to the live window width, then 80."
+  (or (and (numberp thb-md-render-body-width)
+           (> thb-md-render-body-width 0)
+           thb-md-render-body-width)
+      (let ((w (window-width))) (and (> w 0) w))
+      80))
+
+(defun thb-md-render--table-content-budget (n-cols)
+  "Display columns available for cell CONTENT across N-COLS columns.
+Excludes the two-space gaps rendered between columns."
+  (let* ((sep   (* 2 (max 0 (1- n-cols))))
+         (avail (- (thb-md-render--table-available-width) sep)))
+    (max n-cols avail)))
+
+(defun thb-md-render--table-natural-widths (rendered n-cols)
+  "Return a vector of the max rendered display width per column.
+RENDERED is a list of (CELL-VECTOR . FACE) pairs of propertized strings."
+  (let ((widths (make-vector n-cols 0)))
+    (dolist (row rendered)
+      (let ((vec (car row)))
+        (dotimes (i n-cols)
+          (let ((w (string-width (aref vec i))))
+            (when (> w (aref widths i)) (aset widths i w))))))
+    widths))
+
+(defun thb-md-render--table-fit-widths (nat budget n-cols)
+  "Fit natural widths NAT into BUDGET content columns; return a width vector.
+Max-min fair share: columns narrower than the equal share keep their full
+natural width, and the freed space is redistributed to the wider columns
+(which then wrap).  When the natural widths already fit, they are returned
+unchanged so narrow tables are not padded out."
+  (let ((widths (make-vector n-cols 0))
+        (fixed  (make-vector n-cols nil))
+        (remaining budget)
+        (free n-cols)
+        (changed t))
+    ;; Repeatedly fix any free column whose natural width fits within the
+    ;; equal share of the remaining budget; that grows the share for the
+    ;; columns still in contention until only the genuinely-wide ones remain.
+    (while (and changed (> free 0))
+      (setq changed nil)
+      (let ((share (max 1 (/ remaining free))))
+        (dotimes (i n-cols)
+          (when (and (not (aref fixed i))
+                     (<= (aref nat i) share))
+            (aset widths i (aref nat i))
+            (aset fixed i t)
+            (setq remaining (max 0 (- remaining (aref nat i))))
+            (cl-decf free)
+            (setq changed t)))))
+    ;; Split whatever is left across the still-free (wide) columns.
+    (when (> free 0)
+      (let ((share (max 1 (/ remaining free)))
+            (extra (% remaining free))
+            (k 0))
+        (dotimes (i n-cols)
+          (unless (aref fixed i)
+            (aset widths i (+ share (if (< k extra) 1 0)))
+            (cl-incf k)))))
+    widths))
+
+(defun thb-md-render--table-insert-cell-line (line width align last)
+  "Insert LINE padded to WIDTH display columns per ALIGN.
+Non-LAST columns are always padded to WIDTH so the next column aligns;
+the LAST column omits trailing padding to avoid trailing whitespace."
+  (let* ((w   (string-width line))
+         (pad (max 0 (- width w))))
+    (pcase align
+      ('right
+       (insert (make-string pad ?\s))
+       (insert line))
+      ('center
+       (let* ((l (/ pad 2)) (r (- pad l)))
+         (insert (make-string l ?\s))
+         (insert line)
+         (unless last (insert (make-string r ?\s)))))
+      (_  ; left / default
+       (insert line)
+       (unless last (insert (make-string pad ?\s)))))))
+
+(defun thb-md-render--table-emit-row (cells face widths aligns n-cols)
+  "Emit one table row from CELLS (a vector of propertized strings).
+Each cell is word-wrapped to its column width and the row is emitted as
+as many physical lines as the tallest wrapped cell.  FACE, when non-nil,
+is prepended over the whole row (e.g. the header's bold)."
+  (let ((wrapped (make-vector n-cols nil))
+        (height 1))
+    (dotimes (i n-cols)
+      (let ((lines (thb-md-render--string-wrap (or (aref cells i) "")
+                                               (aref widths i))))
+        (aset wrapped i lines)
+        (setq height (max height (length lines)))))
+    (let ((row-start (point)))
+      (dotimes (k height)
+        (dotimes (i n-cols)
+          (let ((line (or (nth k (aref wrapped i)) ""))
+                (last (= i (1- n-cols))))
+            (thb-md-render--table-insert-cell-line
+             line (aref widths i) (aref aligns i) last)
+            (unless last (insert "  "))))
+        (insert "\n"))
+      ;; Apply table-content face over the whole row (fixed-pitch); PREPEND
+      ;; so the table's fixed-pitch family wins over each cell's body face
+      ;; (which inherits variable-pitch).  Cell foregrounds (code-inline,
+      ;; link, etc.) still come through because thb-md-render-table sets no
+      ;; foreground -- attribute lookup falls through to the per-cell face.
+      (font-lock-prepend-text-property row-start (point)
+                                       'face 'thb-md-render-table)
+      (when face
+        (font-lock-prepend-text-property row-start (point)
+                                         'face face)))))
 
 (defun thb-md-render--walk-pipe-table (node)
   (thb-md-render--ensure-blank-line)
-  (let* ((rows    (thb-md-render--table-rows node))
-         (header  (and rows (eq (cdr (car rows)) 'thb-md-render-table-header)
-                       (car rows)))
-         (n-cols  (or (and header (length (car header))) 0)))
+  (let* ((rows   (thb-md-render--table-rows node))
+         (n-cols (if rows (length (car (car rows))) 0)))
     (when (> n-cols 0)
-      (let* ((widths (thb-md-render--table-col-widths rows n-cols))
-             (aligns (thb-md-render--table-alignments node n-cols))
+      (let* ((aligns (thb-md-render--table-alignments node n-cols))
+             ;; Pass 1: render each cell to a propertized string, visiting
+             ;; cells in source order so the shared inline cursor stays in
+             ;; sync with the markdown-inline parse.
+             (rendered
+              (mapcar
+               (lambda (row)
+                 (let ((vec (make-vector n-cols ""))
+                       (i 0))
+                   (dolist (cell (car row))
+                     (when (< i n-cols)
+                       (aset vec i (thb-md-render--table-render-cell cell)))
+                     (cl-incf i))
+                   (cons vec (cdr row))))
+               rows))
+             ;; Pass 2/3: rendered natural widths fit to the reading budget.
+             (nat    (thb-md-render--table-natural-widths rendered n-cols))
+             (budget (thb-md-render--table-content-budget n-cols))
+             (widths (thb-md-render--table-fit-widths nat budget n-cols))
              (total-width (+ (cl-loop for w across widths sum w)
                              (* 2 (1- n-cols)))))
-        ;; Render rows.
-        (dolist (row rows)
-          (let ((row-start (point))
-                (cells     (car row))
-                (face      (cdr row))
-                (i 0))
-            (dolist (cell cells)
-              (when (< i n-cols)
-                (thb-md-render--table-emit-padded-cell
-                 cell (aref widths i) (aref aligns i))
-                (when (< i (1- n-cols))
-                  (insert "  ")))
-              (cl-incf i))
-            (insert "\n")
-            ;; Apply table-content face over the whole row (fixed-pitch);
-            ;; PREPEND so the table's fixed-pitch family wins over the
-            ;; cell's body face (which inherits variable-pitch).  The
-            ;; cell foregrounds (code-inline, link, etc.) still come
-            ;; through because thb-md-render-table doesn't set any
-            ;; foreground -- attribute lookup falls through to the
-            ;; per-cell face.
-            (font-lock-prepend-text-property row-start (point)
-                                             'face 'thb-md-render-table)
-            (when face
-              (font-lock-prepend-text-property row-start (point)
-                                               'face face))
-            ;; Horizontal rule under the header.
-            (when (eq face 'thb-md-render-table-header)
-              (let ((rule-start (point)))
-                (insert (make-string total-width ?─) "\n")
-                (put-text-property rule-start (point) 'face
-                                   'thb-md-render-table-rule))))))))
+        ;; Pass 4: emit each (word-wrapped) row, with a horizontal rule
+        ;; under the header.
+        (dolist (rrow rendered)
+          (thb-md-render--table-emit-row (car rrow) (cdr rrow)
+                                         widths aligns n-cols)
+          (when (eq (cdr rrow) 'thb-md-render-table-header)
+            (let ((rule-start (point)))
+              (insert (make-string total-width ?─) "\n")
+              (put-text-property rule-start (point) 'face
+                                 'thb-md-render-table-rule)))))))
   (thb-md-render--newline 1))
 
 ;;;; Block: thematic break ----------------------------------------------
