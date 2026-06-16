@@ -1177,6 +1177,31 @@ Run once, after the whole document has been emitted."
                   (insert wrapped))))))
         (forward-line 1)))))
 
+(defun thb-md-render--apply-olivetti-width ()
+  "Size the olivetti reading column for the current window.
+Keeps the centered reading column at most `thb-md-render-body-width'
+columns wide on a wide window, but FILLS a narrower window instead of
+leaving big margins.  Done as a window *fraction*, because olivetti's
+integer column sizing mis-computes margins under `text-scale' (a 140-col
+body came out ~100 cols with 10-col margins in a 120-col frame).  A float
+`thb-md-render-body-width' in (0,1] is passed through as an explicit
+fraction."
+  (when (and (bound-and-true-p olivetti-mode)
+             (numberp thb-md-render-body-width)
+             (> thb-md-render-body-width 0))
+    (let ((frac
+           (if (and (floatp thb-md-render-body-width)
+                    (<= thb-md-render-body-width 1.0))
+               thb-md-render-body-width
+             (let* ((win   (get-buffer-window (current-buffer) t))
+                    (total (and win (window-total-width win))))
+               (and total (> total 0)
+                    (min 1.0 (/ (float thb-md-render-body-width) total)))))))
+      (when frac
+        (setq-local olivetti-body-width frac)
+        (when (fboundp 'olivetti-reset-all-windows)
+          (ignore-errors (olivetti-reset-all-windows)))))))
+
 ;;;; Mode for the rendered preview buffer ---------------------------------
 
 (defvar thb-md-render-mode-map
@@ -1238,15 +1263,12 @@ Run once, after the whole document has been emitted."
   ;; the configured width, olivetti gracefully falls back to filling.
   (when (and thb-md-render-body-width
              (fboundp 'olivetti-mode))
-    (setq-local olivetti-body-width thb-md-render-body-width)
-    ;; Floor at (body-width - 20) or 100, whichever is higher.  Keeps
-    ;; a generous minimum even on narrower windows; user can override
-    ;; via `M-x customize-variable olivetti-minimum-body-width' or
-    ;; setq-local in a hook.
-    (setq-local olivetti-minimum-body-width
-                (max 100 (- thb-md-render-body-width 20)))
     (setq-local olivetti-style nil)
-    (olivetti-mode 1))
+    (olivetti-mode 1)
+    ;; Size the reading column as a window fraction (see the function):
+    ;; olivetti's integer column sizing leaves large margins under
+    ;; `text-scale', making prose look cramped in a narrow frame.
+    (thb-md-render--apply-olivetti-width))
   ;; olivetti-mode-on-hook turns on `visual-line-mode' in this config, which
   ;; flips `truncate-lines' back off and soft-wraps every long line.  Re-assert
   ;; truncation AFTER olivetti has run so tables and code stay on one logical
@@ -1315,9 +1337,12 @@ Return the rendered buffer."
                       (thb-md-render--inline-children-len (length inline-vec))
                       (thb-md-render--inline-cursor 0))
                   (thb-md-render--walk root))
-                ;; Wrap prose to the body width (tables / code are skipped
-                ;; via `thb-md-render--nowrap'), so prose reads fine while
-                ;; the buffer truncates the long table / code lines.
+                ;; Size the reading column to the current window first, then
+                ;; wrap prose to that width (tables / code are skipped via
+                ;; `thb-md-render--nowrap'), so prose fills the window and
+                ;; reads fine while the buffer truncates long table / code
+                ;; lines.
+                (thb-md-render--apply-olivetti-width)
                 (thb-md-render--rewrap-prose)
                 ;; Record the width we wrapped to, so a later window resize
                 ;; (or the first display, when there was no window yet)
