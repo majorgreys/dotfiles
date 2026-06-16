@@ -1054,17 +1054,52 @@ FACE, when non-nil, is prepended over the row (e.g. the header's bold)."
     (put-text-property start end 'thb-md-render--nowrap t)))
 
 (defun thb-md-render--prose-budget-px ()
-  "Pixel width prose should wrap to: the olivetti body width, in pixels.
-Scale-invariant -- text-scale multiplies the body width and the prose font
-equally, so measure at the frame's base default char width.  If the buffer
-is shown in a window narrower than the body, wrap to the window instead."
-  (let* ((cols (if (and (numberp thb-md-render-body-width)
-                        (> thb-md-render-body-width 0))
-                   thb-md-render-body-width 80))
-         (win  (get-buffer-window (current-buffer) t))
-         (wcols (and win (window-body-width win)))
-         (eff  (if (and wcols (> wcols 0)) (min cols wcols) cols)))
-    (* eff (frame-char-width))))
+  "Pixel budget prose wraps to: the live text-area width of the window
+showing this buffer, in the same base pixel units `string-pixel-width'
+returns -- so the comparison is apples-to-apples and already accounts for
+the olivetti margins (which `window-body-width' excludes).  Falls back to
+the configured body width when the buffer is not yet displayed; that first
+render is corrected on display by `thb-md-render--maybe-reflow'."
+  (let ((win (get-buffer-window (current-buffer) t)))
+    (if (and win (window-live-p win))
+        ;; Leave a one-char safety margin so a glyph landing exactly on the
+        ;; right edge (sub-pixel rounding) never trips the truncation glyph.
+        (max 200 (- (window-body-width win t) (frame-char-width)))
+      (* (if (and (numberp thb-md-render-body-width)
+                  (> thb-md-render-body-width 0))
+             thb-md-render-body-width 80)
+         (frame-char-width)))))
+
+(defvar-local thb-md-render--wrap-width nil
+  "Window text-area pixel width used for the last prose rewrap.
+`thb-md-render--maybe-reflow' compares against it to decide whether a
+resize (or first display) needs a re-wrap.")
+
+(defvar-local thb-md-render--reflow-timer nil
+  "Debounce timer for `thb-md-render--maybe-reflow'.")
+
+(defun thb-md-render--maybe-reflow ()
+  "Re-render (re-wrap prose) when the window's text-area width changed.
+Hung buffer-locally on `window-configuration-change-hook'.  The width read
+and the re-render are deferred to an idle timer so olivetti has finished
+re-applying its margins before we measure, and so a burst of resize events
+coalesces into a single re-render."
+  (when thb-md-render--source-file
+    (when (timerp thb-md-render--reflow-timer)
+      (cancel-timer thb-md-render--reflow-timer))
+    (setq thb-md-render--reflow-timer
+          (run-with-idle-timer
+           0.2 nil
+           (lambda (buf)
+             (when (buffer-live-p buf)
+               (with-current-buffer buf
+                 (setq thb-md-render--reflow-timer nil)
+                 (let* ((win (get-buffer-window buf t))
+                        (w   (and win (window-live-p win)
+                                  (window-body-width win t))))
+                   (when (and w (not (equal w thb-md-render--wrap-width)))
+                     (thb-md-render-revert))))))
+           (current-buffer)))))
 
 (defun thb-md-render--split-words (s)
   "Split S into a list of non-space substrings (text properties preserved)."
@@ -1219,6 +1254,10 @@ Run once, after the whole document has been emitted."
   (visual-line-mode -1)
   (setq-local truncate-lines t)
   (setq-local word-wrap nil)
+  ;; Re-wrap prose to the new width when the window is first displayed or
+  ;; resized, so prose neither clips (budget too wide) nor under-fills.
+  (add-hook 'window-configuration-change-hook
+            #'thb-md-render--maybe-reflow nil t)
   (buffer-disable-undo))
 
 ;;;; Entry points -------------------------------------------------------
@@ -1280,6 +1319,13 @@ Return the rendered buffer."
                 ;; via `thb-md-render--nowrap'), so prose reads fine while
                 ;; the buffer truncates the long table / code lines.
                 (thb-md-render--rewrap-prose)
+                ;; Record the width we wrapped to, so a later window resize
+                ;; (or the first display, when there was no window yet)
+                ;; triggers `thb-md-render--maybe-reflow'.
+                (setq thb-md-render--wrap-width
+                      (let ((win (get-buffer-window (current-buffer) t)))
+                        (and win (window-live-p win)
+                             (window-body-width win t))))
                 (goto-char (point-min)))
               (setq thb-md-render--source-file path)
               ;; Re-assert no-wrap on every render, not just on fresh
@@ -1295,12 +1341,27 @@ Return the rendered buffer."
     out))
 
 (defun thb-md-render-revert ()
-  "Re-render the current preview buffer from its source file."
+  "Re-render the current preview buffer from its source file.
+Keeps point at roughly the same place in the document so a resize-driven
+re-wrap doesn't jump back to the top."
   (interactive)
   (unless thb-md-render--source-file
     (user-error "Not a markdown render buffer"))
-  (let ((source thb-md-render--source-file))
-    (thb-md-render-file source)))
+  (let* ((source thb-md-render--source-file)
+         (win  (get-buffer-window (current-buffer) t))
+         (span (- (point-max) (point-min)))
+         (frac (and (> span 0)
+                    (/ (float (- (point) (point-min))) span))))
+    (thb-md-render-file source)
+    (let ((buf (get-buffer (format "*md render: %s*"
+                                   (file-name-nondirectory source)))))
+      (when (and buf frac)
+        (with-current-buffer buf
+          (goto-char (+ (point-min)
+                        (round (* frac (- (point-max) (point-min))))))
+          (beginning-of-line)
+          (when (window-live-p win)
+            (set-window-point win (point))))))))
 
 (defun thb-md-render--setup-watch (preview-buffer source-file)
   "Install a `file-notify' watch that re-renders PREVIEW-BUFFER on SOURCE-FILE change."
