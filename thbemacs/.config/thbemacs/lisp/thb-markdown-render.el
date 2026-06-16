@@ -823,21 +823,34 @@ reads as a continuous card rather than a strip behind the code only."
         (pcase type
           ((or "block_quote_marker" "block_continuation") nil)
           (_ (thb-md-render--walk c)))))
-    ;; Re-prefix every line of the rendered content with the quote glyph
-    ;; and tag the whole region with the blockquote face.
-    (let ((quote-end (point)))
-      (save-excursion
-        (goto-char quote-start)
-        (while (< (point) quote-end)
-          (let ((line-start (point)))
-            (insert thb-md-render-blockquote-prefix)
-            (put-text-property line-start (+ line-start (length thb-md-render-blockquote-prefix))
-                               'face 'thb-md-render-blockquote-marker)
-            (setq quote-end (+ quote-end (length thb-md-render-blockquote-prefix))))
-          (forward-line 1)))
-      ;; Apply blockquote background over the (now-prefixed) region.
-      (font-lock-prepend-text-property quote-start quote-end
-                                       'face 'thb-md-render-blockquote))))
+    ;; Trim trailing blank lines so the bar / tint never lands on an empty
+    ;; line after the quote.
+    (let ((quote-end (save-excursion (skip-chars-backward "\n") (point))))
+      (when (> quote-end quote-start)
+        ;; Bar every NON-EMPTY physical line.  Wrapped continuation lines
+        ;; (added later by `thb-md-render--rewrap-prose') pick up the same
+        ;; bar via the `wrap-prefix' property set below.
+        (save-excursion
+          (goto-char quote-start)
+          (while (< (point) quote-end)
+            (unless (eolp)
+              (let ((line-start (point)))
+                (insert thb-md-render-blockquote-prefix)
+                (put-text-property
+                 line-start (+ line-start (length thb-md-render-blockquote-prefix))
+                 'face 'thb-md-render-blockquote-marker)
+                (setq quote-end
+                      (+ quote-end (length thb-md-render-blockquote-prefix)))))
+            (forward-line 1)))
+        ;; Hang the bar under wrapped continuation lines.
+        (put-text-property
+         quote-start quote-end 'wrap-prefix
+         (propertize thb-md-render-blockquote-prefix
+                     'face '(thb-md-render-blockquote-marker
+                             thb-md-render-blockquote)))
+        ;; Tint the whole region (`:extend' fills each line to the edge).
+        (font-lock-prepend-text-property quote-start quote-end
+                                         'face 'thb-md-render-blockquote)))))
 
 ;;;; Block: pipe table -------------------------------------------------
 
@@ -1118,6 +1131,14 @@ gap the wrapper inserts between two cells of content."
   (let ((f (and (> (length ref) 0) (get-text-property 0 'face ref))))
     (if f (propertize " " 'face f) " ")))
 
+(defun thb-md-render--faced-newline (line)
+  "Return a newline carrying LINE's last-char `face'.
+A face with `:extend' (e.g. the blockquote tint) then fills the wrapped
+line to the window edge instead of stopping at the last word."
+  (let ((f (and (> (length line) 0)
+                (get-text-property (1- (length line)) 'face line))))
+    (if f (propertize "\n" 'face f) "\n")))
+
 (defun thb-md-render--pixel-wrap (s budget cont-prefix)
   "Word-wrap propertized string S to pixel width <= BUDGET.
 Line 1 keeps S's own leading indent; continuation lines are prefixed with
@@ -1142,7 +1163,14 @@ to overflow (it simply truncates off the right).  Properties are preserved."
                 ;; No word placed yet on this line: keep it (will overflow).
                 (setq cur cand has t)))))
         (push cur lines)
-        (mapconcat #'identity (nreverse lines) "\n")))))
+        (let ((ls (nreverse lines)))
+          (if (null (cdr ls))
+              (car ls)
+            (let ((acc (car ls)) (prev (car ls)))
+              (dolist (ln (cdr ls))
+                (setq acc (concat acc (thb-md-render--faced-newline prev) ln)
+                      prev ln))
+              acc)))))))
 
 (defun thb-md-render--rewrap-prose ()
   "Hard-wrap prose lines to the body width so they read fine in a buffer
