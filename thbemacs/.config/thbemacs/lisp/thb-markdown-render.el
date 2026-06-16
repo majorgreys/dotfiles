@@ -718,7 +718,9 @@ reads as a continuous card rather than a strip behind the code only."
       ;; ensure the bottom padding line is faced too).  The middle range
       ;; was already faced above; this catches the bookends.
       (font-lock-append-text-property block-start (point)
-                                      'face 'thb-md-render-code-block)))
+                                      'face 'thb-md-render-code-block)
+      ;; Code blocks are never prose-wrapped: each line extends right.
+      (thb-md-render--mark-nowrap block-start (point))))
   (thb-md-render--newline 1))
 
 (defun thb-md-render--walk-indented-code (node)
@@ -731,8 +733,11 @@ reads as a continuous card rather than a strip behind the code only."
                                    (substring l 4)
                                  l))
                              lines "\n"))
-         (trimmed (string-trim-right cleaned "\n")))
-    (thb-md-render--emit (concat trimmed "\n") 'thb-md-render-code-block))
+         (trimmed (string-trim-right cleaned "\n"))
+         (code-start (point)))
+    (thb-md-render--emit (concat trimmed "\n") 'thb-md-render-code-block)
+    ;; Indented code is never prose-wrapped: each line extends right.
+    (thb-md-render--mark-nowrap code-start (point)))
   (thb-md-render--newline 1))
 
 ;;;; Block: list ---------------------------------------------------------
@@ -1006,7 +1011,8 @@ FACE, when non-nil, is prepended over the row (e.g. the header's bold)."
              ;; the reader scrolls horizontally instead of the table folding.
              (widths (thb-md-render--table-natural-widths rendered n-cols))
              (total-width (+ (cl-loop for w across widths sum w)
-                             (* 2 (1- n-cols)))))
+                             (* 2 (1- n-cols))))
+             (table-start (point)))
         ;; Pass 3: emit each row on one line, with a horizontal rule under
         ;; the header.
         (dolist (rrow rendered)
@@ -1016,7 +1022,10 @@ FACE, when non-nil, is prepended over the row (e.g. the header's bold)."
             (let ((rule-start (point)))
               (insert (make-string total-width ?─) "\n")
               (put-text-property rule-start (point) 'face
-                                 'thb-md-render-table-rule)))))))
+                                 'thb-md-render-table-rule))))
+        ;; Tables are never prose-wrapped: each row stays on one logical
+        ;; line so the whole table extends to the right and scrolls.
+        (thb-md-render--mark-nowrap table-start (point)))))
   (thb-md-render--newline 1))
 
 ;;;; Block: thematic break ----------------------------------------------
@@ -1028,6 +1037,110 @@ FACE, when non-nil, is prepended over the row (e.g. the header's bold)."
         (rule (make-string 60 ?─)))
     (insert rule "\n\n")
     (put-text-property start (point) 'face 'thb-md-render-thematic-break)))
+
+;;;; Prose soft-wrap (renderer-owned) ----------------------------------
+
+;; The preview buffer sets `truncate-lines' so tables and code blocks stay
+;; on one logical line and extend to the right (scroll horizontally) rather
+;; than folding.  Emacs has no per-line truncation, so to keep PROSE
+;; readable we wrap it here, at render time, into real lines.  The wrap is
+;; pixel-accurate (`string-pixel-width') against the olivetti body width, so
+;; variable-pitch prose breaks where visual-line-mode would have.  Tables /
+;; code blocks are tagged `thb-md-render--nowrap' and skipped.
+
+(defun thb-md-render--mark-nowrap (start end)
+  "Tag START..END so `thb-md-render--rewrap-prose' leaves it on one line."
+  (when (< start end)
+    (put-text-property start end 'thb-md-render--nowrap t)))
+
+(defun thb-md-render--prose-budget-px ()
+  "Pixel width prose should wrap to: the olivetti body width, in pixels.
+Scale-invariant -- text-scale multiplies the body width and the prose font
+equally, so measure at the frame's base default char width.  If the buffer
+is shown in a window narrower than the body, wrap to the window instead."
+  (let* ((cols (if (and (numberp thb-md-render-body-width)
+                        (> thb-md-render-body-width 0))
+                   thb-md-render-body-width 80))
+         (win  (get-buffer-window (current-buffer) t))
+         (wcols (and win (window-body-width win)))
+         (eff  (if (and wcols (> wcols 0)) (min cols wcols) cols)))
+    (* eff (frame-char-width))))
+
+(defun thb-md-render--split-words (s)
+  "Split S into a list of non-space substrings (text properties preserved)."
+  (let ((words nil) (i 0) (n (length s)))
+    (while (< i n)
+      (while (and (< i n) (eq (aref s i) ?\s)) (cl-incf i))
+      (let ((start i))
+        (while (and (< i n) (not (eq (aref s i) ?\s))) (cl-incf i))
+        (when (> i start) (push (substring s start i) words))))
+    (nreverse words)))
+
+(defun thb-md-render--sep-space (ref)
+  "Return a single space carrying REF's leading `face'.
+Keeps backgrounds (e.g. the blockquote tint) continuous across the word
+gap the wrapper inserts between two cells of content."
+  (let ((f (and (> (length ref) 0) (get-text-property 0 'face ref))))
+    (if f (propertize " " 'face f) " ")))
+
+(defun thb-md-render--pixel-wrap (s budget cont-prefix)
+  "Word-wrap propertized string S to pixel width <= BUDGET.
+Line 1 keeps S's own leading indent; continuation lines are prefixed with
+CONT-PREFIX (the line's hang indent).  Returns one propertized string with
+embedded newlines.  Breaks at ASCII spaces; a single over-long word is left
+to overflow (it simply truncates off the right).  Properties are preserved."
+  (let* ((lead-len (or (string-match "[^ ]" s) (length s)))
+         (lead  (substring s 0 lead-len))
+         (words (thb-md-render--split-words (substring s lead-len))))
+    (if (null words)
+        s
+      (let ((lines nil) (cur lead) (has nil))
+        (dolist (w words)
+          (let ((cand (if has
+                          (concat cur (thb-md-render--sep-space w) w)
+                        (concat cur w))))
+            (if (<= (string-pixel-width cand) budget)
+                (setq cur cand has t)
+              (if has
+                  (progn (push cur lines)
+                         (setq cur (concat cont-prefix w) has t))
+                ;; No word placed yet on this line: keep it (will overflow).
+                (setq cur cand has t)))))
+        (push cur lines)
+        (mapconcat #'identity (nreverse lines) "\n")))))
+
+(defun thb-md-render--rewrap-prose ()
+  "Hard-wrap prose lines to the body width so they read fine in a buffer
+that truncates long lines.  Lines tagged `thb-md-render--nowrap' (tables,
+code blocks) and blank lines are left alone, so they keep extending to the
+right.  Continuation lines inherit each line's `wrap-prefix' as hang indent.
+Run once, after the whole document has been emitted."
+  (let ((budget (thb-md-render--prose-budget-px)))
+    (save-excursion
+      (goto-char (point-min))
+      (while (not (eobp))
+        (let ((bol (line-beginning-position))
+              (eol (line-end-position)))
+          (if (or (= bol eol)
+                  (get-text-property bol 'thb-md-render--nowrap))
+              (goto-char eol)
+            (let ((line (buffer-substring bol eol)))
+              (if (<= (string-pixel-width line) budget)
+                  (goto-char eol)
+                ;; The hang-indent `wrap-prefix' is set over the item's
+                ;; CONTENT (after the bullet / number), not at bol, so read
+                ;; it from the first position on the line that carries it.
+                (let* ((prefix  (or (get-text-property bol 'wrap-prefix)
+                                    (let ((p (next-single-property-change
+                                              bol 'wrap-prefix nil eol)))
+                                      (and p (< p eol)
+                                           (get-text-property p 'wrap-prefix)))
+                                    ""))
+                       (wrapped (thb-md-render--pixel-wrap line budget prefix)))
+                  (delete-region bol eol)
+                  (goto-char bol)
+                  (insert wrapped))))))
+        (forward-line 1)))))
 
 ;;;; Mode for the rendered preview buffer ---------------------------------
 
@@ -1047,11 +1160,12 @@ FACE, when non-nil, is prepended over the row (e.g. the header's bold)."
 
 (define-derived-mode thb-md-render-mode special-mode "MD-Render"
   "Major mode for rendered markdown preview buffers."
-  ;; Truncate long logical lines (with `$' indicator at the window edge)
-  ;; rather than visually wrapping them.  Code blocks and tables stay on
-  ;; one logical line per source line, so they truncate rather than break
-  ;; across multiple visual rows.  Prose paragraphs typically have source-
-  ;; level newlines (markdown convention), so they read fine line-by-line.
+  ;; Truncate long logical lines (no visual wrapping).  Tables and code
+  ;; blocks deliberately stay on one logical line each, so they extend to
+  ;; the right and scroll horizontally instead of folding.  PROSE is wrapped
+  ;; into real lines by `thb-md-render--rewrap-prose' at render time (Emacs
+  ;; has no per-line truncation), so paragraphs / lists / quotes still read
+  ;; at the body width even though the buffer truncates.
   (setq-local truncate-lines t)
   (setq-local word-wrap nil)
   (visual-line-mode -1)
@@ -1162,6 +1276,10 @@ Return the rendered buffer."
                       (thb-md-render--inline-children-len (length inline-vec))
                       (thb-md-render--inline-cursor 0))
                   (thb-md-render--walk root))
+                ;; Wrap prose to the body width (tables / code are skipped
+                ;; via `thb-md-render--nowrap'), so prose reads fine while
+                ;; the buffer truncates the long table / code lines.
+                (thb-md-render--rewrap-prose)
                 (goto-char (point-min)))
               (setq thb-md-render--source-file path)
               ;; Re-assert no-wrap on every render, not just on fresh
