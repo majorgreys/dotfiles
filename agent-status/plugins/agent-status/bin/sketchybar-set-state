@@ -224,14 +224,34 @@ fi
 WS=""
 WIN_ID=""
 PIN_FILE=""
+PREV_WS=""
+PREV_UPDATED="0"
+PREV_CWD=""
 if [ -n "$SESSION_ID" ]; then
   PIN_FILE="$PIN_DIR/$SESSION_ID.json"
   if [ -s "$PIN_FILE" ] && command -v jq >/dev/null 2>&1; then
-    WIN_ID=$(jq -r '.window_id // empty' "$PIN_FILE" 2>/dev/null || true)
+    PREV_RECORD=$(jq -r '[.window_id // "", .workspace // "", ((.updated_at // 0)|tostring), .cwd // ""] | @tsv' "$PIN_FILE" 2>/dev/null || true)
+    if [ -n "$PREV_RECORD" ]; then
+      IFS=$'\t' read -r WIN_ID PREV_WS PREV_UPDATED PREV_CWD <<EOF
+$PREV_RECORD
+EOF
+    fi
   fi
 fi
 
-if [ -n "$WIN_ID" ]; then
+# Avoid asking AeroSpace on every Pi state transition (running <-> tooling
+# can happen many times per turn). Reuse the recent workspace/window pin and
+# refresh it periodically so moved terminals still converge without burning CPU.
+case "${PREV_UPDATED:-}" in ''|*[!0-9]*) PREV_UPDATED=0 ;; esac
+NOW_LOOKUP=$(date +%s)
+if [ "$STATE" != "clear" ] \
+    && [ -n "$PREV_WS" ] \
+    && [ $((NOW_LOOKUP - PREV_UPDATED)) -lt 30 ] \
+    && { [ -z "$CWD" ] || [ -z "$PREV_CWD" ] || [ "$PREV_CWD" = "$CWD" ]; }; then
+  WS="$PREV_WS"
+fi
+
+if [ -z "$WS" ] && [ -n "$WIN_ID" ]; then
   WS=$(aerospace list-windows --all --format '%{window-id} %{workspace}' 2>/dev/null \
     | awk -v wid="$WIN_ID" '$1 == wid { print $2; exit }')
   if [ -z "$WS" ]; then
