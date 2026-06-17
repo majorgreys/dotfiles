@@ -823,32 +823,17 @@ reads as a continuous card rather than a strip behind the code only."
         (pcase type
           ((or "block_quote_marker" "block_continuation") nil)
           (_ (thb-md-render--walk c)))))
-    ;; Trim trailing blank lines so the bar / tint never lands on an empty
-    ;; line after the quote.
-    (let ((quote-end (save-excursion (skip-chars-backward "\n") (point))))
-      (when (> quote-end quote-start)
-        ;; Bar every NON-EMPTY physical line.  Wrapped continuation lines
-        ;; (added later by `thb-md-render--rewrap-prose') pick up the same
-        ;; bar via the `wrap-prefix' property set below.
-        (save-excursion
-          (goto-char quote-start)
-          (while (< (point) quote-end)
-            (unless (eolp)
-              (let ((line-start (point)))
-                (insert thb-md-render-blockquote-prefix)
-                (put-text-property
-                 line-start (+ line-start (length thb-md-render-blockquote-prefix))
-                 'face 'thb-md-render-blockquote-marker)
-                (setq quote-end
-                      (+ quote-end (length thb-md-render-blockquote-prefix)))))
-            (forward-line 1)))
-        ;; Hang the bar under wrapped continuation lines.
-        (put-text-property
-         quote-start quote-end 'wrap-prefix
-         (propertize thb-md-render-blockquote-prefix
-                     'face '(thb-md-render-blockquote-marker
-                             thb-md-render-blockquote)))
-        ;; Tint the whole region (`:extend' fills each line to the edge).
+    ;; No left bar: a full-width background box denotes the quote (like the
+    ;; code-block card).  A bar glyph breaks up under the italic quote face,
+    ;; and the box alone reads cleanly.  Face the content PLUS its
+    ;; terminating newline so `:extend' fills the last row to the window
+    ;; edge; `thb-md-render--rewrap-prose' faces the wrapped-line newlines
+    ;; (via `thb-md-render--faced-newline') so every interior row fills too.
+    ;; Stop before the trailing blank separator line so its empty row is
+    ;; not tinted.
+    (let* ((content-end (save-excursion (skip-chars-backward "\n") (point)))
+           (quote-end   (min (point) (1+ content-end))))
+      (when (> content-end quote-start)
         (font-lock-prepend-text-property quote-start quote-end
                                          'face 'thb-md-render-blockquote)))))
 
