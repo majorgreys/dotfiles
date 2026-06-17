@@ -12,7 +12,7 @@ local M = {}
 
 -- session_id (string) -> {
 --   workspace = "<n>",
---   state     = "running" | "needs-attention" | "idle",
+--   state     = "submitted" | "running" | "tooling" | "needs-attention" | "idle" | "error" | "stale",
 --   cwd       = "<path>",
 --   updated_at = <epoch seconds>,
 -- }
@@ -26,10 +26,13 @@ M.workspace_state = {}
 -- urgency rank — higher = more urgent. Used when collapsing multiple
 -- sessions in the same workspace down to a single dot color.
 M.urgency = {
-  ["error"]           = 4,
-  ["needs-attention"] = 3,
-  ["running"]         = 2,
+  ["error"]           = 6,
+  ["needs-attention"] = 5,
+  ["tooling"]         = 4,
+  ["running"]         = 3,
+  ["submitted"]       = 2,
   ["idle"]            = 1,
+  ["stale"]           = 0,
 }
 
 return M
