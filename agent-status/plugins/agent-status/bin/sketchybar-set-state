@@ -4,12 +4,16 @@
 # Usage:
 #   sketchybar-set-state [--tool <name>] <state>
 #     --tool   Agent tool name (claude | pi). Default: claude.
-#     state    running | needs-attention | idle | clear
+#     state    submitted | running | tooling | needs-attention | idle | error | stale | clear
 #     stdin (optional): hook JSON. Recognised fields:
 #       .session_id .cwd .hook_event_name .agent .message
 #       .prompt           — last user prompt text (UserPromptSubmit / pi input)
 #       .transcript_path  — path to claude's session jsonl (Stop hook)
 #       .last_assistant   — assistant text passed directly (pi turn_end)
+#       .tool_name        — currently executing tool, when state=tooling
+#       .workstream .claimed_issue .claimed_title
+#       .todo_pending .todo_in_progress .venom_active .venom_waiting
+#       .venom_failed .human_gates — optional Pi/TB Workflow snapshot fields
 #
 # Behavior:
 #   1. Read fields from stdin JSON if present.
@@ -18,9 +22,9 @@
 #      $STATE_ROOT/sessions/<id>.json. New fields override; absent fields
 #      preserve previous values (so Stop preserves last_prompt, etc.).
 #   4. Trigger `agent_state_change` with kv args carrying the
-#      action, session_id, state, cwd, workspace, zmx_session, agent, and
-#      now also tool, last_prompt, last_assistant. The Lua handler can
-#      ignore the new fields; agent-panel reads the pin file directly.
+#      action, session_id, state, cwd, workspace, zmx_session, agent, tool_name,
+#      workflow metadata, last_prompt, and last_assistant. The Lua handler can
+#      ignore unknown fields; agent-panel reads the pin file directly.
 #   5. On state=clear, remove the per-session pin file before triggering.
 #
 # Logging:
@@ -52,7 +56,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-STATE="${1:?state required: running|needs-attention|idle|clear}"
+STATE="${1:?state required: submitted|running|tooling|needs-attention|idle|error|stale|clear}"
 
 STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/sketchybar"
 PIN_DIR="$STATE_ROOT/sessions"
@@ -111,6 +115,16 @@ AGENT="$TOOL"
 PROMPT=""
 LAST_ASSISTANT=""
 TRANSCRIPT_PATH=""
+TOOL_NAME=""
+WORKSTREAM=""
+CLAIMED_ISSUE=""
+CLAIMED_TITLE=""
+TODO_PENDING="0"
+TODO_IN_PROGRESS="0"
+VENOM_ACTIVE="0"
+VENOM_WAITING="0"
+VENOM_FAILED="0"
+HUMAN_GATES="0"
 # Claude inherits the launching shell's env, so $ZMX_SESSION (e.g.
 # "d.dotfiles.0") is visible here when claude was started inside a zmx
 # session. Empty otherwise. ZMX_SESSION_PREFIX is the auto-prefix the
@@ -127,6 +141,16 @@ if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
   PROMPT=$(printf '%s' "$HOOK_INPUT" | jq -r '.prompt // empty' 2>/dev/null || true)
   TRANSCRIPT_PATH=$(printf '%s' "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null || true)
   LAST_ASSISTANT=$(printf '%s' "$HOOK_INPUT" | jq -r '.last_assistant // empty' 2>/dev/null || true)
+  TOOL_NAME=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)
+  WORKSTREAM=$(printf '%s' "$HOOK_INPUT" | jq -r '.workstream // empty' 2>/dev/null || true)
+  CLAIMED_ISSUE=$(printf '%s' "$HOOK_INPUT" | jq -r '.claimed_issue // empty' 2>/dev/null || true)
+  CLAIMED_TITLE=$(printf '%s' "$HOOK_INPUT" | jq -r '.claimed_title // empty' 2>/dev/null || true)
+  TODO_PENDING=$(printf '%s' "$HOOK_INPUT" | jq -r '(.todo_pending // 0) | tostring' 2>/dev/null || echo 0)
+  TODO_IN_PROGRESS=$(printf '%s' "$HOOK_INPUT" | jq -r '(.todo_in_progress // 0) | tostring' 2>/dev/null || echo 0)
+  VENOM_ACTIVE=$(printf '%s' "$HOOK_INPUT" | jq -r '(.venom_active // 0) | tostring' 2>/dev/null || echo 0)
+  VENOM_WAITING=$(printf '%s' "$HOOK_INPUT" | jq -r '(.venom_waiting // 0) | tostring' 2>/dev/null || echo 0)
+  VENOM_FAILED=$(printf '%s' "$HOOK_INPUT" | jq -r '(.venom_failed // 0) | tostring' 2>/dev/null || echo 0)
+  HUMAN_GATES=$(printf '%s' "$HOOK_INPUT" | jq -r '(.human_gates // 0) | tostring' 2>/dev/null || echo 0)
   if [ -n "$PAYLOAD_AGENT" ]; then
     AGENT="$PAYLOAD_AGENT"
   fi
@@ -142,6 +166,31 @@ SID8="${SESSION_ID:0:8}"
 # the session.
 AGENT_PID="$(find_agent_pid "$TOOL")"
 AGENT_PID="${AGENT_PID:-0}"
+
+# Cheap storm guard. Some Pi/TB Workflow surfaces poll and may publish
+# unchanged state frequently; resolving AeroSpace window/workspace on every
+# duplicate helper invocation can make AeroSpace burn CPU and can wedge the
+# Sketchybar IPC path. Drop exact duplicate non-clear events for a short
+# window before touching AeroSpace.
+RATE_DIR="$STATE_ROOT/rate-limit"
+mkdir -p "$RATE_DIR"
+if [ "$STATE" != "clear" ] && [ -n "$SESSION_ID" ]; then
+  NOW_RATE=$(date +%s)
+  RATE_KEY=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$STATE" "$CWD" "$TOOL_NAME" "$WORKSTREAM" "$CLAIMED_ISSUE" \
+    "$TODO_PENDING" "$TODO_IN_PROGRESS" "$VENOM_ACTIVE" "$VENOM_WAITING" \
+    "$VENOM_FAILED" "$HUMAN_GATES" "$PROMPT" "$LAST_ASSISTANT" \
+    | shasum | awk '{print $1}')
+  RATE_FILE="$RATE_DIR/$SESSION_ID"
+  if [ -s "$RATE_FILE" ]; then
+    read -r LAST_TS LAST_KEY < "$RATE_FILE" || true
+    case "${LAST_TS:-}" in ''|*[!0-9]*) LAST_TS=0 ;; esac
+    if [ "${LAST_KEY:-}" = "$RATE_KEY" ] && [ $((NOW_RATE - LAST_TS)) -lt 10 ]; then
+      exit 0
+    fi
+  fi
+  printf '%s %s\n' "$NOW_RATE" "$RATE_KEY" > "$RATE_FILE" 2>/dev/null || true
+fi
 
 # Best-effort: tail the claude transcript for the most recent
 # `away_summary` (preferred — short, agent-authored summary) or the
@@ -222,14 +271,34 @@ if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ] \
     --arg zsh "$ZMX_SHORT" \
     --arg agent "$AGENT" \
     --arg tool  "$TOOL" \
+    --arg tool_name "$TOOL_NAME" \
+    --arg workstream "$WORKSTREAM" \
+    --arg claimed_issue "$CLAIMED_ISSUE" \
+    --arg claimed_title "$CLAIMED_TITLE" \
     --arg prompt "$PROMPT" \
     --arg last_assistant "$LAST_ASSISTANT" \
     --argjson ts "$NOW" \
     --argjson agent_pid "$AGENT_PID" \
+    --arg todo_pending "$TODO_PENDING" \
+    --arg todo_in_progress "$TODO_IN_PROGRESS" \
+    --arg venom_active "$VENOM_ACTIVE" \
+    --arg venom_waiting "$VENOM_WAITING" \
+    --arg venom_failed "$VENOM_FAILED" \
+    --arg human_gates "$HUMAN_GATES" \
     '
       {session_id:$sid, workspace:$ws, window_id:$win, state:$st,
        cwd:$cwd, zmx_session:$zmx, zmx_short:$zsh, agent:$agent,
-       tool:$tool, agent_pid:$agent_pid, updated_at:$ts}
+       tool:$tool, agent_pid:$agent_pid, updated_at:$ts,
+       todo_pending:($todo_pending|tonumber? // 0),
+       todo_in_progress:($todo_in_progress|tonumber? // 0),
+       venom_active:($venom_active|tonumber? // 0),
+       venom_waiting:($venom_waiting|tonumber? // 0),
+       venom_failed:($venom_failed|tonumber? // 0),
+       human_gates:($human_gates|tonumber? // 0)}
+      + (if $tool_name != "" then {tool_name:$tool_name} else {} end)
+      + (if $workstream != "" then {workstream:$workstream} else {} end)
+      + (if $claimed_issue != "" then {claimed_issue:$claimed_issue} else {} end)
+      + (if $claimed_title != "" then {claimed_title:$claimed_title} else {} end)
       + (if $prompt != "" then {last_prompt:$prompt, last_prompt_at:$ts} else {} end)
       + (if $last_assistant != "" then {last_assistant:$last_assistant, last_assistant_at:$ts} else {} end)
     ')
@@ -282,6 +351,16 @@ sketchybar --trigger agent_state_change \
   "zmx_short=$ZMX_SHORT" \
   "agent=$AGENT" \
   "agent_pid=$AGENT_PID" \
+  "tool_name=$TOOL_NAME" \
+  "workstream=$WORKSTREAM" \
+  "claimed_issue=$CLAIMED_ISSUE" \
+  "claimed_title=$CLAIMED_TITLE" \
+  "todo_pending=$TODO_PENDING" \
+  "todo_in_progress=$TODO_IN_PROGRESS" \
+  "venom_active=$VENOM_ACTIVE" \
+  "venom_waiting=$VENOM_WAITING" \
+  "venom_failed=$VENOM_FAILED" \
+  "human_gates=$HUMAN_GATES" \
   >/dev/null 2>&1 || true
 
 # Notification hook: append to a small jsonl ring buffer the lua side

@@ -5,7 +5,7 @@
 -- the `agent_state_change` sketchybar event with these args:
 --   action       = "write" | "clear"
 --   session_id   = "<uuid>"
---   state        = "running" | "needs-attention" | "idle"   (write only)
+--   state        = "submitted" | "running" | "tooling" | "needs-attention" | "idle" | "error" | "stale"
 --   cwd          = "<path>"                                 (write only)
 --   workspace    = "<n>"                                    (always)
 --
@@ -23,8 +23,11 @@ local state = require("state")
 local STATE_COLORS = {
   error               = Colors.red,
   ["needs-attention"] = Colors.yellow,
+  tooling             = Colors.magenta,
   running             = Colors.green,
+  submitted           = Colors.accent_bg,
   idle                = Colors.dim_dark,
+  stale               = Colors.dim_dark,
 }
 
 -- Pill is a bracket of three items: robot icon, status dot, count.
@@ -116,6 +119,11 @@ local REST_BG_NONE = {
 -- indefinitely; the TTL stops every dormant session from drawing the
 -- user's eye.
 local NEEDS_ATTENTION_TTL_S = 300
+-- If a session has not reported any state change for this long, demote
+-- it to stale for aggregate counts / workspace urgency. Unknown-PID
+-- sessions are only removed completely after the longer hard TTL below.
+local STALE_TTL_S = 60 * 60
+local HARD_STALE_TTL_S = 24 * 60 * 60
 
 -- 2px green underline for sessions in `running` state. The pulse loop
 -- (start_pulse_if_needed) fades the alpha between BRIGHT and DIM with
@@ -170,6 +178,10 @@ local function add_overflow_child(name, props)
   return sbar.add("item", name, props)
 end
 
+local function item_suffix(id)
+  return tostring(id or ""):gsub("[^%w_]", "_"):sub(1, 8)
+end
+
 -- Hover-driven popup with a small close grace so a cursor sweep from
 -- the parent pill into the popup doesn't slam it shut mid-traversal.
 local OVERFLOW_CLOSE_DELAY_S = 0.6
@@ -203,6 +215,60 @@ end
 -- loser files. restore_sessions further down references the same path.
 local PIN_DIR = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state"))
   .. "/sketchybar/sessions"
+
+local function pid_alive(pid)
+  if not pid or pid == 0 then return true end
+  local result = os.execute(string.format("kill -0 %d 2>/dev/null", pid))
+  return result == 0 or result == true
+end
+
+local function effective_state(s, now)
+  local st = s.state or "idle"
+  local age = now - (s.updated_at or 0)
+  if st == "needs-attention" and age > NEEDS_ATTENTION_TTL_S then
+    return "idle"
+  end
+  if age > STALE_TTL_S and st ~= "running" and st ~= "tooling" then
+    return "stale"
+  end
+  return st
+end
+
+local function is_actionable_state(st)
+  return st == "error"
+    or st == "needs-attention"
+    or st == "tooling"
+    or st == "running"
+    or st == "submitted"
+end
+
+local function prune_dead_sessions()
+  local now = os.time()
+  for id, s in pairs(state.sessions) do
+    local age = now - (s.updated_at or 0)
+    local missing_pid = s.agent_pid and s.agent_pid ~= 0 and not pid_alive(s.agent_pid)
+    local ancient_unknown = (not s.agent_pid or s.agent_pid == 0) and age > HARD_STALE_TTL_S
+    if missing_pid or ancient_unknown then
+      state.sessions[id] = nil
+      os.remove(PIN_DIR .. "/" .. id .. ".json")
+    end
+  end
+end
+
+local function compact_meta(s)
+  local parts = {}
+  if s.workstream and s.workstream ~= "" then table.insert(parts, s.workstream) end
+  if s.claimed_issue and s.claimed_issue ~= "" then table.insert(parts, s.claimed_issue) end
+  local pending = tonumber(s.todo_pending) or 0
+  local active = tonumber(s.todo_in_progress) or 0
+  if pending + active > 0 then table.insert(parts, string.format("todo %d/%d", active, pending + active)) end
+  local workers = (tonumber(s.venom_active) or 0) + (tonumber(s.venom_waiting) or 0)
+  if workers > 0 then table.insert(parts, "vm " .. tostring(workers)) end
+  local gates = tonumber(s.human_gates) or 0
+  if gates > 0 then table.insert(parts, "gate " .. tostring(gates)) end
+  if #parts == 0 then return "" end
+  return " · " .. table.concat(parts, " · ")
+end
 
 -- Group key for dedupe: zmx session if present, else cwd. Multiple
 -- claude processes in the same zmx all share the same key, so the
@@ -242,11 +308,14 @@ end
 
 -- Recompute state.workspace_state from state.sessions.
 local function recompute_workspace_state()
+  prune_dead_sessions()
   local ws_state = {}
+  local now = os.time()
   for _, s in pairs(state.sessions) do
+    local st = effective_state(s, now)
     local cur = ws_state[s.workspace]
-    if not cur or (state.urgency[s.state] or 0) > (state.urgency[cur] or 0) then
-      ws_state[s.workspace] = s.state
+    if not cur or (state.urgency[st] or 0) > (state.urgency[cur] or 0) then
+      ws_state[s.workspace] = st
     end
   end
   state.workspace_state = ws_state
@@ -294,7 +363,7 @@ local function read_zmx_attached()
   if not handle then return {} end
   local m = {}
   for line in handle:lines() do
-    local name = line:match("name=(%S+)")
+    local name = line:match("name=(%S+)") or line:match("^(%S+)%s+pid=")
     local clients = line:match("clients=(%d+)")
     if name and clients then
       m[name] = tonumber(clients) > 0
@@ -321,12 +390,20 @@ end
 -- color in the menu-bar pill. Returns the count for the label.
 local function aggregate_state()
   local count = 0
-  local top_state, top_rank = nil, -1
+  local top_state, top_rank = "idle", -1
+  local now = os.time()
   for _, s in pairs(state.sessions) do
-    count = count + 1
-    local rank = state.urgency[s.state] or 0
+    local st = effective_state(s, now)
+    local actionable = is_actionable_state(st)
+    if st == "needs-attention" then
+      actionable = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
+        and (s.viewed_at or 0) < (s.updated_at or 0)
+    end
+    if actionable then count = count + 1 end
+    local ranked_state = actionable and st or "idle"
+    local rank = state.urgency[ranked_state] or 0
     if rank > top_rank then
-      top_rank, top_state = rank, s.state
+      top_rank, top_state = rank, ranked_state
     end
   end
   return count, top_state
@@ -362,6 +439,7 @@ local function make_click_script(s, detached)
 end
 
 local function rebuild_session_items()
+  prune_dead_sessions()
   clear_session_items()
   clear_overflow_children()
 
@@ -375,12 +453,15 @@ local function rebuild_session_items()
   local function row_name(s)
     local display = (s.zmx_short and s.zmx_short ~= "" and s.zmx_short)
       or (s.zmx_session and s.zmx_session ~= "" and s.zmx_session)
+    local base
     if display then
       -- display_zmx wraps in parens for detached. Pass zmx_session to
       -- the attached-map lookup since `zmx l` reports full names.
-      return display_zmx(display, zmx_attached, s.zmx_session)
+      base = display_zmx(display, zmx_attached, s.zmx_session)
+    else
+      base = basename(s.cwd)
     end
-    return basename(s.cwd)
+    return base .. compact_meta(s)
   end
 
   -- Split sessions into inline (currently active) and overflow
@@ -399,8 +480,12 @@ local function rebuild_session_items()
     local detached = zmx ~= "" and not zmx_attached[zmx]
     local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
     local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
-    local active = s.state == "running"
-      or (s.state == "needs-attention" and fresh and unviewed)
+    local st = effective_state(s, now)
+    local active = st == "submitted"
+      or st == "running"
+      or st == "tooling"
+      or st == "error"
+      or (st == "needs-attention" and fresh and unviewed)
     local record = { entry = entry, s = s, detached = detached }
     if active and not detached then
       table.insert(inline, record)
@@ -416,7 +501,7 @@ local function rebuild_session_items()
   for i, r in ipairs(inline) do
     local s = r.s
     local label = row_name(s)
-    local short = r.entry.id:sub(1, 8)
+    local short = item_suffix(r.entry.id)
     local child = "agent_sessions." .. short
 
     -- The rightmost session (first in sorted order, sitting next to
@@ -435,15 +520,22 @@ local function rebuild_session_items()
     -- already filtered out at split time.)
     local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
     local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
-    local attention_active = s.state == "needs-attention" and fresh and unviewed
-    -- Running sessions get the green underline as their rest bg so the
-    -- pulse loop only animates color (geometry stays put). Hover/exit
-    -- still swap to/from HOVER_BG and back to this.
+    local st = effective_state(s, now)
+    local attention_active = st == "needs-attention" and fresh and unviewed
+    -- Running/tooling/submitted sessions get a live underline as their rest
+    -- bg so the pulse loop only animates color for running/tooling phases
+    -- (geometry stays put). Hover/exit still swap to/from HOVER_BG.
     local rest_bg
     if attention_active then
       rest_bg = NEEDS_ATTENTION_BG
-    elseif s.state == "running" then
-      rest_bg = RUNNING_BG
+    elseif st == "running" or st == "tooling" or st == "submitted" then
+      rest_bg = {
+        color         = STATE_COLORS[st] or Colors.green,
+        corner_radius = 0,
+        height        = 2,
+        y_offset      = -14,
+        border_width  = 0,
+      }
     else
       rest_bg = REST_BG_NONE
     end
@@ -475,7 +567,7 @@ local function rebuild_session_items()
   -- pill. Detached rows get parens via display_zmx in row_name.
   for _, r in ipairs(overflow) do
     local s = r.s
-    local short = r.entry.id:sub(1, 8)
+    local short = item_suffix(r.entry.id)
     local child = "agent_sessions_overflow." .. short
     local row_label = row_name(s)
     local row = add_overflow_child(child, {
@@ -510,9 +602,11 @@ local function rebuild_session_items()
 end
 
 local function repaint_parent()
-  local count = aggregate_state()
+  local count, top_state = aggregate_state()
+  local color = STATE_COLORS[top_state] or Colors.fg
+  parent:set({ icon = { color = color } })
   count_item:set({
-    label = { string = tostring(count) },
+    label = { string = tostring(count), color = count > 0 and Colors.fg or Colors.dim_dark },
   })
 end
 
@@ -526,7 +620,8 @@ local pulse_alive = false
 
 local function any_running_inline(zmx_attached)
   for _, s in pairs(state.sessions) do
-    if s.state == "running" then
+    local st = effective_state(s, os.time())
+    if st == "running" or st == "tooling" then
       local zmx = s.zmx_session or ""
       local detached = zmx ~= "" and not zmx_attached[zmx]
       if not detached then return true end
@@ -545,11 +640,12 @@ end
 local function paint_running_pulse(target_hex, frames)
   local zmx_attached = read_zmx_attached()
   for id, s in pairs(state.sessions) do
-    if s.state == "running" then
+    local st = effective_state(s, os.time())
+    if st == "running" or st == "tooling" then
       local zmx = s.zmx_session or ""
       local detached = zmx ~= "" and not zmx_attached[zmx]
       if not detached then
-        local name = "agent_sessions." .. id:sub(1, 8)
+        local name = "agent_sessions." .. item_suffix(id)
         animate_pulse_color(name, target_hex, frames)
       end
     end
@@ -618,12 +714,22 @@ parent:subscribe("agent_state_change", function(env)
       window_id   = env.window_id or "",
       state       = st,
       cwd         = cwd or "",
-      zmx_session = env.zmx_session or "",
-      zmx_short   = env.zmx_short or "",
-      agent       = env.agent or "",
-      agent_pid   = tonumber(env.agent_pid) or 0,
-      updated_at  = now,
-      viewed_at   = viewed_at,
+      zmx_session      = env.zmx_session or "",
+      zmx_short        = env.zmx_short or "",
+      agent            = env.agent or "",
+      agent_pid        = tonumber(env.agent_pid) or 0,
+      tool_name        = env.tool_name or "",
+      workstream       = env.workstream or "",
+      claimed_issue    = env.claimed_issue or "",
+      claimed_title    = env.claimed_title or "",
+      todo_pending     = tonumber(env.todo_pending) or 0,
+      todo_in_progress = tonumber(env.todo_in_progress) or 0,
+      venom_active     = tonumber(env.venom_active) or 0,
+      venom_waiting    = tonumber(env.venom_waiting) or 0,
+      venom_failed     = tonumber(env.venom_failed) or 0,
+      human_gates      = tonumber(env.human_gates) or 0,
+      updated_at       = now,
+      viewed_at        = viewed_at,
     }
   else
     return
@@ -638,9 +744,10 @@ parent:subscribe("agent_state_change", function(env)
   rebuild_session_items()
   start_pulse_if_needed()
 
-  -- Workspace pills no longer subscribe to agent_state_change, but the
-  -- focus-state repaint still keys off this trigger.
-  sbar.trigger("aerospace_workspace_change")
+  -- Workspace focus changes arrive from AeroSpace directly. Do not fan out
+  -- synthetic workspace-change events here: each workspace pill falls back to
+  -- querying AeroSpace when FOCUSED_WORKSPACE is absent, so doing this on
+  -- every agent update can burn CPU.
 end)
 
 -- Mark sessions on the focused workspace as viewed so their
@@ -677,45 +784,52 @@ end)
 -- and waiting for each session to fire its next hook. PIN_DIR is
 -- declared up-top so dedupe_sessions can also see it.
 
--- True iff a process with the given PID is alive on the local host.
--- `kill -0` returns 0 on alive, non-zero on missing or wrong-owner.
--- We treat PID 0 / nil as "unknown" and return true so sessions with
--- no recorded agent_pid (older pin files, ancestor-walk failures)
--- aren't pruned by mistake. os.execute returns differ between Lua 5.1
--- (integer code) and 5.2+ (boolean) — accept both.
-local function pid_alive(pid)
-  if not pid or pid == 0 then return true end
-  local result = os.execute(string.format("kill -0 %d 2>/dev/null", pid))
-  return result == 0 or result == true
-end
-
 local function restore_sessions()
+  state.sessions = {}
   local cmd = string.format(
     "find %q -maxdepth 1 -name '*.json' -print0 2>/dev/null | "
     .. "xargs -0 jq -r '[.session_id, (.workspace // \"\"), (.window_id // \"\"), "
     .. "(.state // \"\"), (.cwd // \"\"), (.zmx_session // \"\"), "
     .. "(.zmx_short // \"\"), (.agent // \"\"), ((.updated_at // 0)|tostring), "
-    .. "((.agent_pid // 0)|tostring)] | @tsv' 2>/dev/null",
+    .. "((.agent_pid // 0)|tostring), (.tool_name // \"\"), (.workstream // \"\"), "
+    .. "(.claimed_issue // \"\"), (.claimed_title // \"\"), ((.todo_pending // 0)|tostring), "
+    .. "((.todo_in_progress // 0)|tostring), ((.venom_active // 0)|tostring), "
+    .. "((.venom_waiting // 0)|tostring), ((.venom_failed // 0)|tostring), "
+    .. "((.human_gates // 0)|tostring)] | @tsv' 2>/dev/null",
     PIN_DIR
   )
   local handle = io.popen(cmd)
   if not handle then return end
   for line in handle:lines() do
+    local fields = {}
+    for value in (line .. "\t"):gmatch("([^\t]*)\t") do
+      table.insert(fields, value)
+    end
     local sid, ws, win, st, cwd, zmx, zsh, agent, ts, pid =
-      line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
+      fields[1], fields[2], fields[3], fields[4], fields[5], fields[6], fields[7], fields[8], fields[9], fields[10]
     if sid and sid ~= "" and ws ~= "" and st ~= "" then
       local agent_pid = tonumber(pid) or 0
       if pid_alive(agent_pid) then
         state.sessions[sid] = {
-          workspace   = ws,
-          window_id   = win,
-          state       = st,
-          cwd         = cwd,
-          zmx_session = zmx,
-          zmx_short   = zsh,
-          agent       = agent,
-          agent_pid   = agent_pid,
-          updated_at  = tonumber(ts) or 0,
+          workspace        = ws,
+          window_id        = win,
+          state            = st,
+          cwd              = cwd,
+          zmx_session      = zmx,
+          zmx_short        = zsh,
+          agent            = agent,
+          agent_pid        = agent_pid,
+          tool_name        = fields[11] or "",
+          workstream       = fields[12] or "",
+          claimed_issue    = fields[13] or "",
+          claimed_title    = fields[14] or "",
+          todo_pending     = tonumber(fields[15]) or 0,
+          todo_in_progress = tonumber(fields[16]) or 0,
+          venom_active     = tonumber(fields[17]) or 0,
+          venom_waiting    = tonumber(fields[18]) or 0,
+          venom_failed     = tonumber(fields[19]) or 0,
+          human_gates      = tonumber(fields[20]) or 0,
+          updated_at       = tonumber(ts) or 0,
         }
       else
         -- Agent process is gone; drop the pin file so this session
@@ -728,20 +842,46 @@ local function restore_sessions()
   dedupe_sessions()
 end
 
-sbar.exec(
-  [[sketchybar --query bar 2>/dev/null | jq -r '.items[]? | select(startswith("agent_sessions."))']],
-  function(out)
-    for name in out:gmatch("[^\n]+") do
-      sbar.remove(name)
-    end
-    restore_sessions()
-    recompute_workspace_state()
-    repaint_parent()
-    rebuild_session_items()
-    start_pulse_if_needed()
-    sbar.trigger("aerospace_workspace_change")
+local function log_debug(msg)
+  local f = io.open("/tmp/sketchybar-agent-status.log", "a")
+  if not f then return end
+  f:write(os.date("%Y-%m-%d %H:%M:%S"), " ", tostring(msg), "\n")
+  f:close()
+end
+
+local function remove_known_session_items()
+  for id, _ in pairs(state.sessions) do
+    pcall(sbar.remove, "agent_sessions." .. item_suffix(id))
+    pcall(sbar.remove, "agent_sessions_overflow." .. item_suffix(id))
   end
-)
+  session_items = {}
+  overflow_children = {}
+end
+
+local function refresh_from_pins(trigger_focus)
+  restore_sessions()
+  remove_known_session_items()
+  local restored = 0
+  for _, _ in pairs(state.sessions) do restored = restored + 1 end
+  recompute_workspace_state()
+  repaint_parent()
+  rebuild_session_items()
+  start_pulse_if_needed()
+  log_debug("refresh restored=" .. tostring(restored))
+end
+
+local function safe_refresh_from_pins()
+  local ok, err = pcall(refresh_from_pins)
+  if not ok then log_debug("ERROR " .. tostring(err)) end
+end
+
+local function schedule_pin_refresh(delay_s)
+  sbar.exec("sleep " .. tostring(delay_s or 10), function()
+    safe_refresh_from_pins()
+    schedule_pin_refresh(10)
+  end)
+end
+schedule_pin_refresh(1)
 
 -- Seed `focused_workspace` so the "no underline if already focused"
 -- rule works on the first hook fire after sketchybar startup. Without
