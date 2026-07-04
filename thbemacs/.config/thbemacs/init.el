@@ -15,6 +15,7 @@
 ;; Configure package archives — MELPA for community packages,
 ;; GNU ELPA and NonGNU ELPA for FSF-approved and non-FSF packages.
 (require 'package)
+(require 'seq)
 (setq package-archives
       '(("melpa"    . "https://melpa.org/packages/")
         ("gnu"      . "https://elpa.gnu.org/packages/")
@@ -22,8 +23,27 @@
 
 (package-initialize)
 
-;; Refresh package list on first launch (when archive cache is empty).
-(unless package-archive-contents
+;; Refresh package metadata on first launch, and periodically thereafter.
+;; MELPA prunes old build artifacts, so a stale archive cache can point at
+;; tarballs that no longer exist and make daemon startup fail while installing
+;; missing packages.
+(defvar thb/package-archive-refresh-interval (* 24 60 60)
+  "Seconds before the local package archive cache is considered stale.")
+
+(defun thb/package-archive-cache-stale-p ()
+  "Return non-nil when package archive metadata should be refreshed."
+  (let ((archive-dir (expand-file-name "archives" package-user-dir)))
+    (or (not package-archive-contents)
+        (not (file-directory-p archive-dir))
+        (seq-some
+         (lambda (file)
+           (time-less-p
+            (file-attribute-modification-time (file-attributes file))
+            (time-subtract (current-time)
+                           (seconds-to-time thb/package-archive-refresh-interval))))
+         (directory-files-recursively archive-dir "archive-contents\\'")))))
+
+(when (thb/package-archive-cache-stale-p)
   (package-refresh-contents))
 
 ;; use-package is built-in since Emacs 29. Ensure all packages install
@@ -1208,9 +1228,13 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 
 ;; Org-markdown-preview — Pandoc-driven realtime preview of org as markdown
 ;; rendered to HTML in an external browser. Useful for review-style reading.
-;; Not on MELPA — installed via :vc from upstream.
+;; This package is not on MELPA. It lives as a package-vc checkout in elpa/, but
+;; letting use-package reinstall/update it during daemon startup can prompt for
+;; "Overwrite previous checkout?" and abort non-interactive startup. Load the
+;; existing checkout instead; update it manually with package-vc when needed.
+(add-to-list 'load-path (expand-file-name "elpa/org-markdown-preview" user-emacs-directory))
 (use-package org-markdown-preview
-  :vc (:url "https://github.com/KarimAziev/org-markdown-preview" :rev :newest)
+  :ensure nil
   :commands org-markdown-preview)
 
 
@@ -2453,7 +2477,7 @@ content field is visible in the detail view."
     ;; Drop the prior, narrower hook entry if eval-buffer'd onto a live
     ;; Emacs (from before this rebind covered status faces).
     (when (fboundp 'thb/beads-recolor-row-faces)
-      (remove-hook 'enable-theme-functions #'thb/beads-recolor-row-faces))))
+      (remove-hook 'enable-theme-functions #'thb/beads-recolor-row-faces)))
 
 ;;; ============================================================
 ;;; Version Control + Local Overrides
