@@ -9,7 +9,7 @@ bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
-bd sync               # Sync with git
+bd export -o .beads/issues.jsonl  # Refresh git JSONL export
 ```
 
 <!-- BEGIN BEADS INTEGRATION -->
@@ -77,13 +77,15 @@ bd close bd-42 --reason "Completed" --json
    - `bd create "Found bug" --description="Details about what was found" -p 1 --deps discovered-from:<parent-id>`
 5. **Complete**: `bd close <id> --reason "Done"`
 
-### Auto-Sync
+### Git Sync
 
-bd automatically syncs with git:
+This repo uses bd 1.x with Dolt plus a portable JSONL export:
 
-- Exports to `.beads/issues.jsonl` after changes (5s debounce)
-- Imports from JSONL when newer (e.g., after `git pull`)
-- No manual export/import needed!
+- `.beads/config.yaml`, `.beads/metadata.json`, `.beads/README.md`, `.beads/hooks/`, and `.beads/issues.jsonl` are tracked in git.
+- Local databases, locks, backups, credentials, and runtime files stay ignored by `.beads/.gitignore`.
+- `export.auto` and `export.git-add` are enabled; bd refreshes/stages `.beads/issues.jsonl` after write commands.
+- Manual refresh if needed: `bd export --include-memories -o .beads/issues.jsonl`.
+- Full database sync uses Dolt: `bd dolt push` / `bd dolt pull`.
 
 ### Important Rules
 
@@ -106,7 +108,7 @@ For more details, see README.md and docs/QUICKSTART.md.
 - Only commit files you intentionally changed for the task; do not sweep up unrelated dirty files. Run `git status` and `git diff --stat` first to confirm scope.
 - If the change is not yet verified (config not reloaded, behaviour not confirmed, tests/linters not run where applicable), do not commit yet — finish verification first, then commit and push.
 - If a commit or push fails (e.g. pre-commit hook, non-fast-forward), surface the error and ask before force-pushing or bypassing hooks.
-- `bd sync` runs automatically; you generally don't need to invoke it manually before pushing, but if you've touched issues, a `bd sync` before `git push` won't hurt.
+- bd auto-export is enabled for `.beads/issues.jsonl`; if needed, refresh manually with `bd export --include-memories -o .beads/issues.jsonl` before pushing.
 
 ## Landing the Plane (Session Completion)
 
@@ -120,7 +122,8 @@ For more details, see README.md and docs/QUICKSTART.md.
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
+   bd export --include-memories -o .beads/issues.jsonl
+   bd dolt push
    git push
    git status  # MUST show "up to date with origin"
    ```
