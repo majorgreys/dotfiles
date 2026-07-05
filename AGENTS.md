@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+This project uses **bd** (beads) for issue tracking. Run `bd prime` for current workflow context; use `bd onboard` only when setting up agent instructions for a new repo.
 
 ## Quick Reference
 
