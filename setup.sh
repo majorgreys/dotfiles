@@ -78,16 +78,25 @@ if [[ -d "$JPEG_LIB_DIR" && ! -f "$JPEG_LIB_DIR/libjpeg.9.dylib" ]]; then
     fi
 fi
 
-# Link Emacs to Applications
-if [[ -d "/opt/homebrew/opt/emacs-plus@30/Emacs.app" ]]; then
-    ln -sf /opt/homebrew/opt/emacs-plus@30/Emacs.app /Applications/Emacs.app
-elif [[ -d "/usr/local/opt/emacs-plus@30/Emacs.app" ]]; then
-    ln -sf /usr/local/opt/emacs-plus@30/Emacs.app /Applications/Emacs.app
+# Link Emacs 31 to Applications. Replace stale real app bundles from older
+# Homebrew upgrades with a symlink so /opt/homebrew/bin/emacs does not prefer
+# an obsolete /Applications/Emacs.app wrapper.
+EMACS_APP=""
+if [[ -d "/opt/homebrew/opt/emacs-plus@31/Emacs.app" ]]; then
+    EMACS_APP="/opt/homebrew/opt/emacs-plus@31/Emacs.app"
+elif [[ -d "/usr/local/opt/emacs-plus@31/Emacs.app" ]]; then
+    EMACS_APP="/usr/local/opt/emacs-plus@31/Emacs.app"
+fi
+if [[ -n "$EMACS_APP" ]]; then
+    if [[ -d "/Applications/Emacs.app" && ! -L "/Applications/Emacs.app" ]]; then
+        mv /Applications/Emacs.app "/Applications/Emacs.app.stale-$(date +%Y%m%d%H%M%S)"
+    fi
+    ln -sfn "$EMACS_APP" /Applications/Emacs.app
 fi
 
 # Setup Emacs LaunchAgent
-EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
-EMACS_BIN="/opt/homebrew/bin/emacs"
+EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@31.plist"
+EMACS_BIN="${EMACS_APP:-/opt/homebrew/opt/emacs-plus@31/Emacs.app}/Contents/MacOS/Emacs"
 mkdir -p "$HOME/Library/LaunchAgents"
 
 if [[ ! -f "$EMACS_PLIST" ]] || ! /usr/libexec/PlistBuddy -c "Print :ProgramArguments" "$EMACS_PLIST" &>/dev/null; then

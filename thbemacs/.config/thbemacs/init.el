@@ -14,8 +14,13 @@
 
 ;; Configure package archives — MELPA for community packages,
 ;; GNU ELPA and NonGNU ELPA for FSF-approved and non-FSF packages.
+(when (version< emacs-version "31")
+  (error "thbemacs requires Emacs 31+; install emacs-plus@31 on macOS"))
+
 (require 'package)
 (require 'seq)
+;; Prefer Emacs 31's built-in markdown-ts-mode over any stale MELPA checkout.
+(setq package-load-list '((markdown-ts-mode nil) all))
 (setq package-archives
       '(("melpa"    . "https://melpa.org/packages/")
         ("gnu"      . "https://elpa.gnu.org/packages/")
@@ -1261,25 +1266,21 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 ;;; Markdown — tree-sitter
 ;;; ============================================================
 ;;
-;; Phase 1: bare switch from `markdown-mode' to `markdown-ts-mode'.
-;;
-;; The MELPA `markdown-ts-mode' (v0.3.0, by Rahul M. Juliato — soon to be
-;; superseded by an Emacs 31 built-in version) provides only fontification
-;; and iMenu over a tree-sitter parse. It exposes generic faces
-;; (`font-lock-keyword-face' for headings, `font-lock-string-face' for code,
-;; `bold' / `underline' / `link' for emphasis) and ships no keymap or
-;; editing commands. Display customisation (header scaling, code/quote
-;; backgrounds, checkbox prettification) and an org-style `SPC m' leader
-;; will be rebuilt on top of this in phase 2.
-;;
+;; Emacs 31 ships markdown-ts-mode in core. Keep our display/editing layer on
+;; top, but do not install the old MELPA package that used to provide it.
 ;; Requires BOTH the `markdown' and `markdown-inline' tree-sitter grammars;
-;; `thb/markdown-ensure-grammar' installs them on first load if missing.
+;; Emacs 31 can auto-install grammars, with our explicit installer as fallback.
 
 (use-package markdown-ts-mode
+  :ensure nil
   :mode (("\\.md\\'" . markdown-ts-mode)
          ("\\.markdown\\'" . markdown-ts-mode))
   :defer t
   :init
+  (when (boundp 'treesit-enabled-modes)
+    (setq treesit-enabled-modes t))
+  (when (boundp 'treesit-auto-install-grammar)
+    (setq treesit-auto-install-grammar 'always))
   (with-eval-after-load 'treesit
     (dolist (entry '((markdown
                       "https://github.com/tree-sitter-grammars/tree-sitter-markdown"
