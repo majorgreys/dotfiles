@@ -12,7 +12,7 @@ brew "starship"
 
 # Editors
 brew "libgccjit"
-brew "emacs-plus@30"
+brew "emacs-plus@31"
 brew "vim"
 brew "helix"
 
