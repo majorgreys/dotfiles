@@ -28,10 +28,10 @@
 
 (package-initialize)
 
-;; Refresh package metadata on first launch, and periodically thereafter.
-;; MELPA prunes old build artifacts, so a stale archive cache can point at
-;; tarballs that no longer exist and make daemon startup fail while installing
-;; missing packages.
+;; MELPA prunes old build artifacts, so stale archive metadata can point at
+;; tarballs that no longer exist.  Never refresh synchronously during startup,
+;; though: daemon startup should not depend on the network.  Use the command
+;; below when installing/updating packages or repairing a stale cache.
 (defvar thb/package-archive-refresh-interval (* 24 60 60)
   "Seconds before the local package archive cache is considered stale.")
 
@@ -48,8 +48,18 @@
                            (seconds-to-time thb/package-archive-refresh-interval))))
          (directory-files-recursively archive-dir "archive-contents\\'")))))
 
+(defun thb/package-refresh-if-stale (&optional force)
+  "Refresh package archive metadata when stale, or always with FORCE."
+  (interactive "P")
+  (if (or force (thb/package-archive-cache-stale-p))
+      (progn
+        (message "Refreshing package archives%s..."
+                 (if force " (forced)" " (stale cache)"))
+        (package-refresh-contents))
+    (message "Package archive metadata is fresh; use C-u to force refresh.")))
+
 (when (thb/package-archive-cache-stale-p)
-  (package-refresh-contents))
+  (message "Package archive metadata is stale; run M-x thb/package-refresh-if-stale to refresh."))
 
 ;; use-package is built-in since Emacs 29. Ensure all packages install
 ;; automatically — no need to manually M-x package-install.
@@ -540,7 +550,7 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
   (evil-collection-init
    '(corfu consult dired embark ibuffer info magit minibuffer
      org org-roam vertico which-key diff-hl eglot
-     go-mode help custom tab-bar))
+     help custom tab-bar))
 
   ;; eww buffers are read-only by intent (browsing the web / previewing
   ;; markdown).  Default `normal' state allows `i'/`a'/`o' to enter insert
@@ -647,8 +657,8 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
     "q"  '(:ignore t :which-key "quit")
     "qq" '(save-buffers-kill-terminal :which-key "close frame")
     "qQ" '(save-buffers-kill-emacs :which-key "kill daemon")
+    "qp" '(thb/package-refresh-if-stale :which-key "refresh packages")
     "qr" '((lambda () (interactive)
-              (package-refresh-contents)
               (load-file (expand-file-name "init.el" user-emacs-directory))
               (message "init.el reloaded"))
            :which-key "reload init.el")
@@ -1034,8 +1044,8 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 ;; org-roam provides the SQLite database that Vulpea builds on.
 ;; No direct org-roam UI config — Vulpea is the primary interface.
 (use-package org-roam
-  :after org
-  :config
+  :defer t
+  :init
   (setq org-roam-directory (expand-file-name "roam/" org-directory)))
 
 
@@ -1044,8 +1054,21 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 ;;; ============================================================
 
 ;; Vulpea v2 — primary note interface built on org-roam-db with async indexing.
+(defun thb/vulpea-start-autosync ()
+  "Load Vulpea and start its async database sync."
+  (interactive)
+  (require 'vulpea)
+  (unless (bound-and-true-p vulpea-db-autosync-mode)
+    (vulpea-db-autosync-mode 1)))
+
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            ;; Defer note DB/fswatch startup until after the first client can use
+            ;; the daemon.  First note command still loads Vulpea immediately.
+            (run-with-idle-timer 5 nil #'thb/vulpea-start-autosync)))
+
 (use-package vulpea
-  :after org
+  :commands (vulpea-find vulpea-insert vulpea-find-backlink vulpea-visit)
   :config
   ;; Index both roam notes and daily journal entries.
   (setq vulpea-db-sync-directories
@@ -1100,12 +1123,12 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 ;; Vulpea-UI — sidebar with outline, backlinks, stats widgets.
 ;; Loaded but not auto-opened; use SPC n S to toggle manually.
 (use-package vulpea-ui
-  :after vulpea)
+  :commands vulpea-ui-sidebar-toggle)
 
 ;; Vulpea-journal — daily journaling with calendar sidebar widget.
 ;; Template matches existing daily format in ~/org/daily/.
 (use-package vulpea-journal
-  :after (vulpea vulpea-ui)
+  :commands (vulpea-journal vulpea-journal-date)
   :config
   (setq vulpea-journal-default-template
         '(:file-name "daily/%Y-%m-%d.org"
@@ -1123,8 +1146,8 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 
 ;; Consult-vulpea — search vulpea notes with consult/ripgrep.
 (use-package consult-vulpea
-  :after vulpea
-  :config
+  :commands consult-vulpea-grep
+  :init
   (setq consult-vulpea-grep-func #'consult-ripgrep))
 
 
@@ -1247,9 +1270,25 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
 ;;; Go
 ;;; ============================================================
 
-(use-package go-mode
-  :mode "\\.go\\'"
-  :hook (go-mode . eglot-ensure)
+(defun thb/go-ts-common-setup ()
+  "Common settings for Go tree-sitter buffers."
+  (setq indent-tabs-mode t
+        tab-width 4)
+  (when (derived-mode-p 'go-ts-mode)
+    (setq-local go-ts-mode-indent-offset tab-width)))
+
+(use-package go-ts-mode
+  :ensure nil
+  :mode (("\\.go\\'" . go-ts-mode)
+         ("go\\.mod\\'" . go-mod-ts-mode))
+  :hook ((go-ts-mode . thb/go-ts-common-setup)
+         (go-ts-mode . eglot-ensure)
+         (go-mod-ts-mode . thb/go-ts-common-setup))
+  :init
+  (when (boundp 'treesit-enabled-modes)
+    (setq treesit-enabled-modes t))
+  (when (boundp 'treesit-auto-install-grammar)
+    (setq treesit-auto-install-grammar 'always))
   :config
   (with-eval-after-load 'eglot
     (setq-default eglot-workspace-configuration
