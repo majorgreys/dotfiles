@@ -20,6 +20,51 @@ print_error() { echo -e "${RED}✗ $1${NC}"; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+patch_emacs_plus_tap_for_homebrew_5() {
+    local brew_prefix tap_dir emacs_base
+
+    brew_prefix="$(brew --prefix)"
+    tap_dir="$brew_prefix/Library/Taps/d12frosted/homebrew-emacs-plus"
+    emacs_base="$tap_dir/Library/EmacsBase.rb"
+
+    [[ -f "$emacs_base" ]] || return 0
+
+    if grep -qE ':revision =>|:branch =>|:using =>' "$emacs_base"; then
+        print_warning "Patching emacs-plus tap for Homebrew 5 URL keyword syntax..."
+        perl -0pi -e 's/url EMACS_GIT_URL, :revision => rev/url EMACS_GIT_URL, revision: rev/g; s/url EmacsBase::EMACS_GIT_URL, :revision => rev/url EmacsBase::EMACS_GIT_URL, revision: rev/g; s/url EmacsBase::EMACS_GIT_URL, :branch => branch/url EmacsBase::EMACS_GIT_URL, branch: branch/g; s/url EMACS_GIT_URL, :branch => branch/url EMACS_GIT_URL, branch: branch/g; s/url \(\@\@urlResolver\.patch_url name\), :using => CopyDownloadStrategy/url @@urlResolver.patch_url(name), using: CopyDownloadStrategy/g' "$emacs_base"
+        print_success "emacs-plus tap patched"
+    fi
+}
+
+backup_existing_fontawesome_files() {
+    local font_dir backup_dir found_font font
+
+    font_dir="$HOME/Library/Fonts"
+    [[ -d "$font_dir" ]] || return 0
+
+    if brew list --cask font-fontawesome &>/dev/null; then
+        return 0
+    fi
+
+    found_font=0
+    for font in "$font_dir"/Font\ Awesome*; do
+        [[ -e "$font" ]] || continue
+        found_font=1
+        break
+    done
+
+    [[ "$found_font" -eq 1 ]] || return 0
+
+    backup_dir="$font_dir/.dotfiles-setup-backups/font-fontawesome-$(date +%Y%m%d%H%M%S)"
+    mkdir -p "$backup_dir"
+    print_warning "Moving existing Font Awesome files aside so Homebrew can install font-fontawesome..."
+    for font in "$font_dir"/Font\ Awesome*; do
+        [[ -e "$font" ]] || continue
+        mv "$font" "$backup_dir/"
+    done
+    print_success "Existing Font Awesome files backed up to $backup_dir"
+}
+
 print_header "majorgreys dev setup for macos"
 
 # Check macOS
@@ -52,14 +97,31 @@ print_header "Installing Brewfile packages"
 
 # Detect dotfiles directory (script location)
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DOOM="${SETUP_INSTALL_DOOM:-0}"
+if [[ "$INSTALL_DOOM" == "true" || "$INSTALL_DOOM" == "yes" ]]; then
+    INSTALL_DOOM=1
+fi
 if [[ -f "$DOTFILES_DIR/Brewfile" ]]; then
+    # emacs-plus@31's tap has shipped formula helper code that is unreadable on
+    # newer Homebrew releases (`url` now accepts option keywords, not a second
+    # positional hash). Pre-tap and patch the helper before `brew bundle` parses
+    # the formula. Disable auto-update for this bundle run so Homebrew does not
+    # immediately overwrite the local compatibility patch.
+    if grep -q 'emacs-plus@31' "$DOTFILES_DIR/Brewfile"; then
+        brew tap d12frosted/emacs-plus
+        patch_emacs_plus_tap_for_homebrew_5
+    fi
+    if grep -q 'font-fontawesome' "$DOTFILES_DIR/Brewfile"; then
+        backup_existing_fontawesome_files
+    fi
+
     # Ensure libgccjit is working before brew bundle (required by emacs-plus native compilation)
     if brew list libgccjit &>/dev/null && ! brew test libgccjit &>/dev/null 2>&1; then
         print_warning "Reinstalling libgccjit (test failed)..."
         brew reinstall libgccjit
     fi
     print_warning "Running 'brew bundle install'..."
-    cd "$DOTFILES_DIR" && brew bundle install
+    cd "$DOTFILES_DIR" && HOMEBREW_NO_AUTO_UPDATE=1 brew bundle install
     print_success "Brewfile packages installed"
 else
     print_error "Brewfile not found at $DOTFILES_DIR/Brewfile"
@@ -88,10 +150,27 @@ elif [[ -d "/usr/local/opt/emacs-plus@31/Emacs.app" ]]; then
     EMACS_APP="/usr/local/opt/emacs-plus@31/Emacs.app"
 fi
 if [[ -n "$EMACS_APP" ]]; then
-    if [[ -d "/Applications/Emacs.app" && ! -L "/Applications/Emacs.app" ]]; then
-        mv /Applications/Emacs.app "/Applications/Emacs.app.stale-$(date +%Y%m%d%H%M%S)"
+    EMACS_APP_LINK="/Applications/Emacs.app"
+
+    if [[ -d "$EMACS_APP_LINK" && ! -L "$EMACS_APP_LINK" ]]; then
+        STALE_EMACS_APP="/Applications/Emacs.app.stale-$(date +%Y%m%d%H%M%S)"
+        if mv "$EMACS_APP_LINK" "$STALE_EMACS_APP" 2>/dev/null; then
+            print_success "Moved stale Emacs.app to $STALE_EMACS_APP"
+        else
+            print_warning "Cannot replace $EMACS_APP_LINK without elevated permissions; linking Emacs in ~/Applications instead"
+            mkdir -p "$HOME/Applications"
+            EMACS_APP_LINK="$HOME/Applications/Emacs.app"
+        fi
     fi
-    ln -sfn "$EMACS_APP" /Applications/Emacs.app
+
+    if ln -sfn "$EMACS_APP" "$EMACS_APP_LINK" 2>/dev/null; then
+        print_success "Linked Emacs.app -> $EMACS_APP_LINK"
+    else
+        print_warning "Cannot write $EMACS_APP_LINK; linking Emacs in ~/Applications instead"
+        mkdir -p "$HOME/Applications"
+        ln -sfn "$EMACS_APP" "$HOME/Applications/Emacs.app"
+        print_success "Linked Emacs.app -> $HOME/Applications/Emacs.app"
+    fi
 fi
 
 # Setup Emacs LaunchAgent
@@ -198,7 +277,11 @@ fi
 print_header "Setting up dotfiles with stow"
 
 # Stow configs for installed tools
-configs=("fish" "ghostty" "tmux" "vim" "helix" "doom" "thbemacs" "starship" "aerospace" "sketchybar" "org-autosync")
+configs=("fish" "ghostty" "tmux" "vim" "helix")
+if [[ "$INSTALL_DOOM" == "1" ]]; then
+    configs+=("doom")
+fi
+configs+=("thbemacs" "starship" "aerospace" "sketchybar" "org-autosync")
 for config in "${configs[@]}"; do
     if [[ -d "$DOTFILES_DIR/$config" ]]; then
         print_warning "Stowing $config config..."
@@ -292,31 +375,36 @@ fi
 # ===================================
 # Setup Doom Emacs
 # ===================================
-print_header "Setting up Doom Emacs"
+if [[ "$INSTALL_DOOM" == "1" ]]; then
+    print_header "Setting up Doom Emacs"
 
-DOOM_DIR="$HOME/.config/emacs"
-DOOM_BIN="$DOOM_DIR/bin/doom"
+    DOOM_DIR="$HOME/.config/emacs"
+    DOOM_BIN="$DOOM_DIR/bin/doom"
 
-if [[ -d "$DOOM_DIR" ]]; then
-    print_success "Doom Emacs already cloned"
+    if [[ -d "$DOOM_DIR" ]]; then
+        print_success "Doom Emacs already cloned"
+    else
+        print_warning "Cloning Doom Emacs..."
+        git clone --depth 1 https://github.com/doomemacs/doomemacs "$DOOM_DIR"
+        print_success "Doom Emacs cloned"
+    fi
+
+    # Add doom to PATH for current session
+    export PATH="$HOME/.config/emacs/bin:$PATH"
+
+    # Install/sync Doom
+    if [[ -f "$HOME/.config/emacs/.local/straight/repos/straight.el/README.md" ]]; then
+        print_success "Doom already installed"
+        print_warning "Running 'doom sync'..."
+        "$DOOM_BIN" sync --yes
+    else
+        print_warning "Running 'doom install'..."
+        "$DOOM_BIN" install
+        print_success "Doom installed"
+    fi
 else
-    print_warning "Cloning Doom Emacs..."
-    git clone --depth 1 https://github.com/doomemacs/doomemacs "$DOOM_DIR"
-    print_success "Doom Emacs cloned"
-fi
-
-# Add doom to PATH for current session
-export PATH="$HOME/.config/emacs/bin:$PATH"
-
-# Install/sync Doom
-if [[ -f "$HOME/.config/emacs/.local/straight/repos/straight.el/README.md" ]]; then
-    print_success "Doom already installed"
-    print_warning "Running 'doom sync'..."
-    "$DOOM_BIN" sync --yes
-else
-    print_warning "Running 'doom install'..."
-    "$DOOM_BIN" install
-    print_success "Doom installed"
+    print_header "Skipping Doom Emacs"
+    print_warning "Doom setup disabled; set SETUP_INSTALL_DOOM=1 to re-enable"
 fi
 
 # ===================================
@@ -367,45 +455,47 @@ if [[ -f "$THBEMACS_TEMPLATE" ]]; then
     fi
 fi
 
-# Generate Doom Emacs LaunchAgent from template
-DOOM_PLIST="$HOME/Library/LaunchAgents/com.thb.doom-emacs.plist"
-DOOM_TEMPLATE="$DOTFILES_DIR/templates/com.thb.doom-emacs.plist.template"
-if [[ -f "$DOOM_TEMPLATE" ]]; then
-    print_warning "Generating Doom Emacs LaunchAgent..."
-    mkdir -p "$HOME/Library/LaunchAgents"
-    mkdir -p "$HOME/.local/share/doom-emacs"
-    sed "s|__HOME__|$HOME|g" "$DOOM_TEMPLATE" > "$DOOM_PLIST"
-    print_success "Doom Emacs LaunchAgent generated"
+if [[ "$INSTALL_DOOM" == "1" ]]; then
+    # Generate Doom Emacs LaunchAgent from template
+    DOOM_PLIST="$HOME/Library/LaunchAgents/com.thb.doom-emacs.plist"
+    DOOM_TEMPLATE="$DOTFILES_DIR/templates/com.thb.doom-emacs.plist.template"
+    if [[ -f "$DOOM_TEMPLATE" ]]; then
+        print_warning "Generating Doom Emacs LaunchAgent..."
+        mkdir -p "$HOME/Library/LaunchAgents"
+        mkdir -p "$HOME/.local/share/doom-emacs"
+        sed "s|__HOME__|$HOME|g" "$DOOM_TEMPLATE" > "$DOOM_PLIST"
+        print_success "Doom Emacs LaunchAgent generated"
 
-    # Unload old homebrew plist if it exists
-    OLD_EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
-    if launchctl list org.gnu.emacs.daemon &>/dev/null; then
-        print_warning "Unloading old Emacs daemon..."
-        launchctl unload "$OLD_EMACS_PLIST" 2>/dev/null || true
+        # Unload old homebrew plist if it exists
+        OLD_EMACS_PLIST="$HOME/Library/LaunchAgents/homebrew.mxcl.emacs-plus@30.plist"
+        if launchctl list org.gnu.emacs.daemon &>/dev/null; then
+            print_warning "Unloading old Emacs daemon..."
+            launchctl unload "$OLD_EMACS_PLIST" 2>/dev/null || true
+        fi
+
+        if launchctl list com.thb.doom-emacs &>/dev/null; then
+            print_warning "Reloading Doom Emacs daemon..."
+            launchctl unload "$DOOM_PLIST"
+            launchctl load "$DOOM_PLIST"
+            print_success "Doom Emacs daemon reloaded"
+        else
+            print_warning "Starting Doom Emacs daemon..."
+            launchctl load "$DOOM_PLIST"
+            print_success "Doom Emacs daemon started"
+        fi
     fi
 
-    if launchctl list com.thb.doom-emacs &>/dev/null; then
-        print_warning "Reloading Doom Emacs daemon..."
-        launchctl unload "$DOOM_PLIST"
-        launchctl load "$DOOM_PLIST"
-        print_success "Doom Emacs daemon reloaded"
-    else
-        print_warning "Starting Doom Emacs daemon..."
-        launchctl load "$DOOM_PLIST"
-        print_success "Doom Emacs daemon started"
-    fi
-fi
-
-# ===================================
-# Run doom doctor
-# ===================================
-print_header "Running Doom Doctor"
-if [[ -x "$DOOM_BIN" ]]; then
-    print_warning "Checking Doom configuration..."
-    if "$DOOM_BIN" doctor; then
-        print_success "doom doctor completed!"
-    else
-        print_warning "doom doctor found issues - please review above"
+    # ===================================
+    # Run doom doctor
+    # ===================================
+    print_header "Running Doom Doctor"
+    if [[ -x "$DOOM_BIN" ]]; then
+        print_warning "Checking Doom configuration..."
+        if "$DOOM_BIN" doctor; then
+            print_success "doom doctor completed!"
+        else
+            print_warning "doom doctor found issues - please review above"
+        fi
     fi
 fi
 
@@ -494,7 +584,11 @@ print_header "Setup Complete!"
 echo -e "${GREEN}Your development environment is ready!${NC}\n"
 
 echo "Installed components:"
-echo "  ✓ Editors: Emacs, Doom, Neovim, Helix"
+if [[ "$INSTALL_DOOM" == "1" ]]; then
+    echo "  ✓ Editors: Emacs, Doom, Neovim, Helix"
+else
+    echo "  ✓ Editors: Emacs, Neovim, Helix"
+fi
 echo "  ✓ Python $(python3 --version 2>/dev/null | cut -d' ' -f2 || echo 'installed') + uv, pyright, ruff, black"
 echo "  ✓ Go $(go version 2>/dev/null | cut -d' ' -f3 || echo 'installed') + gopls"
 echo "  ✓ Rust $(rustc --version 2>/dev/null | cut -d' ' -f2 || echo 'installed') + rust-analyzer"
