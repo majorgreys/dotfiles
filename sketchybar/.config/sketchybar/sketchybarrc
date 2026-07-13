@@ -38,8 +38,7 @@ require("status.clock")
 require("status.battery")
 require("status.volume")
 require("status.wifi")
--- Temporarily disabled: agent_status is wedging Sketchybar IPC under live Pi event load.
--- require("agent_status")
+require("agent_status")
 
 sbar.end_config()
 
