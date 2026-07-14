@@ -137,7 +137,13 @@ local function add_overflow_child(name, props)
 end
 
 local function item_suffix(id)
-  return tostring(id or ""):gsub("[^%w_]", "_"):sub(1, 8)
+  -- Use the FULL sanitized id as the bar-item key. Truncating to 8 chars
+  -- could collide two session ids sharing an 8-char prefix, silently
+  -- overwriting one row (session ids are ULID/UUID-length; item names
+  -- have no practical length limit). Parens truncate gsub's
+  -- (string, count) multi-return to the string alone so the count can't
+  -- leak into a caller's concat/name.
+  return (tostring(id or ""):gsub("[^%w_]", "_"))
 end
 
 -- Hover-driven popup with a small close grace so a cursor sweep from
