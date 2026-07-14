@@ -8,7 +8,7 @@
 --
 -- Layout under $CONFIG_DIR/lua/:
 --   bar.lua             — bar shell + Catppuccin palette + fonts.
---   workspaces.lua      — AeroSpace pills 1..10 with agent-state dot.
+--   workspaces.lua      — active AeroSpace workspace + focused window title.
 --   status/clock.lua    — right-side clock.
 --   status/battery.lua  — right-side battery.
 --   status/volume.lua   — right-side volume.

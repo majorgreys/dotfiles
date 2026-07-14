@@ -3,9 +3,6 @@
 Claude Code plugin that pushes per-session agent state into a
 SbarLua-driven sketchybar config.
 
-- Workspace pill dot — colored by the most-urgent agent state of any
-  session pinned to that workspace (green=running, yellow=needs-attention,
-  dim=idle, hidden=no agent activity).
 - `agent_sessions` dropdown — bordered pill on the right side with
   count + popup listing every active session, grouped by state. Click a
   row to jump to that AeroSpace workspace.
@@ -47,7 +44,7 @@ in Lua against [SbarLua](https://github.com/FelixKratz/SbarLua):
 └── lua/
     ├── bar.lua                 # bar shell + Catppuccin palette + fonts
     ├── state.lua               # shared mutable state (sessions table)
-    ├── workspaces.lua          # AeroSpace pills 1..10
+    ├── workspaces.lua          # active AeroSpace workspace + focused window title
     ├── status/                 # right-side status items
     │   ├── clock.lua
     │   ├── battery.lua
@@ -126,10 +123,9 @@ on stdin. The helper:
    Tail with `tail -f ~/.local/state/sketchybar/helper.log`.
 
 The Lua handler in `agent_status.lua` updates an in-memory sessions
-table, recomputes the per-workspace aggregate, repaints the parent
-pill's count + color, and rebuilds the popup. No on-disk state for the
-dropdown survives a sketchybar reload — the next Claude hook event
-re-populates it.
+table, repaints the parent pill's count + color, and rebuilds the
+popup. No on-disk state for the dropdown survives a sketchybar reload —
+the next Claude hook event re-populates it.
 
 ## Manually nudging state
 

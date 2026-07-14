@@ -67,7 +67,9 @@ sbar.default({
   padding_right = 2,
 })
 
--- Custom event consumed by the workspace pills and agent_status to
--- repaint themselves when sketchybar-set-state writes new state.
+-- Custom events consumed by the workspace/focus item and agent_status
+-- to repaint themselves when AeroSpace or sketchybar-set-state writes
+-- new state.
 sbar.add("event", "agent_state_change")
 sbar.add("event", "aerospace_workspace_change")
+sbar.add("event", "aerospace_focus_change")

@@ -4,14 +4,14 @@
     "name": "Tahir Butt"
   },
   "metadata": {
-    "description": "Sketchybar workspace agent-state for Claude Code",
+    "description": "Sketchybar agent-session dropdown state for Claude Code",
     "version": "1.0.1"
   },
   "plugins": [
     {
       "name": "agent-status",
       "source": "./plugins/agent-status",
-      "description": "Lights up sketchybar workspace pills based on Claude Code activity (yellow=running, red=needs-attention)."
+      "description": "Updates the sketchybar agent_sessions dropdown based on Claude Code activity."
     }
   ]
 }
