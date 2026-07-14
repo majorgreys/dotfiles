@@ -439,6 +439,24 @@ local function rebuild_session_items()
   -- STATE_COLORS; the name text itself stays plain fg (dim if detached)
   -- so the dot — not colored text — carries the signal.
   local now = os.time()
+
+  -- Uniform row width so a row's background (and its hover highlight)
+  -- spans the FULL popup width, not just the text. Fonts.popup is
+  -- monospaced, so char-count * a slightly-generous advance safely
+  -- overestimates the widest row's pixel width: the widest row never
+  -- clips, and every shorter row gets trailing fill so all highlights
+  -- are the same full-width rectangle. (`·` in meta is 2 UTF-8 bytes so
+  -- #s overcounts slightly — that only pads, never clips.)
+  local ROW_CHAR_PX   = 9.5  -- advance per char for Fonts.popup (15pt mono)
+  local ROW_DOT_ZONE  = 34   -- dot padding_left + glyph + padding_right
+  local ROW_RIGHT_PAD = 16
+  local max_len = 0
+  for _, entry in ipairs(sorted_sessions()) do
+    local n = #row_name(entry.session)
+    if n > max_len then max_len = n end
+  end
+  local row_width = math.floor(ROW_DOT_ZONE + max_len * ROW_CHAR_PX + ROW_RIGHT_PAD)
+
   for _, entry in ipairs(sorted_sessions()) do
     local s = entry.session
     local zmx = s.zmx_session or ""
@@ -465,6 +483,7 @@ local function rebuild_session_items()
 
     local row = add_overflow_child(child, {
       position = "popup." .. parent.name,
+      width    = row_width,
       icon = {
         string        = "\u{25cf}",
         font          = Fonts.dot,
@@ -476,28 +495,33 @@ local function rebuild_session_items()
         string        = row_label,
         font          = Fonts.popup,
         color         = label_color,
+        align         = "left",
         padding_left  = 0,
         padding_right = 14,
       },
+      -- Background is ALWAYS drawn (transparent at rest) so it — not the
+      -- default row height — sets the popup row stride. That makes the
+      -- hover highlight exactly fill the row: stride == highlight height,
+      -- no top/bottom gap. Hover only swaps the color.
       background = {
         color         = Colors.transparent,
         corner_radius = 4,
-        height        = 22,
-        drawing       = "off",
+        height        = 28,
+        drawing       = "on",
       },
       click_script = make_click_script(s, detached),
     })
-    -- Hovering a row keeps the popup open and lightens the row
+    -- Hovering a row keeps the popup open and lightens the full-row
     -- background (popup_hover) as an affordance that it's clickable
     -- (click focuses the window / reopens a detached session). Leaving
-    -- clears the highlight and schedules a close like the parent.
+    -- restores the transparent (still-drawn) background.
     row:subscribe("mouse.entered", function()
       open_overflow_popup()
-      row:set({ background = { color = Colors.popup_hover, drawing = "on" } })
+      row:set({ background = { color = Colors.popup_hover } })
     end)
     row:subscribe("mouse.exited", function()
       schedule_close_overflow_popup()
-      row:set({ background = { color = Colors.transparent, drawing = "off" } })
+      row:set({ background = { color = Colors.transparent } })
     end)
   end
 
