@@ -1,5 +1,6 @@
--- Right-side battery. Polled every 60 seconds; also repaints on
--- power_source_change and system_woke. Glyphs from MDI Nerd Font.
+-- Right-side low-battery indicator. It appears only while discharging below
+-- 25%; charging and adequately charged states stay out of the bar.
+-- Polled every 60 seconds and repainted on power_source_change/system_woke.
 
 local sbar = require("sketchybar")
 require("bar")
@@ -9,6 +10,7 @@ local battery = sbar.add("item", "battery", {
   position      = "right",
   icon          = { font = "FiraCode Nerd Font Mono:Regular:16.0" },
   label         = { drawing = false },
+  drawing       = false,
   update_freq   = 60,
   padding_left  = 8,
   padding_right = 8,
@@ -16,12 +18,10 @@ local battery = sbar.add("item", "battery", {
 
 local set_tooltip = tooltip.attach(battery, { initial = "Battery: ?" })
 
-local function pick(percent, charging)
-  if charging then return "󰂄", Colors.green end
-  if percent <= 20 then return "󰂃", Colors.red end
-  if percent <= 33 then return "󰁻", Colors.yellow end
-  if percent <= 66 then return "󰁾", Colors.fg end
-  return "󰁹", Colors.fg
+local LOW_BATTERY_PERCENT = 25
+
+local function low_battery_color(percent)
+  return percent <= 10 and Colors.red or Colors.yellow
 end
 
 -- pmset prints either "<n>:<m> remaining" or "(no estimate)"; we only
@@ -38,20 +38,21 @@ end
 local function repaint()
   sbar.exec("pmset -g batt", function(out)
     if not out or out == "" then
-      battery:set({ icon = { string = "󱉝", color = Colors.dim } })
-      set_tooltip("Battery: unavailable")
+      battery:set({ drawing = false })
       return
     end
     local percent = tonumber(out:match("(%d+)%%"))
     local charging = out:find("AC Power", 1, true) ~= nil
-    if not percent then
-      battery:set({ icon = { string = "󱉝", color = Colors.dim } })
-      set_tooltip("Battery: unavailable")
+    if not percent or charging or percent >= LOW_BATTERY_PERCENT then
+      battery:set({ drawing = false })
       return
     end
-    local icon, color = pick(percent, charging)
-    battery:set({ icon = { string = icon, color = color } })
-    set_tooltip(format_tooltip(percent, charging, out))
+
+    battery:set({
+      drawing = true,
+      icon = { string = "󰂃", color = low_battery_color(percent) },
+    })
+    set_tooltip(format_tooltip(percent, false, out))
   end)
 end
 
