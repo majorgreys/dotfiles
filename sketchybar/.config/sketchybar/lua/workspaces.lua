@@ -1,8 +1,8 @@
 -- workspaces.lua — compact AeroSpace focus indicator.
 --
--- Renders only the active AeroSpace workspace number, followed by the
--- focused window title. Focus changes are pushed by AeroSpace callbacks;
--- the initial render queries AeroSpace asynchronously.
+-- Renders the active workspace marker and focused window title as separate
+-- Sketchybar items. Keeping the marker out of the title's text layout avoids
+-- mixing a fixed-width icon with a dynamically measured label.
 --
 -- IMPORTANT: this runs inside SbarLua's long-lived event loop. Do not use
 -- io.popen/os.execute here; all shell reads must go through async sbar.exec.
@@ -10,22 +10,24 @@
 local sbar = require("sketchybar")
 require("bar")
 
--- Hotload preserves existing items across reloads. Remove the former
--- one-item-per-workspace indicators so a config reload leaves only the
--- compact focus pill.
+-- Hotload preserves existing items across reloads. Remove both the original
+-- ten workspace items and older one-item focus indicator before rebuilding.
 for i = 1, 10 do
   pcall(sbar.remove, "space." .. i)
 end
+pcall(sbar.remove, "space.active")
 
--- Sketchybar's dynamic-width measurement can round a glyph advance down and
--- crop the final character. The title font is monospaced, so reserve 10 pt
--- per source byte plus a small margin; UTF-8 titles only receive extra room.
-local function label_width(text)
-  return math.max(160, #text * 10 + 12)
-end
+local underline = {
+  color         = Colors.accent_bg,
+  height        = 2,
+  corner_radius = 0,
+  y_offset      = -14,
+}
 
-local item = sbar.add("item", "space.active", {
+local workspace_item = sbar.add("item", "space.active.workspace", {
   position = "left",
+  padding_left = 0,
+  padding_right = 0,
   icon = {
     string        = "–",
     padding_left  = 0,
@@ -35,22 +37,24 @@ local item = sbar.add("item", "space.active", {
     color         = Colors.fg,
     font          = Fonts.bold,
   },
+  label = { drawing = false },
+  background = underline,
+  click_script = "aerospace workspace-back-and-forth",
+})
+
+local title_item = sbar.add("item", "space.active.title", {
+  position = "left",
+  padding_left = 0,
+  padding_right = 0,
+  icon = { drawing = false },
   label = {
     string        = "| No focused window",
     padding_left  = 0,
     padding_right = 6,
     color         = Colors.fg,
     font          = Fonts.regular,
-    max_chars     = 80,
-    width         = label_width("| No focused window"),
   },
-  background = {
-    color         = Colors.accent_bg,
-    height        = 2,
-    corner_radius = 0,
-    y_offset      = -14,
-  },
-  width        = "dynamic",
+  background = underline,
   click_script = "aerospace workspace-back-and-forth",
 })
 
@@ -77,11 +81,8 @@ local function paint(workspace, title)
   if workspace == "" then workspace = "–" end
   if title == "" then title = "No focused window" end
 
-  local label = "| " .. title
-  item:set({
-    icon = { string = workspace },
-    label = { string = label, width = label_width(label) },
-  })
+  workspace_item:set({ icon = { string = workspace } })
+  title_item:set({ label = { string = "| " .. title } })
 end
 
 local function refresh_from_workspace(workspace)
@@ -114,17 +115,20 @@ local function refresh_from_focused_window(fallback_workspace)
   end)
 end
 
-item:subscribe("aerospace_workspace_change", function(env)
+local function on_workspace_change(env)
   refresh_from_focused_window(env.FOCUSED_WORKSPACE)
-end)
+end
 
-item:subscribe("aerospace_focus_change", function(env)
+local function on_focus_change(env)
   if env.AEROSPACE_WORKSPACE and env.AEROSPACE_WORKSPACE ~= "" then
     refresh_from_workspace(env.AEROSPACE_WORKSPACE)
     return
   end
 
   refresh_from_focused_window(nil)
-end)
+end
+
+workspace_item:subscribe("aerospace_workspace_change", on_workspace_change)
+workspace_item:subscribe("aerospace_focus_change", on_focus_change)
 
 refresh_from_focused_window(nil)
