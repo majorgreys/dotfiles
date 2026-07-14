@@ -213,9 +213,12 @@ local function prune_dead_sessions()
   end
 end
 
+-- Workstream is deliberately omitted: the session name already carries
+-- it (e.g. `dotfiles.6c17` on the `dotfiles` workstream), so repeating
+-- it as ` · dotfiles` is pure noise. Only the meta that isn't already
+-- in the name (claimed issue, todo, workers, gates) is appended.
 local function compact_meta(s)
   local parts = {}
-  if s.workstream and s.workstream ~= "" then table.insert(parts, s.workstream) end
   if s.claimed_issue and s.claimed_issue ~= "" then table.insert(parts, s.claimed_issue) end
   local pending = tonumber(s.todo_pending) or 0
   local active = tonumber(s.todo_in_progress) or 0
@@ -413,6 +416,12 @@ local function rebuild_session_items()
       or (s.zmx_session and s.zmx_session ~= "" and s.zmx_session)
     local base
     if display then
+      -- Strip the `pizza.` zmx session prefix for display. The helper's
+      -- zmx_short is meant to drop $ZMX_SESSION_PREFIX, but that env var
+      -- isn't always visible to the agent process, so the full
+      -- `pizza.dotfiles.6c17` can leak through. This gsub is idempotent:
+      -- an already-stripped short name has no `pizza.` to remove.
+      display = display:gsub("^pizza%.", "")
       -- display_zmx wraps in parens for detached. Pass zmx_session to
       -- the attached-map lookup since `zmx l` reports full names.
       base = display_zmx(display, zmx_attached, s.zmx_session)
@@ -425,9 +434,10 @@ local function rebuild_session_items()
   -- Every session becomes a vertical popup row under the parent pizza
   -- pill — nothing is drawn inline anymore. With more agents running
   -- (and a camera-notch eating horizontal bar space), a single hover
-  -- dropdown scales far better than a row of inline pills. The state
-  -- signal that inline pills carried via colored underlines is instead
-  -- carried by the row label color (STATE_COLORS); detached rows dim.
+  -- dropdown scales far better than a row of inline pills. State is
+  -- shown by a filled status dot (icon) before the name, colored by
+  -- STATE_COLORS; the name text itself stays plain fg (dim if detached)
+  -- so the dot — not colored text — carries the signal.
   local now = os.time()
   for _, entry in ipairs(sorted_sessions()) do
     local s = entry.session
@@ -447,30 +457,43 @@ local function rebuild_session_items()
       st = "idle"
     end
 
-    local label_color
-    if detached then
-      label_color = Colors.dim
-    else
-      label_color = STATE_COLORS[st] or Colors.fg
-    end
+    -- Detached sessions dim the whole row (dot + name) since their
+    -- terminal is gone; attached rows get a state-colored dot and
+    -- full-strength name text.
+    local dot_color   = detached and Colors.dim_dark or (STATE_COLORS[st] or Colors.fg)
+    local label_color = detached and Colors.dim or Colors.fg
 
     local row = add_overflow_child(child, {
       position = "popup." .. parent.name,
-      icon = { drawing = false },
+      icon = {
+        string        = "\u{25cf}",
+        font          = Fonts.dot,
+        color         = dot_color,
+        padding_left  = 12,
+        padding_right = 8,
+      },
       label = {
         string        = row_label,
         font          = Fonts.popup,
         color         = label_color,
-        padding_left  = 12,
-        padding_right = 12,
+        padding_left  = 0,
+        padding_right = 14,
+      },
+      background = {
+        color         = Colors.transparent,
+        corner_radius = 4,
+        height        = 22,
+        drawing       = "off",
       },
       click_script = make_click_script(s, detached),
     })
-    -- Hovering popup rows keeps the popup open and provides a subtle
-    -- highlight. Leaving the row schedules a close like the parent.
+    -- Hovering a row keeps the popup open and lightens the row
+    -- background (popup_hover) as an affordance that it's clickable
+    -- (click focuses the window / reopens a detached session). Leaving
+    -- clears the highlight and schedules a close like the parent.
     row:subscribe("mouse.entered", function()
       open_overflow_popup()
-      row:set({ background = { color = Colors.pill_bg, drawing = "on" } })
+      row:set({ background = { color = Colors.popup_hover, drawing = "on" } })
     end)
     row:subscribe("mouse.exited", function()
       schedule_close_overflow_popup()
