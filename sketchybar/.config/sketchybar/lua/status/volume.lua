@@ -45,7 +45,9 @@ local function query_and_repaint(env)
   end
   -- Fall back to a full query.
   sbar.exec("osascript -e 'output volume of (get volume settings)'", function(vol_out)
-    local vol = tonumber((vol_out or ""):gsub("%s+$", ""))
+    -- Parens truncate gsub's (string, count) multi-return to one value;
+    -- otherwise the count becomes tonumber's `base` arg (out of range).
+    local vol = tonumber(((vol_out or ""):gsub("%s+$", "")))
     if not vol then
       volume:set({ icon = { string = "󰕿", color = Colors.dim } })
       return
