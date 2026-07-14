@@ -762,11 +762,27 @@ local function log_debug(msg)
 end
 
 local function remove_known_session_items()
-  for id, _ in pairs(state.sessions) do
-    pcall(sbar.remove, "agent_sessions_overflow." .. item_suffix(id))
+  -- Steady-state pin refresh: remove the rows we actually tracked last
+  -- cycle. That set includes rows for sessions that have since VANISHED
+  -- (crash/kill with no SessionEnd "clear" event — noticed only by this
+  -- 10s pin refresh). The old restored-ids-only sweep removed rows just
+  -- for the freshly-restored ids and leaked the vanished ones until the
+  -- next --reload. clear_* remove exactly the tracked items and reset the
+  -- tables (so rebuild_session_items' own clear_* below is a no-op).
+  local had_tracked = #session_items > 0 or #overflow_children > 0
+  clear_session_items()
+  clear_overflow_children()
+  -- Post-`--reload` hotload only: our Lua tracking tables start empty but
+  -- sketchybar preserved the old bar items across the reload, so clear_*
+  -- found nothing. Sweep the restored ids so rebuild can cleanly re-add
+  -- them without colliding with a preserved item. Guarded on had_tracked
+  -- so steady-state refreshes don't re-remove already-cleared rows (which
+  -- would spam `[!] Remove: Item ... not found` every cycle).
+  if not had_tracked then
+    for id, _ in pairs(state.sessions) do
+      pcall(sbar.remove, "agent_sessions_overflow." .. item_suffix(id))
+    end
   end
-  session_items = {}
-  overflow_children = {}
 end
 
 local function refresh_from_pins(trigger_focus)
