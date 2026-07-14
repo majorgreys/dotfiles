@@ -450,20 +450,23 @@ local function rebuild_session_items()
   local ROW_CHAR_PX   = 9.5  -- advance per char for Fonts.popup (15pt mono)
   local ROW_DOT_ZONE  = 34   -- dot padding_left + glyph + padding_right
   local ROW_RIGHT_PAD = 16
-  local max_len = 0
+  -- One pass: compute each row's label once (reused when the row is
+  -- built below) and track the widest for the shared row width.
+  local rows, max_len = {}, 0
   for _, entry in ipairs(sorted_sessions()) do
-    local n = #row_name(entry.session)
-    if n > max_len then max_len = n end
+    local label = row_name(entry.session)
+    rows[#rows + 1] = { entry = entry, label = label }
+    if #label > max_len then max_len = #label end
   end
   local row_width = math.floor(ROW_DOT_ZONE + max_len * ROW_CHAR_PX + ROW_RIGHT_PAD)
 
-  for _, entry in ipairs(sorted_sessions()) do
+  for _, r in ipairs(rows) do
+    local entry, row_label = r.entry, r.label
     local s = entry.session
     local zmx = s.zmx_session or ""
     local detached = zmx ~= "" and not zmx_attached[zmx]
     local short = item_suffix(entry.id)
     local child = "agent_sessions_overflow." .. short
-    local row_label = row_name(s)
 
     -- needs-attention is only a live signal when it's fresh AND the
     -- user hasn't already focused that workspace since the hook fire;
