@@ -763,7 +763,6 @@ end
 
 local function remove_known_session_items()
   for id, _ in pairs(state.sessions) do
-    pcall(sbar.remove, "agent_sessions." .. item_suffix(id))
     pcall(sbar.remove, "agent_sessions_overflow." .. item_suffix(id))
   end
   session_items = {}
