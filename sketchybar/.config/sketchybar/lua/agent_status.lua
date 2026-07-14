@@ -30,13 +30,13 @@ local STATE_COLORS = {
   stale               = Colors.dim_dark,
 }
 
--- Pill is a bracket of three items: robot icon, status dot, count.
--- Splitting them lets each carry its own font/color and lets the dot
--- sit between robot and count. The popup attaches to the robot item.
+-- Pill is a bracket of two items: pizza icon and count. Splitting them
+-- lets each carry its own font/color. The popup attaches to the pizza
+-- item.
 --
 -- Items added with position=right are prepended to the right group,
 -- so the LAST item added appears leftmost. Add right-to-left order:
--- count first, then dot, then robot — yielding visual [robot dot count].
+-- count first, then pizza — yielding visual [pizza count].
 local count_item = sbar.add("item", "agent_sessions_count", {
   position = "right",
   icon = { string = "" },
@@ -49,16 +49,16 @@ local count_item = sbar.add("item", "agent_sessions_count", {
   },
 })
 
--- The parent pill (robot icon + count) doubles as the trigger for the
--- overflow popup. Hovering anywhere on the parent or count_item opens
--- a vertical dropdown listing every session that isn't shown inline
--- (idle, detached, stale needs-attention). MacBooks with a camera
--- notch have limited horizontal bar real estate; the popup keeps the
--- full list available without claiming inline space.
+-- The parent pill (pizza icon + count) doubles as the trigger for the
+-- session popup. Hovering anywhere on the parent or count_item opens a
+-- vertical dropdown listing EVERY session — active and idle alike.
+-- MacBooks with a camera notch have limited horizontal bar real estate,
+-- so nothing is drawn inline; the popup holds the full list and the
+-- pizza matches the `pizza.*` zmx/pi session prefix.
 local parent = sbar.add("item", "agent_sessions", {
   position = "right",
   icon = {
-    string        = "󰚩",
+    string        = "󰎈",
     font          = Fonts.icon,
     color         = Colors.fg,
     padding_left  = 10,
@@ -78,41 +78,6 @@ local parent = sbar.add("item", "agent_sessions", {
   },
 })
 
--- 2px magenta underline applied to session bar items in `needs-attention`
--- state. Marks the agent that is waiting for a response; replaces the
--- former parent-pill bracket underline.
-local NEEDS_ATTENTION_BG = {
-  color         = Colors.magenta,
-  corner_radius = 0,
-  height        = 2,
-  y_offset      = -14,
-  border_width  = 0,
-}
-
--- 2px yellow underline applied while the cursor is over a session.
--- Same shape as NEEDS_ATTENTION_BG so hover and rest-attention states
--- coexist visually (single bg slot — exit restores the rest state).
-local HOVER_BG = {
-  color         = Colors.yellow,
-  corner_radius = 0,
-  height        = 2,
-  y_offset      = -14,
-  border_width  = 0,
-}
-
--- Rest-state bg for sessions without a needs-attention underline.
--- Transparent + full-height so the entire pill column is a hover
--- surface (sketchybar uses the drawn bg rect for mouse hit-testing
--- when drawing=on — a 2px underline alone has only a 2px hover zone).
-local REST_BG_NONE = {
-  drawing       = true,
-  color         = Colors.transparent,
-  height        = 28,
-  y_offset      = 0,
-  corner_radius = 0,
-  border_width  = 0,
-}
-
 -- needs-attention underline is suppressed for sessions whose last
 -- recorded state-change is older than this. State files persist the
 -- LAST hook fire, so abandoned sessions sit in `needs-attention`
@@ -125,20 +90,13 @@ local NEEDS_ATTENTION_TTL_S = 300
 local STALE_TTL_S = 60 * 60
 local HARD_STALE_TTL_S = 24 * 60 * 60
 
--- 2px green underline for sessions in `running` state. The pulse loop
--- (start_pulse_if_needed) fades the alpha between BRIGHT and DIM with
--- sketchybar's `--animate sin` interpolation — the line never fully
--- disappears, just breathes in intensity. Slower + never-off = more
--- calming than a hard on/off blink.
+-- Bright/dim green the parent pizza icon fades between while any
+-- session is running/tooling. The pulse loop (start_pulse_if_needed)
+-- interpolates icon.color between these with sketchybar's `--animate
+-- sin` — the color never fully drops out, it just breathes in
+-- intensity. Slower + never-off = more calming than a hard on/off blink.
 local RUNNING_BG_BRIGHT_HEX = "0xff44bc44"  -- Colors.green, full alpha
 local RUNNING_BG_DIM_HEX    = "0x4044bc44"  -- ~25% alpha
-local RUNNING_BG = {
-  color         = Colors.green,
-  corner_radius = 0,
-  height        = 2,
-  y_offset      = -14,
-  border_width  = 0,
-}
 -- One direction of the fade, in seconds. Total cycle = 2 * this.
 local PULSE_HALF_S = 1.2
 
@@ -202,7 +160,7 @@ local function schedule_close_overflow_popup()
   end)
 end
 
--- Hovering the robot icon or the count both open the popup. The
+-- Hovering the pizza icon or the count both open the popup. The
 -- in-popup rows also subscribe to mouse.entered/exited in
 -- rebuild_session_items so a cursor sweep across rows keeps the popup
 -- open.
@@ -464,123 +422,49 @@ local function rebuild_session_items()
     return base .. compact_meta(s)
   end
 
-  -- Split sessions into inline (currently active) and overflow
-  -- (everything else). "Currently active" means attached AND either:
-  --   - state == running, OR
-  --   - state == needs-attention with a fresh, unviewed hook fire
-  -- (the same predicate that drives the magenta underline). Stale or
-  -- already-viewed needs-attention falls to overflow so the bar shows
-  -- only the agents actually waiting on the user right now.
+  -- Every session becomes a vertical popup row under the parent pizza
+  -- pill — nothing is drawn inline anymore. With more agents running
+  -- (and a camera-notch eating horizontal bar space), a single hover
+  -- dropdown scales far better than a row of inline pills. The state
+  -- signal that inline pills carried via colored underlines is instead
+  -- carried by the row label color (STATE_COLORS); detached rows dim.
   local now = os.time()
-  local inline = {}
-  local overflow = {}
   for _, entry in ipairs(sorted_sessions()) do
     local s = entry.session
     local zmx = s.zmx_session or ""
     local detached = zmx ~= "" and not zmx_attached[zmx]
-    local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
-    local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
-    local st = effective_state(s, now)
-    local active = st == "submitted"
-      or st == "running"
-      or st == "tooling"
-      or st == "error"
-      or (st == "needs-attention" and fresh and unviewed)
-    local record = { entry = entry, s = s, detached = detached }
-    if active and not detached then
-      table.insert(inline, record)
-    else
-      table.insert(overflow, record)
-    end
-  end
-
-  -- Inline pills (position=right). Order matters: sketchybar prepends
-  -- right-positioned items, so the FIRST add ends up rightmost (closest
-  -- to the parent pill). We iterate in sorted order so most-urgent sits
-  -- adjacent to the parent.
-  for i, r in ipairs(inline) do
-    local s = r.s
-    local label = row_name(s)
-    local short = item_suffix(r.entry.id)
-    local child = "agent_sessions." .. short
-
-    -- The rightmost session (first in sorted order, sitting next to
-    -- the parent pill) gets extra label padding so there's a visible
-    -- gap before the robot icon.
-    local is_rightmost = i == 1
-    local label_right_pad = is_rightmost and 16 or 8
-
-    -- needs-attention underline applies only when:
-    --   1. session state is needs-attention,
-    --   2. last state-change is within NEEDS_ATTENTION_TTL_S, and
-    --   3. user hasn't focused this session's workspace since the
-    --      state-change (viewed_at < updated_at).
-    -- (3) clears the underline as soon as the user switches into the
-    -- agent's workspace; the next Stop hook re-arms it. (detached is
-    -- already filtered out at split time.)
-    local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
-    local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
-    local st = effective_state(s, now)
-    local attention_active = st == "needs-attention" and fresh and unviewed
-    -- Running/tooling/submitted sessions get a live underline as their rest
-    -- bg so the pulse loop only animates color for running/tooling phases
-    -- (geometry stays put). Hover/exit still swap to/from HOVER_BG.
-    local rest_bg
-    if attention_active then
-      rest_bg = NEEDS_ATTENTION_BG
-    elseif st == "running" or st == "tooling" or st == "submitted" then
-      rest_bg = {
-        color         = STATE_COLORS[st] or Colors.green,
-        corner_radius = 0,
-        height        = 2,
-        y_offset      = -14,
-        border_width  = 0,
-      }
-    else
-      rest_bg = REST_BG_NONE
-    end
-
-    local item = add_session_item(child, {
-      position = "right",
-      icon = { drawing = false },
-      label = {
-        string        = label,
-        font          = Fonts.popup,
-        color         = Colors.fg,
-        padding_left  = 6,
-        padding_right = label_right_pad,
-      },
-      background   = rest_bg,
-      click_script = make_click_script(s, false),
-    })
-
-    item:subscribe("mouse.entered", function()
-      item:set({ background = HOVER_BG })
-    end)
-    item:subscribe("mouse.exited", function()
-      item:set({ background = rest_bg })
-    end)
-  end
-
-  -- Overflow popup children (vertical list under the parent pill). Each
-  -- row clicks through to the same workspace/spawn action as an inline
-  -- pill. Detached rows get parens via display_zmx in row_name.
-  for _, r in ipairs(overflow) do
-    local s = r.s
-    local short = item_suffix(r.entry.id)
+    local short = item_suffix(entry.id)
     local child = "agent_sessions_overflow." .. short
     local row_label = row_name(s)
+
+    -- needs-attention is only a live signal when it's fresh AND the
+    -- user hasn't already focused that workspace since the hook fire;
+    -- once viewed/stale it reads as plain idle in the list.
+    local fresh = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
+    local unviewed = (s.viewed_at or 0) < (s.updated_at or 0)
+    local st = effective_state(s, now)
+    if st == "needs-attention" and not (fresh and unviewed) then
+      st = "idle"
+    end
+
+    local label_color
+    if detached then
+      label_color = Colors.dim
+    else
+      label_color = STATE_COLORS[st] or Colors.fg
+    end
+
     local row = add_overflow_child(child, {
       position = "popup." .. parent.name,
       icon = { drawing = false },
       label = {
         string        = row_label,
         font          = Fonts.popup,
-        color         = r.detached and Colors.dim or Colors.fg,
+        color         = label_color,
         padding_left  = 12,
         padding_right = 12,
       },
-      click_script = make_click_script(s, r.detached),
+      click_script = make_click_script(s, detached),
     })
     -- Hovering popup rows keeps the popup open and provides a subtle
     -- highlight. Leaving the row schedules a close like the parent.
@@ -594,9 +478,10 @@ local function rebuild_session_items()
     end)
   end
 
-  -- If there's nothing to overflow, make sure the popup isn't held
-  -- open by a stale draw flag.
-  if #overflow == 0 then
+  -- No sessions at all — make sure the popup isn't held open by a
+  -- stale draw flag.
+  local has_any = next(state.sessions) ~= nil
+  if not has_any then
     parent:set({ popup = { drawing = "off" } })
   end
 end
@@ -610,64 +495,41 @@ local function repaint_parent()
   })
 end
 
--- Calm heartbeat for inline `running` sessions. Each tick uses
--- sketchybar's --animate sin to smoothly fade the underline alpha
--- toward the next target color over PULSE_HALF_S, then schedules
--- itself for another tick after the fade finishes. The bg geometry
--- stays constant (set by rebuild_session_items); only color is
--- animated, so the underline never disappears — it just breathes.
+-- Calm heartbeat for the parent pizza icon while an agent is actively
+-- running/tooling. Sessions no longer render inline, so the parent icon
+-- is the only live menu-bar signal — breathing its color between BRIGHT
+-- and DIM green (via --animate sin) conveys "work in progress" at a
+-- glance without a hard blink. We only pulse when the TOP aggregate
+-- state is running/tooling, so a higher-urgency state (error,
+-- needs-attention) keeps its steady color instead of a green pulse.
 local pulse_alive = false
 
-local function any_running_inline(zmx_attached)
-  for _, s in pairs(state.sessions) do
-    local st = effective_state(s, os.time())
-    if st == "running" or st == "tooling" then
-      local zmx = s.zmx_session or ""
-      local detached = zmx ~= "" and not zmx_attached[zmx]
-      if not detached then return true end
-    end
-  end
-  return false
+local function running_is_top()
+  local _, top_state = aggregate_state()
+  return top_state == "running" or top_state == "tooling"
 end
 
-local function animate_pulse_color(name, hex, frames)
+local function animate_parent_icon(hex, frames)
   sbar.exec(string.format(
-    "sketchybar --animate sin %d --set %s background.color=%s",
-    frames, name, hex
+    "sketchybar --animate sin %d --set %s icon.color=%s",
+    frames, parent.name, hex
   ))
-end
-
-local function paint_running_pulse(target_hex, frames)
-  local zmx_attached = read_zmx_attached()
-  for id, s in pairs(state.sessions) do
-    local st = effective_state(s, os.time())
-    if st == "running" or st == "tooling" then
-      local zmx = s.zmx_session or ""
-      local detached = zmx ~= "" and not zmx_attached[zmx]
-      if not detached then
-        local name = "agent_sessions." .. item_suffix(id)
-        animate_pulse_color(name, target_hex, frames)
-      end
-    end
-  end
 end
 
 local function start_pulse_if_needed()
   if pulse_alive then return end
-  if not any_running_inline(read_zmx_attached()) then return end
+  if not running_is_top() then return end
   pulse_alive = true
-  -- rebuild_session_items leaves running pills at full BRIGHT alpha,
-  -- so the first tick should fade toward DIM (bright=true → not bright
-  -- = false → DIM).
   local bright = true
   local frames = math.floor(PULSE_HALF_S * 60)
   local function tick()
-    if not any_running_inline(read_zmx_attached()) then
+    if not running_is_top() then
       pulse_alive = false
+      repaint_parent()  -- restore the steady state color
       return
     end
     bright = not bright
-    paint_running_pulse(bright and RUNNING_BG_BRIGHT_HEX or RUNNING_BG_DIM_HEX, frames)
+    animate_parent_icon(bright and RUNNING_BG_BRIGHT_HEX or RUNNING_BG_DIM_HEX, frames)
     sbar.exec(string.format("sleep %.2f", PULSE_HALF_S), tick)
   end
   tick()
