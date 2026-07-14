@@ -3,7 +3,7 @@
 Minimal i3/sway-style status bar for macOS, driven by AeroSpace.
 
 - Left-side AeroSpace focus pill: active workspace number + focused window title.
-- Right-side modules: wifi, volume, battery, clock — Nerd Font glyphs, no labels.
+- Right-side modules: battery and clock — Nerd Font glyphs, no labels.
 - Plain black background, Pragmata Mono Liga.
 - Drop-in plugin slot at `~/.config/sketchybar/plugins.d/*.sh` (sourced by
   `sketchybarrc` after the base setup). See the `agent-status` package for

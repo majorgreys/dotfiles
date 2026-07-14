@@ -11,8 +11,6 @@
 --   workspaces.lua      — active AeroSpace workspace + focused window title.
 --   status/clock.lua    — right-side clock.
 --   status/battery.lua  — right-side battery.
---   status/volume.lua   — right-side volume.
---   status/wifi.lua     — right-side wifi.
 --   agent_status.lua   — agent_sessions parent + popup, push-driven
 --                         from sketchybar-set-state hook events.
 
@@ -36,8 +34,6 @@ require("bar")
 require("workspaces")
 require("status.clock")
 require("status.battery")
-require("status.volume")
-require("status.wifi")
 require("agent_status")
 
 sbar.end_config()
