@@ -27,6 +27,7 @@ Colors = {
   pill_border = 0xff4a4f69,  -- bright black, subtle outline
   popup_bg    = 0xff13162a,  -- barely-elevated; border carries the edge
   popup_border= 0xff4a4f69,
+  popup_hover = 0xff2b3352,  -- lightened elevation for a hovered popup row
   transparent = 0x00000000,
 }
 
