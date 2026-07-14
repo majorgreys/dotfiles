@@ -17,6 +17,11 @@ for i = 1, 10 do
   pcall(sbar.remove, "space." .. i)
 end
 
+-- Core Text trims trailing ASCII spaces before Sketchybar measures dynamic
+-- text. A non-breaking space reserves a final glyph-width, preventing the
+-- rightmost title glyph from being clipped by the rounded background.
+local TRAILING_PAD = "\194\160"
+
 local item = sbar.add("item", "space.active", {
   position = "left",
   icon = {
@@ -29,7 +34,7 @@ local item = sbar.add("item", "space.active", {
     font          = Fonts.bold,
   },
   label = {
-    string        = "| No focused window ",
+    string        = "| No focused window" .. TRAILING_PAD,
     padding_left  = 0,
     padding_right = 12,
     color         = Colors.fg,
@@ -42,6 +47,8 @@ local item = sbar.add("item", "space.active", {
     border_width  = 1,
     height        = 26,
     corner_radius = 8,
+    padding_left  = 2,
+    padding_right = 2,
   },
   width        = "dynamic",
   click_script = "aerospace workspace-back-and-forth",
@@ -72,7 +79,7 @@ local function paint(workspace, title)
 
   item:set({
     icon = { string = workspace },
-    label = { string = "| " .. title .. " " },
+    label = { string = "| " .. title .. TRAILING_PAD },
   })
 end
 
