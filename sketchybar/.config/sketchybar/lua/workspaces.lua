@@ -21,15 +21,15 @@ local item = sbar.add("item", "space.active", {
   position = "left",
   icon = {
     string        = "–",
-    padding_left  = 2,
-    padding_right = 8,
+    padding_left  = 10,
+    padding_right = 6,
     width         = 20,
     align         = "center",
-    color         = Colors.accent_fg,
+    color         = Colors.fg,
     font          = Fonts.bold,
   },
   label = {
-    string        = "No focused window",
+    string        = "| No focused window",
     padding_left  = 0,
     padding_right = 10,
     color         = Colors.fg,
@@ -72,7 +72,7 @@ local function paint(workspace, title)
 
   item:set({
     icon = { string = workspace },
-    label = { string = title },
+    label = { string = "| " .. title },
   })
 end
 
