@@ -17,6 +17,13 @@ for i = 1, 10 do
   pcall(sbar.remove, "space." .. i)
 end
 
+-- Sketchybar's dynamic-width measurement can round a glyph advance down and
+-- crop the final character. The title font is monospaced, so reserve 10 pt
+-- per source byte plus a small margin; UTF-8 titles only receive extra room.
+local function label_width(text)
+  return math.max(160, #text * 10 + 12)
+end
+
 local item = sbar.add("item", "space.active", {
   position = "left",
   icon = {
@@ -35,6 +42,7 @@ local item = sbar.add("item", "space.active", {
     color         = Colors.fg,
     font          = Fonts.regular,
     max_chars     = 80,
+    width         = label_width("| No focused window"),
   },
   background = {
     color         = Colors.accent_bg,
@@ -69,9 +77,10 @@ local function paint(workspace, title)
   if workspace == "" then workspace = "–" end
   if title == "" then title = "No focused window" end
 
+  local label = "| " .. title
   item:set({
     icon = { string = workspace },
-    label = { string = "| " .. title },
+    label = { string = label, width = label_width(label) },
   })
 end
 
