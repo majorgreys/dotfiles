@@ -107,28 +107,15 @@ local PULSE_HALF_S = 1.2
 -- attention prompt needed).
 local focused_workspace = nil
 
--- Track current per-session bar items so we can wipe them cleanly on
+-- Track current per-session popup rows so we can wipe them cleanly on
 -- rebuild. sketchybar has no "remove by prefix" lua primitive.
-local session_items = {}
 local overflow_children = {}
-
-local function clear_session_items()
-  for _, name in ipairs(session_items) do
-    sbar.remove(name)
-  end
-  session_items = {}
-end
 
 local function clear_overflow_children()
   for _, name in ipairs(overflow_children) do
     sbar.remove(name)
   end
   overflow_children = {}
-end
-
-local function add_session_item(name, props)
-  table.insert(session_items, name)
-  return sbar.add("item", name, props)
 end
 
 local function add_overflow_child(name, props)
@@ -407,7 +394,6 @@ end
 
 local function rebuild_session_items()
   prune_dead_sessions()
-  clear_session_items()
   clear_overflow_children()
 
   -- Each session labels itself with its zmx session (preferred —
@@ -694,7 +680,7 @@ end)
 
 -- Remove any per-session bar items left over from a prior run.
 -- Sketchybar's hotload preserves items across reloads, but our
--- `session_items` table starts empty, so old items would otherwise
+-- `overflow_children` table starts empty, so old items would otherwise
 -- become orphans (rendered, but not tracked or rebuilt). After cleanup,
 -- restore state.sessions from on-disk pin files (written by the helper
 -- on every hook fire) so the bar shows the previously-known agents
@@ -773,14 +759,14 @@ local function remove_known_session_items()
   -- (crash/kill with no SessionEnd "clear" event — noticed only by this
   -- 10s pin refresh). The old restored-ids-only sweep removed rows just
   -- for the freshly-restored ids and leaked the vanished ones until the
-  -- next --reload. clear_* remove exactly the tracked items and reset the
-  -- tables (so rebuild_session_items' own clear_* below is a no-op).
-  local had_tracked = #session_items > 0 or #overflow_children > 0
-  clear_session_items()
+  -- next --reload. clear_overflow_children removes exactly the tracked
+  -- items and resets the table (so rebuild_session_items' own clear below
+  -- is a no-op).
+  local had_tracked = #overflow_children > 0
   clear_overflow_children()
-  -- Post-`--reload` hotload only: our Lua tracking tables start empty but
-  -- sketchybar preserved the old bar items across the reload, so clear_*
-  -- found nothing. Sweep the restored ids so rebuild can cleanly re-add
+  -- Post-`--reload` hotload only: our Lua tracking table starts empty but
+  -- sketchybar preserved the old bar items across the reload, so the clear
+  -- above found nothing. Sweep the restored ids so rebuild can cleanly re-add
   -- them without colliding with a preserved item. Guarded on had_tracked
   -- so steady-state refreshes don't re-remove already-cleared rows (which
   -- would spam `[!] Remove: Item ... not found` every cycle).
