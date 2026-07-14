@@ -107,6 +107,18 @@ local PULSE_HALF_S = 1.2
 -- attention prompt needed).
 local focused_workspace = nil
 
+-- Cache of `zmx list` output parsed into session-name -> attached?. The
+-- bar CANNOT call io.popen synchronously: SbarLua installs
+-- signal(SIGCHLD, SIG_IGN) process-wide, under which pclose()'s wait4
+-- blocks until EVERY child has exited. SbarLua perpetually keeps other
+-- forked children alive (the pin-refresh sleep chain, the icon-pulse
+-- loop, other sbar.exec calls), so a synchronous io.popen here would
+-- hang wait4 forever and wedge the single-threaded event loop. The list
+-- is fetched asynchronously via sbar.exec inside refresh_from_pins and
+-- the parsed map cached here; rebuild_session_items and the event
+-- handlers read this cache. See parse_zmx_list below.
+local zmx_attached = {}
+
 -- Track current per-session popup rows so we can wipe them cleanly on
 -- rebuild. sketchybar has no "remove by prefix" lua primitive.
 local overflow_children = {}
@@ -163,14 +175,26 @@ for _, item in ipairs({ parent, count_item }) do
 end
 
 -- Pin file directory; declared early so dedupe_sessions can remove
--- loser files. restore_sessions further down references the same path.
+-- loser files. parse_pins / PIN_JQ_CMD further down reference the same path.
 local PIN_DIR = (os.getenv("XDG_STATE_HOME") or (os.getenv("HOME") .. "/.local/state"))
   .. "/sketchybar/sessions"
 
+-- Cache of agent_pid -> alive?. Refreshed asynchronously by the `ps`
+-- probe in refresh_from_pins. We must NOT check liveness with a live
+-- os.execute: SbarLua's os.execute wrapper flips SIGCHLD to SIG_DFL
+-- around system(), and any sbar.exec child that exits during that window
+-- becomes an unreapable zombie (observed: zombies climbing every
+-- refresh until the process table fills). A cached lookup does no fork.
+local pid_liveness = {}
+
 local function pid_alive(pid)
   if not pid or pid == 0 then return true end
-  local result = os.execute(string.format("kill -0 %d 2>/dev/null", pid))
-  return result == 0 or result == true
+  local v = pid_liveness[pid]
+  -- Unknown pid (never probed -- e.g. a session just added by an
+  -- agent_state_change hook) is assumed alive so it is never pruned
+  -- before its first probe.
+  if v == nil then return true end
+  return v
 end
 
 local function effective_state(s, now)
@@ -312,18 +336,19 @@ end
 -- Map zmx-session-name → attached? (true when at least one client is
 -- connected). Sessions present in claude state but missing from the
 -- map are considered detached.
-local function read_zmx_attached()
-  local handle = io.popen("zmx list 2>/dev/null")
-  if not handle then return {} end
+local function parse_zmx_list(text)
+  -- Pure parser for `zmx list` output -> map of session-name -> attached?.
+  -- Never io.popen here (SbarLua's SIGCHLD=SIG_IGN makes pclose's wait4
+  -- block forever while other SbarLua children are alive); the output is
+  -- captured asynchronously via sbar.exec and this parses the string.
   local m = {}
-  for line in handle:lines() do
+  for line in tostring(text or ""):gmatch("[^\n]+") do
     local name = line:match("name=(%S+)") or line:match("^(%S+)%s+pid=")
     local clients = line:match("clients=(%d+)")
     if name and clients then
       m[name] = tonumber(clients) > 0
     end
   end
-  handle:close()
   return m
 end
 
@@ -402,7 +427,9 @@ local function rebuild_session_items()
   -- with $ZMX_SESSION_PREFIX stripped — e.g. "d.claude.ops.fedf" →
   -- "claude.ops.fedf") so the bar isn't cluttered with the namespace
   -- prefix users already know belongs to them.
-  local zmx_attached = read_zmx_attached()
+  --
+  -- zmx_attached is the module-level cache refreshed asynchronously in
+  -- refresh_from_pins (see parse_zmx_list for why not io.popen here).
   local function row_name(s)
     local display = (s.zmx_short and s.zmx_short ~= "" and s.zmx_short)
       or (s.zmx_session and s.zmx_session ~= "" and s.zmx_session)
@@ -688,23 +715,14 @@ end)
 -- and waiting for each session to fire its next hook. PIN_DIR is
 -- declared up-top so dedupe_sessions can also see it.
 
-local function restore_sessions()
+local function parse_pins(tsv)
+  -- Pure parser for the pin-file jq @tsv output -> state.sessions. The jq
+  -- pipeline runs asynchronously via sbar.exec in refresh_from_pins;
+  -- doing it here with io.popen would hang the event loop (see
+  -- parse_zmx_list: SbarLua's SIGCHLD=SIG_IGN makes pclose's wait4 block
+  -- until every SbarLua child exits, which never happens).
   state.sessions = {}
-  local cmd = string.format(
-    "find %q -maxdepth 1 -name '*.json' -print0 2>/dev/null | "
-    .. "xargs -0 jq -r '[.session_id, (.workspace // \"\"), (.window_id // \"\"), "
-    .. "(.state // \"\"), (.cwd // \"\"), (.zmx_session // \"\"), "
-    .. "(.zmx_short // \"\"), (.agent // \"\"), ((.updated_at // 0)|tostring), "
-    .. "((.agent_pid // 0)|tostring), (.tool_name // \"\"), (.workstream // \"\"), "
-    .. "(.claimed_issue // \"\"), (.claimed_title // \"\"), ((.todo_pending // 0)|tostring), "
-    .. "((.todo_in_progress // 0)|tostring), ((.venom_active // 0)|tostring), "
-    .. "((.venom_waiting // 0)|tostring), ((.venom_failed // 0)|tostring), "
-    .. "((.human_gates // 0)|tostring)] | @tsv' 2>/dev/null",
-    PIN_DIR
-  )
-  local handle = io.popen(cmd)
-  if not handle then return end
-  for line in handle:lines() do
+  for line in tostring(tsv or ""):gmatch("[^\n]+") do
     local fields = {}
     for value in (line .. "\t"):gmatch("([^\t]*)\t") do
       table.insert(fields, value)
@@ -713,7 +731,9 @@ local function restore_sessions()
       fields[1], fields[2], fields[3], fields[4], fields[5], fields[6], fields[7], fields[8], fields[9], fields[10]
     if sid and sid ~= "" and ws ~= "" and st ~= "" then
       local agent_pid = tonumber(pid) or 0
-      if pid_alive(agent_pid) then
+      -- Restore every valid record; dead-pid eviction is handled async by
+      -- prune_dead_sessions via the pid_liveness cache (the ps probe in
+      -- refresh_from_pins) so no os.execute runs here.
         state.sessions[sid] = {
           workspace        = ws,
           window_id        = win,
@@ -735,14 +755,8 @@ local function restore_sessions()
           human_gates      = tonumber(fields[20]) or 0,
           updated_at       = tonumber(ts) or 0,
         }
-      else
-        -- Agent process is gone; drop the pin file so this session
-        -- doesn't get restored on the next sketchybar reload either.
-        os.remove(PIN_DIR .. "/" .. sid .. ".json")
-      end
     end
   end
-  handle:close()
   dedupe_sessions()
 end
 
@@ -777,16 +791,81 @@ local function remove_known_session_items()
   end
 end
 
-local function refresh_from_pins(trigger_focus)
-  restore_sessions()
-  remove_known_session_items()
-  local restored = 0
-  for _, _ in pairs(state.sessions) do restored = restored + 1 end
-  recompute_workspace_state()
-  repaint_parent()
-  rebuild_session_items()
-  start_pulse_if_needed()
-  log_debug("refresh restored=" .. tostring(restored))
+-- jq pipeline over the pin files -> one @tsv record per session. Run
+-- asynchronously via sbar.exec (NEVER io.popen -- see parse_zmx_list).
+local PIN_JQ_CMD = string.format(
+  "find %q -maxdepth 1 -name '*.json' -print0 2>/dev/null | "
+  .. "xargs -0 jq -r '[.session_id, (.workspace // \"\"), (.window_id // \"\"), "
+  .. "(.state // \"\"), (.cwd // \"\"), (.zmx_session // \"\"), "
+  .. "(.zmx_short // \"\"), (.agent // \"\"), ((.updated_at // 0)|tostring), "
+  .. "((.agent_pid // 0)|tostring), (.tool_name // \"\"), (.workstream // \"\"), "
+  .. "(.claimed_issue // \"\"), (.claimed_title // \"\"), ((.todo_pending // 0)|tostring), "
+  .. "((.todo_in_progress // 0)|tostring), ((.venom_active // 0)|tostring), "
+  .. "((.venom_waiting // 0)|tostring), ((.venom_failed // 0)|tostring), "
+  .. "((.human_gates // 0)|tostring)] | @tsv' 2>/dev/null",
+  PIN_DIR
+)
+
+-- Guard against overlapping async refreshes. Holds the os.time() the
+-- current chain started; reset to 0 when it finishes. A chain that dies
+-- without resetting (e.g. a callback that never fires) auto-expires
+-- after 30s so refreshes can never wedge permanently.
+local refresh_started_at = 0
+
+-- Async pin refresh: read pins (jq) then zmx-attached (zmx list), both
+-- via sbar.exec so no synchronous pclose/wait4 runs in the event loop,
+-- then rebuild the rows. Chained because the row build needs both.
+local function refresh_from_pins()
+  local now = os.time()
+  if refresh_started_at ~= 0 and (now - refresh_started_at) < 30 then
+    return
+  end
+  refresh_started_at = now
+  sbar.exec(PIN_JQ_CMD, function(pins_out)
+    local ok, err = pcall(parse_pins, type(pins_out) == "string" and pins_out or "")
+    if not ok then log_debug("ERROR pins " .. tostring(err)) end
+    -- One async probe carries BOTH liveness (ps over every tracked
+    -- agent_pid) and zmx attach state (zmx list), split on a sentinel.
+    -- Running them via sbar.exec (not os.execute / io.popen) keeps
+    -- SIGCHLD=SIG_IGN intact so children auto-reap -- no zombie leak.
+    local pids = {}
+    for _, s in pairs(state.sessions) do
+      local p = tonumber(s.agent_pid) or 0
+      if p ~= 0 then pids[#pids + 1] = tostring(p) end
+    end
+    local ps_cmd = (#pids > 0)
+      and ("ps -o pid= -p " .. table.concat(pids, ","))
+      or "true"
+    local probe = ps_cmd .. " 2>/dev/null; echo '===PROBESEP==='; zmx list 2>/dev/null"
+    sbar.exec(probe, function(probe_out)
+      local ok2, err2 = pcall(function()
+        probe_out = type(probe_out) == "string" and probe_out or ""
+        local sep = probe_out:find("===PROBESEP===", 1, true)
+        local ps_txt = sep and probe_out:sub(1, sep - 1) or ""
+        local zmx_txt = sep and probe_out:sub(sep + 14) or probe_out
+        -- Rebuild the liveness cache: every pid we PROBED is alive iff ps
+        -- listed it. Un-probed pids stay unknown (assumed alive).
+        pid_liveness = {}
+        local alive = {}
+        for n in ps_txt:gmatch("%d+") do alive[tonumber(n)] = true end
+        for _, p in ipairs(pids) do
+          local n = tonumber(p)
+          pid_liveness[n] = alive[n] == true
+        end
+        zmx_attached = parse_zmx_list(zmx_txt)
+        remove_known_session_items()
+        local restored = 0
+        for _, _ in pairs(state.sessions) do restored = restored + 1 end
+        recompute_workspace_state()
+        repaint_parent()
+        rebuild_session_items()  -- prune_dead_sessions runs here on fresh pid_liveness
+        start_pulse_if_needed()
+        log_debug("refresh restored=" .. tostring(restored))
+      end)
+      if not ok2 then log_debug("ERROR build " .. tostring(err2)) end
+      refresh_started_at = 0
+    end)
+  end)
 end
 
 local function safe_refresh_from_pins()
