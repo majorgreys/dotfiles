@@ -1,70 +1,122 @@
--- workspaces.lua — i3-style AeroSpace workspace pills 1..10.
+-- workspaces.lua — compact AeroSpace focus indicator.
 --
--- Each pill renders the workspace number; a focused-workspace pill
--- gets an accent background. Agent-state per workspace is shown via
--- the per-session items next to the agent_sessions parent pill, not
--- via dots on workspace numbers.
+-- Renders only the active AeroSpace workspace number, followed by the
+-- focused window title. Focus changes are pushed by AeroSpace callbacks;
+-- the initial render queries AeroSpace asynchronously.
 --
--- Focus state arrives via env.FOCUSED_WORKSPACE on aerospace_workspace_change
--- (AeroSpace's exec-on-workspace-change passes it). Initial render queries
--- AeroSpace asynchronously.
+-- IMPORTANT: this runs inside SbarLua's long-lived event loop. Do not use
+-- io.popen/os.execute here; all shell reads must go through async sbar.exec.
 
 local sbar = require("sketchybar")
 require("bar")
 
-local function paint(pill, i, focused)
-  local bg = (focused == tostring(i)) and Colors.accent_bg or Colors.transparent
-  pill:set({
-    background = { color = bg },
-    icon       = { color = Colors.fg },
-    label      = { drawing = false },
+-- Hotload preserves existing items across reloads. Remove the former
+-- one-item-per-workspace indicators so a config reload leaves only the
+-- compact focus pill.
+for i = 1, 10 do
+  pcall(sbar.remove, "space." .. i)
+end
+
+local item = sbar.add("item", "space.active", {
+  position = "left",
+  icon = {
+    string        = "–",
+    padding_left  = 2,
+    padding_right = 8,
+    width         = 20,
+    align         = "center",
+    color         = Colors.accent_fg,
+    font          = Fonts.bold,
+  },
+  label = {
+    string        = "No focused window",
+    padding_left  = 0,
+    padding_right = 10,
+    color         = Colors.fg,
+    font          = Fonts.regular,
+    max_chars     = 80,
+  },
+  background = {
+    color         = Colors.pill_bg,
+    border_color  = Colors.pill_border,
+    border_width  = 1,
+    height        = 26,
+    corner_radius = 8,
+  },
+  width        = "dynamic",
+  click_script = "aerospace workspace-back-and-forth",
+})
+
+local generation = 0
+
+local function clean(s)
+  return (s or ""):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function title_for(app, title)
+  title = clean(title)
+  if title ~= "" then return title end
+
+  app = clean(app)
+  if app ~= "" then return app end
+
+  return "No focused window"
+end
+
+local function paint(workspace, title)
+  workspace = clean(workspace)
+  title = clean(title)
+
+  if workspace == "" then workspace = "–" end
+  if title == "" then title = "No focused window" end
+
+  item:set({
+    icon = { string = workspace },
+    label = { string = title },
   })
 end
 
-local pills = {}
-for i = 1, 10 do
-  local pill = sbar.add("item", "space." .. i, {
-    position = "left",
-    icon = {
-      string        = tostring(i),
-      padding_left  = 0,
-      padding_right = 2,
-      width         = 20,
-      align         = "center",
-      color         = Colors.fg,
-    },
-    label = {
-      font          = Fonts.dot,
-      padding_left  = 0,
-      padding_right = 6,
-      drawing       = false,
-    },
-    background = {
-      height        = 2,
-      corner_radius = 0,
-      y_offset      = -14,
-      color         = Colors.transparent,
-    },
-    width        = "dynamic",
-    click_script = "aerospace workspace " .. i,
-  })
+local function refresh_from_workspace(workspace)
+  generation = generation + 1
+  paint(workspace, "No focused window")
+end
 
-  pills[i] = pill
+local function refresh_from_focused_window(fallback_workspace)
+  generation = generation + 1
+  local this_generation = generation
 
-  pill:subscribe("aerospace_workspace_change", function(env)
-    if env.FOCUSED_WORKSPACE and env.FOCUSED_WORKSPACE ~= "" then
-      paint(pill, i, env.FOCUSED_WORKSPACE)
-    else
-      sbar.exec("aerospace list-workspaces --focused", function(out)
-        out = (out or ""):gsub("%s+$", "")
-        paint(pill, i, out)
-      end)
+  sbar.exec("aerospace list-windows --focused --format '%{workspace}%{tab}%{app-name}%{tab}%{window-title}' 2>/dev/null", function(out)
+    if this_generation ~= generation then return end
+
+    out = clean(out)
+    if out == "" then
+      if fallback_workspace and fallback_workspace ~= "" then
+        paint(fallback_workspace, "No focused window")
+      else
+        sbar.exec("aerospace list-workspaces --focused 2>/dev/null", function(ws)
+          if this_generation ~= generation then return end
+          paint(ws, "No focused window")
+        end)
+      end
+      return
     end
+
+    local workspace, app, title = out:match("^([^\t]*)\t([^\t]*)\t?(.*)$")
+    paint(workspace or fallback_workspace, title_for(app, title))
   end)
 end
 
--- Initial paint: ask AeroSpace once and broadcast to all pills.
-sbar.exec("aerospace list-workspaces --focused", function(out)
-  out = (out or ""):gsub("%s+$", "")
-  for i = 1, 10 do paint(pills[i], i, out) end
+item:subscribe("aerospace_workspace_change", function(env)
+  refresh_from_focused_window(env.FOCUSED_WORKSPACE)
 end)
+
+item:subscribe("aerospace_focus_change", function(env)
+  if env.AEROSPACE_WORKSPACE and env.AEROSPACE_WORKSPACE ~= "" then
+    refresh_from_workspace(env.AEROSPACE_WORKSPACE)
+    return
+  end
+
+  refresh_from_focused_window(nil)
+end)
+
+refresh_from_focused_window(nil)

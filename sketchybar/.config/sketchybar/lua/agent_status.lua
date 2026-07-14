@@ -9,9 +9,9 @@
 --   cwd          = "<path>"                                 (write only)
 --   workspace    = "<n>"                                    (always)
 --
--- We update an in-memory sessions table, recompute the per-workspace
--- aggregate state (read by workspaces.lua), then rebuild the popup
--- children. No filesystem state for the dropdown. A small per-session
+-- We update an in-memory sessions table, prune stale duplicate records,
+-- then rebuild the popup children. No filesystem state for the dropdown.
+-- A small per-session
 -- pin file (`sessions/<id>.ws`) lives on disk so the helper can
 -- reuse a session's pinned workspace across hook invocations — that
 -- lookup happens entirely in the helper, not here.
@@ -85,7 +85,7 @@ local parent = sbar.add("item", "agent_sessions", {
 -- user's eye.
 local NEEDS_ATTENTION_TTL_S = 300
 -- If a session has not reported any state change for this long, demote
--- it to stale for aggregate counts / workspace urgency. Unknown-PID
+-- it to stale for aggregate counts. Unknown-PID
 -- sessions are only removed completely after the longer hard TTL below.
 local STALE_TTL_S = 60 * 60
 local HARD_STALE_TTL_S = 24 * 60 * 60
@@ -676,16 +676,14 @@ parent:subscribe("agent_state_change", function(env)
   start_pulse_if_needed()
 
   -- Workspace focus changes arrive from AeroSpace directly. Do not fan out
-  -- synthetic workspace-change events here: each workspace pill falls back to
-  -- querying AeroSpace when FOCUSED_WORKSPACE is absent, so doing this on
-  -- every agent update can burn CPU.
+  -- synthetic workspace-change events here; doing it on every agent update
+  -- can burn CPU and can race with the focused-window title query.
 end)
 
 -- Mark sessions on the focused workspace as viewed so their
 -- needs-attention underline disappears. AeroSpace's
--- exec-on-workspace-change supplies env.FOCUSED_WORKSPACE; the internal
--- triggers fired from agent_state_change above don't, so we filter to
--- real focus changes only.
+-- exec-on-workspace-change supplies env.FOCUSED_WORKSPACE; ignore any
+-- malformed/manual trigger that omits it.
 parent:subscribe("aerospace_workspace_change", function(env)
   local ws = env.FOCUSED_WORKSPACE
   if not ws or ws == "" then return end

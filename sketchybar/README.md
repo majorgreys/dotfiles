@@ -2,7 +2,7 @@
 
 Minimal i3/sway-style status bar for macOS, driven by AeroSpace.
 
-- Workspace pills 1–10, focused pill carries an accent-colored underline.
+- Left-side AeroSpace focus pill: active workspace number + focused window title.
 - Right-side modules: wifi, volume, battery, clock — Nerd Font glyphs, no labels.
 - Plain black background, Pragmata Mono Liga.
 - Drop-in plugin slot at `~/.config/sketchybar/plugins.d/*.sh` (sourced by
@@ -19,8 +19,8 @@ brew install --cask font-fira-code-nerd-font
 # Stow this package
 cd ~/.dotfiles && stow sketchybar
 
-# Tell AeroSpace to fire `aerospace_workspace_change`
-# (already handled in the aerospace dotfiles package)
+# Tell AeroSpace to fire `aerospace_workspace_change` and
+# `aerospace_focus_change` (already handled in the aerospace package)
 
 # Start the service
 brew services start sketchybar
@@ -31,12 +31,14 @@ brew services start sketchybar
 System Settings → Control Center → "Automatically hide and show the menu bar
 in the menu bar" → Always.
 
-## State-file contract for plugins
+## AeroSpace event contract
 
-The base `aerospace.sh` script reads optional per-workspace state files at:
+The `aerospace` package pushes two Sketchybar events:
 
-    $XDG_STATE_HOME/sketchybar/agents/<workspace-number>
+- `aerospace_workspace_change` with `FOCUSED_WORKSPACE=<workspace>`
+- `aerospace_focus_change` whenever AeroSpace focus changes
 
-Contents are a single token: `running` | `needs-attention` | `idle`. Missing
-or empty file = no dot. Anything that wants to drive the dot writes to that
-location and triggers a sketchybar event the workspace items subscribe to.
+`lua/workspaces.lua` uses those events to repaint the single left-side focus
+pill by querying the focused AeroSpace window/workspace. It queries AeroSpace
+only through async `sbar.exec`; do not use `io.popen` or `os.execute` in the
+long-lived SbarLua process.
