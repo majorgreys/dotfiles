@@ -8,6 +8,7 @@
 --
 -- Layout under $CONFIG_DIR/lua/:
 --   bar.lua             — bar shell + Catppuccin palette + fonts.
+--   mode.lua            — visible indicator for non-main AeroSpace modes.
 --   workspaces.lua      — active AeroSpace workspace + focused window title.
 --   status/clock.lua    — right-side clock.
 --   status/battery.lua  — right-side battery.
@@ -31,6 +32,7 @@ sbar.begin_config()
 sbar.hotload(true)
 
 require("bar")
+require("mode")
 require("workspaces")
 require("status.clock")
 require("status.battery")

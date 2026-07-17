@@ -13,6 +13,7 @@ exec-on-workspace-change = ['/bin/bash', '-c',
 ]
 
 on-focus-changed = ['exec-and-forget sketchybar --trigger aerospace_focus_change']
+on-mode-changed = ['exec-and-forget sketchybar --trigger aerospace_mode_change']
 
 # No gaps, except reserve Sketchybar's 38px height on external displays.
 # The built-in display does not need the additional top margin.
