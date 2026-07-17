@@ -14,15 +14,14 @@ exec-on-workspace-change = ['/bin/bash', '-c',
 
 on-focus-changed = ['exec-and-forget sketchybar --trigger aerospace_focus_change']
 
-# No gaps — matching sway's default_border pixel 3 / hide_edge_borders smart.
-# Sketchybar is positioned at the top; AeroSpace does not reserve
-# additional outer gap space for it.
+# No gaps, except reserve Sketchybar's 38px height on external displays.
+# The built-in display does not need the additional top margin.
 [gaps]
     inner.horizontal = 0
     inner.vertical = 0
     outer.left = 0
     outer.bottom = 0
-    outer.top = 38
+    outer.top = [{ monitor."built-in" = 0 }, 38]
     outer.right = 0
 
 [key-mapping]
