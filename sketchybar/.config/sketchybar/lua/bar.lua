@@ -73,3 +73,4 @@ sbar.default({
 sbar.add("event", "agent_state_change")
 sbar.add("event", "aerospace_workspace_change")
 sbar.add("event", "aerospace_focus_change")
+sbar.add("event", "aerospace_mode_change")

@@ -30,27 +30,10 @@ local STATE_COLORS = {
   stale               = Colors.dim_dark,
 }
 
--- Pill is a bracket of two items: pizza icon and count. Splitting them
--- lets each carry its own font/color. The popup attaches to the pizza
--- item.
---
--- Items added with position=right are prepended to the right group,
--- so the LAST item added appears leftmost. Add right-to-left order:
--- count first, then pizza — yielding visual [pizza count].
-local count_item = sbar.add("item", "agent_sessions_count", {
-  position = "right",
-  icon = { string = "" },
-  label = {
-    string        = "0",
-    font          = Fonts.regular,
-    color         = Colors.fg,
-    padding_left  = 2,
-    padding_right = 10,
-  },
-})
+-- Remove the legacy separate count item when hotloading this config.
+pcall(sbar.remove, "agent_sessions_count")
 
--- The parent pill (pizza icon + count) doubles as the trigger for the
--- session popup. Hovering anywhere on the parent or count_item opens a
+-- The pizza pill is the trigger for the session popup. Hovering opens a
 -- vertical dropdown listing EVERY session — active and idle alike.
 -- MacBooks with a camera notch have limited horizontal bar real estate,
 -- so nothing is drawn inline; the popup holds the full list and the
@@ -61,10 +44,20 @@ local parent = sbar.add("item", "agent_sessions", {
     string        = "󰐉",
     font          = Fonts.icon,
     color         = Colors.fg,
-    padding_left  = 10,
-    padding_right = 6,
+    padding_left  = 8,
+    padding_right = 8,
   },
-  label = { string = "" },
+  label = { drawing = false },
+  -- Keep the background box and border geometry fixed in both states. Pinning
+  -- changes their colors only, so the pizza never shifts horizontally.
+  background = {
+    color         = Colors.transparent,
+    corner_radius = 4,
+    border_width  = 1,
+    border_color  = Colors.transparent,
+    height        = 26,
+    drawing       = "on",
+  },
   popup = {
     background = {
       color         = Colors.popup_bg,
@@ -85,7 +78,7 @@ local parent = sbar.add("item", "agent_sessions", {
 -- user's eye.
 local NEEDS_ATTENTION_TTL_S = 300
 -- If a session has not reported any state change for this long, demote
--- it to stale for aggregate counts. Unknown-PID
+-- it to stale for aggregate status. Unknown-PID
 -- sessions are only removed completely after the longer hard TTL below.
 local STALE_TTL_S = 60 * 60
 local HARD_STALE_TTL_S = 24 * 60 * 60
@@ -147,11 +140,17 @@ end
 
 -- Hover-driven popup with a small close grace so a cursor sweep from
 -- the parent pill into the popup doesn't slam it shut mid-traversal.
+-- Clicking the pizza toggles an in-memory pin that keeps the popup open after
+-- the pointer leaves; clicking again unpins it. Track visibility separately so
+-- a row refresh cannot hide a popup that was already open.
 local OVERFLOW_CLOSE_DELAY_S = 0.6
 local overflow_close_token = 0
+local overflow_popup_pinned = false
+local overflow_popup_visible = false
 
 local function open_overflow_popup()
   overflow_close_token = overflow_close_token + 1
+  overflow_popup_visible = true
   parent:set({ popup = { drawing = "on" } })
 end
 
@@ -159,20 +158,36 @@ local function schedule_close_overflow_popup()
   overflow_close_token = overflow_close_token + 1
   local my = overflow_close_token
   sbar.exec(string.format("sleep %.2f", OVERFLOW_CLOSE_DELAY_S), function()
-    if overflow_close_token == my then
+    if overflow_close_token == my and not overflow_popup_pinned then
+      overflow_popup_visible = false
       parent:set({ popup = { drawing = "off" } })
     end
   end)
 end
 
--- Hovering the pizza icon or the count both open the popup. The
--- in-popup rows also subscribe to mouse.entered/exited in
--- rebuild_session_items so a cursor sweep across rows keeps the popup
--- open.
-for _, item in ipairs({ parent, count_item }) do
-  item:subscribe("mouse.entered", open_overflow_popup)
-  item:subscribe("mouse.exited", schedule_close_overflow_popup)
+local function paint_overflow_popup_pin()
+  parent:set({
+    background = {
+      color = overflow_popup_pinned and Colors.pill_bg or Colors.transparent,
+      border_color = overflow_popup_pinned and Colors.yellow or Colors.transparent,
+    },
+  })
 end
+
+local function toggle_overflow_popup_pin()
+  overflow_popup_pinned = not overflow_popup_pinned
+  overflow_close_token = overflow_close_token + 1
+  overflow_popup_visible = true
+  paint_overflow_popup_pin()
+  parent:set({ popup = { drawing = "on" } })
+end
+
+-- Hovering the pizza opens the popup; clicking toggles the pin. The in-popup
+-- rows also subscribe to mouse.entered/exited in rebuild_session_items so a
+-- cursor sweep across rows keeps it open.
+parent:subscribe("mouse.entered", open_overflow_popup)
+parent:subscribe("mouse.exited", schedule_close_overflow_popup)
+parent:subscribe("mouse.clicked", toggle_overflow_popup_pin)
 
 -- Pin file directory; declared early so dedupe_sessions can remove
 -- loser files. parse_pins / PIN_JQ_CMD further down reference the same path.
@@ -364,11 +379,37 @@ local function display_zmx(display, attached_map, lookup_key)
   return "(" .. display .. ")"
 end
 
+-- Detect whether a refresh changes anything rendered by the popup. The pin
+-- reader runs every 10 seconds for liveness, but rebuilding unchanged rows can
+-- briefly invalidate Sketchybar's hover target and make the popup appear not to
+-- open. A stable signature lets unchanged refreshes leave the UI untouched.
+local RENDER_FIELDS = {
+  "workspace", "window_id", "state", "cwd", "zmx_session", "zmx_short",
+  "agent", "agent_pid", "tool_name", "workstream", "claimed_issue",
+  "claimed_title", "todo_pending", "todo_in_progress", "venom_active",
+  "venom_waiting", "venom_failed", "human_gates", "updated_at", "viewed_at",
+}
+local last_render_signature = nil
 
--- Highest-urgency state across all sessions. Drives the status dot
--- color in the menu-bar pill. Returns the count for the label.
+local function render_signature()
+  local now = os.time()
+  local rows = {}
+  for _, entry in ipairs(sorted_sessions()) do
+    local s = entry.session
+    local values = { tostring(entry.id) }
+    for _, field in ipairs(RENDER_FIELDS) do
+      values[#values + 1] = tostring(s[field] or "")
+    end
+    values[#values + 1] = effective_state(s, now)
+    values[#values + 1] = tostring(zmx_attached[s.zmx_session or ""] == true)
+    rows[#rows + 1] = table.concat(values, "\31")
+  end
+  return table.concat(rows, "\30")
+end
+
+-- Highest-urgency state across all sessions. Drives the pizza color in the
+-- menu-bar pill.
 local function aggregate_state()
-  local count = 0
   local top_state, top_rank = "idle", -1
   local now = os.time()
   for _, s in pairs(state.sessions) do
@@ -378,14 +419,13 @@ local function aggregate_state()
       actionable = (now - (s.updated_at or 0)) <= NEEDS_ATTENTION_TTL_S
         and (s.viewed_at or 0) < (s.updated_at or 0)
     end
-    if actionable then count = count + 1 end
     local ranked_state = actionable and st or "idle"
     local rank = state.urgency[ranked_state] or 0
     if rank > top_rank then
       top_rank, top_state = rank, ranked_state
     end
   end
-  return count, top_state
+  return top_state
 end
 
 -- Build the shell command that handles a click on a session item.
@@ -551,17 +591,23 @@ local function rebuild_session_items()
   -- stale draw flag.
   local has_any = next(state.sessions) ~= nil
   if not has_any then
+    overflow_popup_pinned = false
+    overflow_popup_visible = false
+    paint_overflow_popup_pin()
     parent:set({ popup = { drawing = "off" } })
+  elseif overflow_popup_visible then
+    -- Re-assert visibility after replacing popup rows. Sketchybar can drop the
+    -- popup while its children are removed and recreated asynchronously.
+    parent:set({ popup = { drawing = "on" } })
   end
+
+  last_render_signature = render_signature()
 end
 
 local function repaint_parent()
-  local count, top_state = aggregate_state()
+  local top_state = aggregate_state()
   local color = STATE_COLORS[top_state] or Colors.fg
   parent:set({ icon = { color = color } })
-  count_item:set({
-    label = { string = tostring(count), color = count > 0 and Colors.fg or Colors.dim_dark },
-  })
 end
 
 -- Calm heartbeat for the parent pizza icon while an agent is actively
@@ -574,7 +620,7 @@ end
 local pulse_alive = false
 
 local function running_is_top()
-  local _, top_state = aggregate_state()
+  local top_state = aggregate_state()
   return top_state == "running" or top_state == "tooling"
 end
 
@@ -851,14 +897,19 @@ local function refresh_from_pins()
           pid_liveness[n] = alive[n] == true
         end
         zmx_attached = parse_zmx_list(zmx_txt)
-        remove_known_session_items()
         local restored = 0
         for _, _ in pairs(state.sessions) do restored = restored + 1 end
         recompute_workspace_state()
-        repaint_parent()
-        rebuild_session_items()  -- prune_dead_sessions runs here on fresh pid_liveness
-        start_pulse_if_needed()
-        log_debug("refresh restored=" .. tostring(restored))
+        local signature = render_signature()
+        if signature ~= last_render_signature then
+          remove_known_session_items()
+          repaint_parent()
+          rebuild_session_items()  -- prune_dead_sessions runs here on fresh pid_liveness
+          start_pulse_if_needed()
+          log_debug("refresh rebuilt=" .. tostring(restored))
+        else
+          log_debug("refresh unchanged=" .. tostring(restored))
+        end
       end)
       if not ok2 then log_debug("ERROR build " .. tostring(err2)) end
       refresh_started_at = 0
@@ -888,6 +939,5 @@ sbar.exec("aerospace list-workspaces --focused 2>/dev/null", function(out)
   if out ~= "" then focused_workspace = out end
 end)
 
--- Initial paint so the pill shows "0" dim grey before the async
--- restore above completes.
+-- Initial paint before the async restore above completes.
 repaint_parent()
