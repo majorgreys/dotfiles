@@ -171,6 +171,11 @@ local function paint_overflow_popup_pin()
       color = overflow_popup_pinned and Colors.pill_bg or Colors.transparent,
       border_color = overflow_popup_pinned and Colors.yellow or Colors.transparent,
     },
+    popup = {
+      background = {
+        border_color = overflow_popup_pinned and Colors.yellow or Colors.popup_border,
+      },
+    },
   })
 end
 
@@ -180,6 +185,27 @@ local function toggle_overflow_popup_pin()
   overflow_popup_visible = true
   paint_overflow_popup_pin()
   parent:set({ popup = { drawing = "on" } })
+end
+
+-- Sketchybar may dismiss the popup window while macOS focus moves between
+-- AeroSpace workspaces without changing popup.drawing from "on". Setting it to
+-- "on" again is therefore a no-op. Force an off → on transition after focus
+-- settles so Sketchybar recreates the visible popup window.
+local popup_reassert_token = 0
+local function reassert_pinned_overflow_popup()
+  if not overflow_popup_pinned then return end
+
+  popup_reassert_token = popup_reassert_token + 1
+  local this_token = popup_reassert_token
+  overflow_close_token = overflow_close_token + 1
+  overflow_popup_visible = true
+  parent:set({ popup = { drawing = "off" } })
+
+  sbar.exec("sleep 0.10", function()
+    if overflow_popup_pinned and popup_reassert_token == this_token then
+      parent:set({ popup = { drawing = "on" } })
+    end
+  end)
 end
 
 -- Hovering the pizza opens the popup; clicking toggles the pin. The in-popup
@@ -747,6 +773,7 @@ parent:subscribe("aerospace_workspace_change", function(env)
   if touched then
     rebuild_session_items()
   end
+  reassert_pinned_overflow_popup()
 end)
 
 -- Remove any per-session bar items left over from a prior run.
