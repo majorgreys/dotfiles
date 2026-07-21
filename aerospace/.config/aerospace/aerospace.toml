@@ -33,7 +33,6 @@ on-mode-changed = ['exec-and-forget sketchybar --trigger aerospace_mode_change']
     alt-e = 'exec-and-forget emacsclient -nc -s thbemacs --eval (vulpea-find)'
     alt-shift-enter = 'exec-and-forget open -a Ghostty'
     ctrl-down = 'exec-and-forget open /Users/tahir.butt/dev/pizzabox/dist/PizzaBox.app'
-    ctrl-shift-down = 'exec-and-forget sh /Users/tahir.butt/dev/pizzabox/scripts/ghostty-overview.sh'
 
     # Layout
     alt-slash = 'layout tiles horizontal vertical'
