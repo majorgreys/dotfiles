@@ -133,6 +133,7 @@ HUMAN_GATES="0"
 ZMX_SESSION="${ZMX_SESSION:-}"
 ZMX_SESSION_PREFIX="${ZMX_SESSION_PREFIX:-}"
 ZMX_SHORT="${ZMX_SESSION#$ZMX_SESSION_PREFIX}"
+GHOSTTY_TERMINAL_ID="${PIZZABOX_GHOSTTY_TERMINAL_ID:-}"
 if [ -n "$HOOK_INPUT" ] && command -v jq >/dev/null 2>&1; then
   SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null || true)
   CWD=$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
@@ -213,9 +214,10 @@ if [ -z "$LAST_ASSISTANT" ] && [ -n "$TRANSCRIPT_PATH" ] \
       ' 2>/dev/null || true)
 fi
 
-# Resolve the pinned workspace and window-id for this session. Pin
-# file is a single-line JSON record carrying every field the Lua side
-# needs to repopulate state on sketchybar reload.
+# Resolve the pinned workspace and window-id for this session. The pin file is
+# an atomically replaced, versioned single-line JSON record carrying every
+# field shared consumers (Sketchybar and PizzaBox) need. Readers reject
+# unsupported schema versions rather than guessing at routing fields.
 #
 # The window-id is the source of truth — if we have a cached id, ask
 # aerospace where that window currently lives and overwrite the pinned
@@ -289,6 +291,7 @@ if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ] \
     --arg cwd "$CWD" \
     --arg zmx "$ZMX_SESSION" \
     --arg zsh "$ZMX_SHORT" \
+    --arg ghostty_terminal_id "$GHOSTTY_TERMINAL_ID" \
     --arg agent "$AGENT" \
     --arg tool  "$TOOL" \
     --arg tool_name "$TOOL_NAME" \
@@ -306,7 +309,7 @@ if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ] \
     --arg venom_failed "$VENOM_FAILED" \
     --arg human_gates "$HUMAN_GATES" \
     '
-      {session_id:$sid, workspace:$ws, window_id:$win, state:$st,
+      {schema_version:1, session_id:$sid, workspace:$ws, window_id:$win, state:$st,
        cwd:$cwd, zmx_session:$zmx, zmx_short:$zsh, agent:$agent,
        tool:$tool, agent_pid:$agent_pid, updated_at:$ts,
        todo_pending:($todo_pending|tonumber? // 0),
@@ -315,6 +318,7 @@ if [ -n "$WS" ] && [ -n "$PIN_FILE" ] && [ "$STATE" != "clear" ] \
        venom_waiting:($venom_waiting|tonumber? // 0),
        venom_failed:($venom_failed|tonumber? // 0),
        human_gates:($human_gates|tonumber? // 0)}
+      + (if $ghostty_terminal_id != "" then {ghostty_terminal_id:$ghostty_terminal_id} else {} end)
       + (if $tool_name != "" then {tool_name:$tool_name} else {} end)
       + (if $workstream != "" then {workstream:$workstream} else {} end)
       + (if $claimed_issue != "" then {claimed_issue:$claimed_issue} else {} end)
