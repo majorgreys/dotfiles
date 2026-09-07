@@ -1051,12 +1051,12 @@ FACE, when non-nil, is prepended over the row (e.g. the header's bold)."
   (when (< start end)
     (put-text-property start end 'thb-md-render--nowrap t)))
 
-(defun thb-md-render--string-pixel-width (string &optional from to)
+(defun thb-md-render--string-pixel-width (string)
   "Return STRING's pixel width using the current render buffer's faces.
-FROM and TO have the same meaning as in `string-pixel-width'.  Supplying the
-buffer is essential: it makes face remapping from `text-scale-set' part of
-the measurement instead of comparing unscaled prose with a scaled window."
-  (string-pixel-width string from to (current-buffer)))
+Supplying the buffer is essential: it makes face remapping from
+`text-scale-set' part of the measurement instead of comparing unscaled prose
+with a scaled window."
+  (string-pixel-width string (current-buffer)))
 
 (defvar-local thb-md-render--wrap-window nil
   "Window that owns hard wrapping for this preview buffer.

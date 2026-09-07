@@ -8,9 +8,9 @@
              (expand-file-name "../lisp" (file-name-directory load-file-name)))
 (require 'thb-markdown-render)
 
-(defun thb-md-render-test--character-width (string &optional from to _buffer)
+(defun thb-md-render-test--character-width (string &optional _buffer)
   "Deterministic pixel-width stand-in that gives each character width one."
-  (- (or to (length string)) (or from 0)))
+  (length string))
 
 (defun thb-md-render-test--legacy-pixel-wrap (s budget cont-prefix)
   "Pre-change quadratic wrapper retained for output and benchmark comparison."
@@ -24,7 +24,7 @@
           (let ((candidate (if has
                                (concat cur (thb-md-render--sep-space word) word)
                              (concat cur word))))
-            (if (<= (string-pixel-width candidate nil nil (current-buffer))
+            (if (<= (string-pixel-width candidate (current-buffer))
                     budget)
                 (setq cur candidate has t)
               (if has
@@ -75,9 +75,9 @@
     (let ((render-buffer (current-buffer))
           observed-buffer)
       (cl-letf (((symbol-function 'string-pixel-width)
-                 (lambda (string &optional from to buffer)
+                 (lambda (string &optional buffer)
                    (setq observed-buffer buffer)
-                   (* 2 (- (or to (length string)) (or from 0))))))
+                   (* 2 (length string)))))
         (should (= (thb-md-render--string-pixel-width "scaled") 12))
         (should (eq observed-buffer render-buffer))
         (setq observed-buffer nil)
@@ -93,10 +93,10 @@
       (with-temp-buffer
         (setq-local text-scale-mode-amount scale)
         (cl-letf (((symbol-function 'string-pixel-width)
-                   (lambda (string &optional from to buffer)
+                   (lambda (string &optional buffer)
                      (with-current-buffer buffer
                        (* (+ 2 text-scale-mode-amount)
-                          (- (or to (length string)) (or from 0)))))))
+                          (length string))))))
           (let ((wrapped (thb-md-render--pixel-wrap "aaa aaa aaa" 10 "")))
             (should (= (length (string-lines wrapped)) expected-lines))
             (dolist (line (string-lines wrapped))
@@ -108,16 +108,16 @@
          (budget (1+ (length source)))
          legacy-work new-work)
     (cl-labels ((count-width
-                 (string &optional from to _buffer)
-                 (cl-incf legacy-work (- (or to (length string)) (or from 0)))
-                 (- (or to (length string)) (or from 0))))
+                 (string &optional _buffer)
+                 (cl-incf legacy-work (length string))
+                 (length string)))
       (setq legacy-work 0)
       (cl-letf (((symbol-function 'string-pixel-width) #'count-width))
         (thb-md-render-test--legacy-pixel-wrap source budget "")))
     (cl-labels ((count-width
-                 (string &optional from to _buffer)
-                 (cl-incf new-work (- (or to (length string)) (or from 0)))
-                 (- (or to (length string)) (or from 0))))
+                 (string &optional _buffer)
+                 (cl-incf new-work (length string))
+                 (length string)))
       (setq new-work 0)
       (cl-letf (((symbol-function 'string-pixel-width) #'count-width))
         (thb-md-render--pixel-wrap source budget "")))
