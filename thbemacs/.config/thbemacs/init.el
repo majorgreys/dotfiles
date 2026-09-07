@@ -201,7 +201,7 @@
   "Remove left and right fringes in the current buffer."
   (setq-local left-fringe-width 0)
   (setq-local right-fringe-width 0)
-  (when-let ((win (get-buffer-window (current-buffer))))
+  (when-let* ((win (get-buffer-window (current-buffer))))
     (set-window-fringes win 0 0)))
 (dolist (mode '(org-mode-hook
                markdown-ts-mode-hook
@@ -458,7 +458,7 @@
             (with-selected-frame frame
               (unless (display-graphic-p)
                 (tty-run-terminal-initialization frame "xterm" t))
-              (when-let ((theme (car custom-enabled-themes)))
+              (when-let* ((theme (car custom-enabled-themes)))
                 (load-theme theme t)))))
 
 ;; Map terminal types to xterm so Emacs loads term/xterm.el for key handling.
@@ -1714,31 +1714,18 @@ non-nil and no heading is found, move to BOUND or the buffer edge, matching
     (evil-define-key 'normal markdown-ts-mode-map (kbd "TAB") #'evil-toggle-fold)
     (evil-define-key 'normal markdown-ts-mode-map (kbd "<tab>") #'evil-toggle-fold))
 
-  (defun thb-markdown-ts--range-settings ()
-    "Return range settings that keep markdown-inline inside inline nodes."
-    (treesit-range-rules
-     :embed 'markdown-inline
-     :host 'markdown
-     '((inline) @capture)))
-
-  ;; `markdown-ts-mode' calls `treesit-major-mode-setup' before mode hooks.
-  ;; Range settings must therefore be present before `markdown-ts-setup' runs;
-  ;; setting them only in `markdown-ts-mode-hook' leaves the inline parser over
-  ;; the whole buffer, where tildes/backticks from unrelated paragraphs can be
-  ;; misparsed as giant inline spans.
+  ;; Emacs 31's built-in `markdown-ts-mode' owns parser range setup and creates
+  ;; tagged local `markdown-inline' parsers for each inline region.  Replace only
+  ;; its font-lock rules; `thb-markdown-decor' discovers those local parsers via
+  ;; `treesit-parser-list' with its TAG argument enabled.
   (setq markdown-ts--treesit-settings (thb-markdown-ts--rules))
-  (defun thb-markdown-ts--pre-setup ()
-    "Install parser range settings before `treesit-major-mode-setup'."
-    (setq-local treesit-range-settings (thb-markdown-ts--range-settings)))
-  (advice-add 'markdown-ts-setup :before #'thb-markdown-ts--pre-setup)
 
   (defun thb/markdown-setup ()
     "Per-buffer markdown setup: visual line wrapping and source prettification.
 
-Custom font-lock rules and parser ranges are installed before
-`treesit-major-mode-setup' via `markdown-ts--treesit-settings' and
-`thb-markdown-ts--pre-setup'.  This hook handles display-only toggles that
-can safely run after the major mode is initialized."
+Custom font-lock rules are installed through
+`markdown-ts--treesit-settings'.  Emacs owns parser range setup; this hook
+handles display-only toggles that safely run after mode initialization."
     (visual-line-mode 1)
     (thb-markdown-ts-setup-outline)
     ;; `display' is used by the semantic checkbox renderer.  Tell font-lock to
@@ -2013,7 +2000,7 @@ that would otherwise reset buffer-local state."
     ;; Strip fringes (and update any window already showing this buffer).
     (setq-local left-fringe-width 0)
     (setq-local right-fringe-width 0)
-    (when-let ((win (get-buffer-window (current-buffer))))
+    (when-let* ((win (get-buffer-window (current-buffer))))
       (set-window-fringes win 0 0))
     ;; Let shr fill the window edge-to-edge.
     (setq-local shr-width nil)

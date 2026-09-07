@@ -82,18 +82,28 @@ the region is re-hidden.")
 
 ;;;; Parser access ------------------------------------------------------
 
+(defun thb-markdown-decor--inline-parsers ()
+  "Return all markdown-inline parsers attached to the current buffer.
+
+Emacs 31's built-in `markdown-ts-mode' uses tagged local parsers, one for
+individual inline ranges.  Passing a non-nil TAG to `treesit-parser-list'
+includes those parsers; the default nil tag only returns global parsers."
+  (treesit-parser-list nil 'markdown-inline t))
+
 (defun thb-markdown-decor--inline-parser ()
-  "Return the markdown-inline parser attached to the current buffer, or nil."
-  (car (treesit-parser-list nil 'markdown-inline)))
+  "Return a markdown-inline parser attached to the current buffer, or nil."
+  (car (thb-markdown-decor--inline-parsers)))
 
 (defun thb-markdown-decor--inline-children-in-range (start end)
-  "Direct children of the markdown-inline parser's root in [START, END]."
-  (when-let ((parser (thb-markdown-decor--inline-parser)))
-    (seq-filter
-     (lambda (n)
-       (let ((ns (treesit-node-start n)))
-         (and (>= ns start) (< ns end))))
-     (treesit-node-children (treesit-parser-root-node parser)))))
+  "Direct markdown-inline children overlapping [START, END]."
+  (let (children)
+    (dolist (parser (thb-markdown-decor--inline-parsers))
+      (dolist (node (treesit-node-children
+                     (treesit-parser-root-node parser)))
+        (when (and (< (treesit-node-start node) end)
+                   (> (treesit-node-end node) start))
+          (push node children))))
+    (nreverse children)))
 
 ;;;; Decoration walk -----------------------------------------------------
 
@@ -190,15 +200,10 @@ Idempotent; calling twice is fine."
                                    url-text))))))))))
 
 (defun thb-markdown-decor--decorate-range (start end)
-  "Walk inline parse children in [START, END] and decorate them.
-Children outside the range are skipped."
-  (when-let ((parser (thb-markdown-decor--inline-parser)))
-    (let ((root (treesit-parser-root-node parser)))
-      (dolist (child (treesit-node-children root))
-        (let ((cs (treesit-node-start child)))
-          (when (and (>= cs start) (< cs end))
-            (when (thb-markdown-decor--decoratable-node-p child)
-              (thb-markdown-decor--decorate-node child))))))))
+  "Walk inline parse children overlapping [START, END] and decorate them."
+  (dolist (child (thb-markdown-decor--inline-children-in-range start end))
+    (when (thb-markdown-decor--decoratable-node-p child)
+      (thb-markdown-decor--decorate-node child))))
 
 (defun thb-markdown-decor--apply ()
   "Re-decorate the entire buffer (called on enable, full refresh)."
@@ -260,7 +265,7 @@ Removes invisibility within NODE's range and records the range in
     ;; Echo URL for links.
     (when (and (equal (treesit-node-type node) "inline_link")
                thb-markdown-decor-show-link-url-echo)
-      (when-let ((dest (thb-markdown-decor--child-of-type node "link_destination")))
+      (when-let* ((dest (thb-markdown-decor--child-of-type node "link_destination")))
         (let ((url (buffer-substring-no-properties
                     (treesit-node-start dest)
                     (treesit-node-end   dest))))
@@ -268,7 +273,7 @@ Removes invisibility within NODE's range and records the range in
 
 (defun thb-markdown-decor--rehide ()
   "Re-apply decorations over the currently-revealed range."
-  (when-let ((r thb-markdown-decor--revealed))
+  (when-let* ((r thb-markdown-decor--revealed))
     (let ((start (car r)) (end (cdr r)))
       (with-silent-modifications
         (thb-markdown-decor--decorate-range start end))
@@ -286,7 +291,7 @@ Removes invisibility within NODE's range and records the range in
         nil)
        (t
         (when was (thb-markdown-decor--rehide))
-        (when-let ((parent (thb-markdown-decor--decorated-parent-at p)))
+        (when-let* ((parent (thb-markdown-decor--decorated-parent-at p)))
           (thb-markdown-decor--reveal parent)))))))
 
 ;;;; Change tracking ----------------------------------------------------
