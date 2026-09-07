@@ -60,9 +60,15 @@
                 (should (equal (buffer-local-value
                                 'thb-md-render--source-file preview-b)
                                (file-truename file-b)))
+                ;; Ordinary Lisp calls return previews without displaying them.
                 (should-not displayed)
+                ;; Batch Emacs reports `called-interactively-p' as nil even
+                ;; under `call-interactively', so control that production seam
+                ;; explicitly while still exercising the interactive file read.
                 (cl-letf (((symbol-function 'read-file-name)
-                           (lambda (&rest _args) file-a)))
+                           (lambda (&rest _args) file-a))
+                          ((symbol-function 'called-interactively-p)
+                           (lambda (&optional _kind) t)))
                   (should (eq (call-interactively #'thb-md-render-file)
                               preview-a))
                   (should (equal displayed (list preview-a))))))))
