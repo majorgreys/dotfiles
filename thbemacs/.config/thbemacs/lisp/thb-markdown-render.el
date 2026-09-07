@@ -896,7 +896,7 @@ reads as a continuous card rather than a strip behind the code only."
                  "task_list_marker_unchecked" "task_list_marker_checked"
                  "block_continuation") nil)
             (_
-             (thb-md-render--walk c)))))))
+             (thb-md-render--walk c))))))))
 
 ;;;; Block: blockquote ---------------------------------------------------
 
