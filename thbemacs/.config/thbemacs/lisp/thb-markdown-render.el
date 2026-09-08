@@ -538,7 +538,9 @@ inline children), not O(paragraphs * total inline children)."
               (alt (and alt-node
                         (let ((s (treesit-node-start alt-node))
                               (e (treesit-node-end   alt-node)))
-                          (thb-md-render--src-text (+ s 2) (1- e)))))  ;; trim ![ and ]
+                          ;; image_description contains [ ... ]; trim the brackets.
+                          ;; The leading ! belongs to image.
+                          (thb-md-render--src-text (1+ s) (1- e)))))
               (src (and dest-node (thb-md-render--node-text dest-node))))
          (thb-md-render--emit "🖼 " 'thb-md-render-list-marker)
          (when alt (thb-md-render--emit alt 'thb-md-render-link-text))
@@ -808,7 +810,7 @@ reads as a continuous card rather than a strip behind the code only."
 
 (defun thb-md-render--ordered-marker (list-node)
   "Return LIST-NODE's first ordered marker node, or nil."
-  (when-let ((item (thb-md-render--first-child-of-type list-node "list_item")))
+  (when-let* ((item (thb-md-render--first-child-of-type list-node "list_item")))
     (or (thb-md-render--first-child-of-type item "list_marker_dot")
         (thb-md-render--first-child-of-type item "list_marker_parenthesis"))))
 
@@ -818,7 +820,7 @@ reads as a continuous card rather than a strip behind the code only."
 
 (defun thb-md-render--list-entry (list-node)
   "Return initial (KIND COUNTER SUFFIX) state for LIST-NODE."
-  (if-let ((marker (thb-md-render--ordered-marker list-node)))
+  (if-let* ((marker (thb-md-render--ordered-marker list-node)))
       (let ((text (thb-md-render--node-text marker)))
         (if (string-match "\\`[[:space:]]*\\([0-9]+\\)\\([.)]\\)" text)
             (list 'ordered
@@ -886,6 +888,10 @@ reads as a continuous card rather than a strip behind the code only."
                (put-text-property paragraph-start (point)
                                   'wrap-prefix wrap-pad)))
             ("list"
+             ;; A marker-only parent has not emitted a paragraph newline yet;
+             ;; keep its marker and the first nested marker on separate lines.
+             (unless (bolp)
+               (thb-md-render--newline 1))
              ;; Nested items set their own indentation and wrap prefix.  Do
              ;; not add separators or overwrite those properties here.
              (thb-md-render--walk-list c))
@@ -1357,7 +1363,7 @@ fraction."
   (visual-line-mode -1)
   (setq-local left-fringe-width 0)
   (setq-local right-fringe-width 0)
-  (when-let ((w (get-buffer-window (current-buffer))))
+  (when-let* ((w (get-buffer-window (current-buffer))))
     (set-window-fringes w 0 0))
   (setq-local header-line-format nil)
   (display-line-numbers-mode -1)
@@ -1418,7 +1424,8 @@ fraction."
 
 (defun thb-md-render-file (path)
   "Parse PATH as markdown and render it into a fresh buffer.
-Return the rendered buffer."
+When called interactively, also display the rendered buffer.  Lisp calls
+return the rendered buffer without displaying it."
   (interactive "fMarkdown file: ")
   (let* ((path (expand-file-name path))
          (buf-name (format "*md render: %s*" (file-name-nondirectory path)))
@@ -1576,7 +1583,7 @@ via `quit-window'."
         ;; in a window.  Mode setup runs before the buffer has a
         ;; window, so `set-window-fringes' and global-mode hooks can
         ;; race and reset what mode init tried to set.
-        (when-let ((win (selected-window)))
+        (when-let* ((win (selected-window)))
           (set-window-fringes win 0 0))
         (display-line-numbers-mode -1))))
    (t (user-error "Not in markdown-ts-mode or a render preview"))))
