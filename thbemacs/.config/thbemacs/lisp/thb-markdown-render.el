@@ -28,19 +28,20 @@
 ;;                                        buffer and its rendered preview
 ;;
 ;; Coverage in v0.1:
-;;   - ATX headings (H1-H6) with scaled faces
+;;   - ATX and Setext headings with scaled faces
 ;;   - Paragraphs, with inline emphasis / strong / strikethrough / code
 ;;   - Fenced code blocks with language-aware syntax fontification
+;;   - Indented code blocks
 ;;   - Unordered, ordered, and task lists (with Unicode glyphs)
 ;;   - Block quotes (with marker + bg)
+;;   - GFM pipe tables with alignment
 ;;   - Inline links (text rendered, URL via `help-echo')
+;;   - Image placeholders with alt text and source URL
 ;;   - Thematic breaks
 ;;
 ;; Not yet:
-;;   - Setext headings
 ;;   - Footnotes
-;;   - Indented code blocks
-;;   - Inline images (would need overlays + image scaling)
+;;   - Inline image overlays and scaling
 ;;   - Reference-style links / link reference definitions
 ;;   - HTML blocks
 ;;   - Tree-sitter language injection inside fenced code blocks
