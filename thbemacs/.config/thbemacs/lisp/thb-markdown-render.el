@@ -535,12 +535,7 @@ inline children), not O(paragraphs * total inline children)."
       ("image"
        (let* ((alt-node (thb-md-render--first-child-of-type node "image_description"))
               (dest-node (thb-md-render--first-child-of-type node "link_destination"))
-              (alt (and alt-node
-                        (let ((s (treesit-node-start alt-node))
-                              (e (treesit-node-end   alt-node)))
-                          ;; image_description contains [ ... ]; trim the brackets.
-                          ;; The leading ! belongs to image.
-                          (thb-md-render--src-text (1+ s) (1- e)))))
+              (alt (and alt-node (thb-md-render--node-text alt-node)))
               (src (and dest-node (thb-md-render--node-text dest-node))))
          (thb-md-render--emit "🖼 " 'thb-md-render-list-marker)
          (when alt (thb-md-render--emit alt 'thb-md-render-link-text))
