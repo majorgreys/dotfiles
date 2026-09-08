@@ -1076,12 +1076,12 @@ retain that owner until it stops displaying the current buffer."
      ((and (window-live-p (selected-window))
            (eq (window-buffer (selected-window)) buf))
       (setq thb-md-render--wrap-window (selected-window)))
-     ((when-let ((win (get-buffer-window buf t)))
+     ((when-let* ((win (get-buffer-window buf t)))
         (setq thb-md-render--wrap-window win))))))
 
 (defun thb-md-render--window-width-px ()
   "Return the wrapping window's text-area width in pixels, or nil."
-  (when-let ((win (thb-md-render--wrapping-window)))
+  (when-let* ((win (thb-md-render--wrapping-window)))
     (window-body-width win t)))
 
 (defun thb-md-render--prose-budget-px ()
@@ -1089,7 +1089,7 @@ retain that owner until it stops displaying the current buffer."
 Use the stable wrapping window's live text area when displayed.  Otherwise,
 measure the configured fallback column count with the current buffer's face
 remapping; the first display is corrected by `thb-md-render--maybe-reflow'."
-  (if-let ((width (thb-md-render--window-width-px)))
+  (if-let* ((width (thb-md-render--window-width-px)))
       ;; Leave a scaled-character safety margin so a glyph landing exactly
       ;; on the right edge never trips the truncation glyph.
       (max 200 (- width (thb-md-render--string-pixel-width "M")))
@@ -1155,6 +1155,8 @@ the wrapping pass linear in the amount of prose."
         s
       (let ((parts (list lead))
             (width (thb-md-render--string-pixel-width lead))
+            (cont-prefix-width
+             (thb-md-render--string-pixel-width cont-prefix))
             (has-word nil)
             (last-word nil))
         (dolist (word words)
@@ -1174,8 +1176,7 @@ the wrapping pass linear in the amount of prose."
               (push (thb-md-render--faced-newline last-word) parts)
               (push cont-prefix parts)
               (push word parts)
-              (setq width (+ (thb-md-render--string-pixel-width cont-prefix)
-                             word-width)
+              (setq width (+ cont-prefix-width word-width)
                     last-word word))))
         (apply #'concat (nreverse parts))))))
 
@@ -1315,7 +1316,7 @@ fraction."
   (visual-line-mode -1)
   (setq-local left-fringe-width 0)
   (setq-local right-fringe-width 0)
-  (when-let ((w (get-buffer-window (current-buffer))))
+  (when-let* ((w (get-buffer-window (current-buffer))))
     (set-window-fringes w 0 0))
   (setq-local header-line-format nil)
   (display-line-numbers-mode -1)
@@ -1537,7 +1538,7 @@ via `quit-window'."
         ;; in a window.  Mode setup runs before the buffer has a
         ;; window, so `set-window-fringes' and global-mode hooks can
         ;; race and reset what mode init tried to set.
-        (when-let ((win (selected-window)))
+        (when-let* ((win (selected-window)))
           (set-window-fringes win 0 0))
         (display-line-numbers-mode -1))))
    (t (user-error "Not in markdown-ts-mode or a render preview"))))
