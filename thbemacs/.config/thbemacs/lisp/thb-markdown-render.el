@@ -275,9 +275,9 @@ below the header are the only visual cue; no background tint."
   "Face for the horizontal rule under the table header."
   :group 'thb-md-render)
 
-(defun thb-md-render-apply-theme ()
+(defun thb-md-render-apply-theme (&rest _ignored)
   "Reapply modus-themes-derived backgrounds to `thb-md-render-*' faces.
-Should be called after a theme toggle."
+Should be called after a theme toggle.  Ignore hook arguments."
   (when (featurep 'modus-themes)
     (let ((bg-code  (modus-themes-get-color-value 'bg-dim))
           (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced)))
@@ -286,6 +286,11 @@ Should be called after a theme toggle."
 
 (with-eval-after-load 'modus-themes
   (thb-md-render-apply-theme))
+
+;; `enable-theme-functions' runs after a theme has been enabled, when its
+;; palette is available.  `add-hook' is idempotent, including when this file is
+;; evaluated repeatedly in a long-lived Emacs session.
+(add-hook 'enable-theme-functions #'thb-md-render-apply-theme)
 
 ;;;; Source-buffer state ------------------------------------------------
 
@@ -1407,6 +1412,9 @@ fraction."
   ;; resized, so prose neither clips (budget too wide) nor under-fills.
   (add-hook 'window-configuration-change-hook
             #'thb-md-render--maybe-reflow nil t)
+  ;; Timers can outlive a buffer unless they are cancelled explicitly.  Keep
+  ;; cleanup on every render buffer, even ones that are never file-watched.
+  (add-hook 'kill-buffer-hook #'thb-md-render--cleanup nil t)
   (buffer-disable-undo))
 
 ;;;; Entry points -------------------------------------------------------
@@ -1417,13 +1425,30 @@ fraction."
 (defvar-local thb-md-render--watch nil
   "`file-notify' descriptor for the source file; re-renders on change.")
 
+(defvar-local thb-md-render--watch-timer nil
+  "Debounce or reattachment timer for `thb-md-render--watch'.")
+
+(defcustom thb-md-render-watch-debounce 0.1
+  "Seconds to debounce file-notify events before refreshing a preview."
+  :type 'number
+  :group 'thb-md-render)
+
+(defun thb-md-render--canonical-source-file (path)
+  "Return the canonical absolute identity for markdown source PATH."
+  (file-truename (expand-file-name path)))
+
+(defun thb-md-render--preview-buffer-name (source-file)
+  "Return the unique preview buffer name for canonical SOURCE-FILE."
+  (format "*md render: %s*" source-file))
+
 (defun thb-md-render-file (path)
-  "Parse PATH as markdown and render it into a fresh buffer.
+  "Parse PATH into its source-specific markdown preview buffer.
 When called interactively, also display the rendered buffer.  Lisp calls
 return the rendered buffer without displaying it."
   (interactive "fMarkdown file: ")
-  (let* ((path (expand-file-name path))
-         (buf-name (format "*md render: %s*" (file-name-nondirectory path)))
+  (let* ((interactivep (called-interactively-p 'interactive))
+         (path (thb-md-render--canonical-source-file path))
+         (buf-name (thb-md-render--preview-buffer-name path))
          (out (get-buffer-create buf-name))
          (src (generate-new-buffer (format " *thb-md-source: %s*"
                                            (file-name-nondirectory path))
@@ -1487,7 +1512,7 @@ return the rendered buffer without displaying it."
         (kill-buffer src))
       (when (buffer-live-p table-scratch)
         (kill-buffer table-scratch)))
-    (when (called-interactively-p 'interactive)
+    (when interactivep
       (pop-to-buffer out))
     out))
 
@@ -1503,10 +1528,8 @@ re-wrap doesn't jump back to the top."
          (span (- (point-max) (point-min)))
          (frac (and (> span 0)
                     (/ (float (- (point) (point-min))) span))))
-    (thb-md-render-file source)
-    (let ((buf (get-buffer (format "*md render: %s*"
-                                   (file-name-nondirectory source)))))
-      (when (and buf frac)
+    (let ((buf (thb-md-render-file source)))
+      (when (and (buffer-live-p buf) frac)
         (with-current-buffer buf
           (goto-char (+ (point-min)
                         (round (* frac (- (point-max) (point-min))))))
@@ -1514,37 +1537,87 @@ re-wrap doesn't jump back to the top."
           (when (window-live-p win)
             (set-window-point win (point))))))))
 
+(defun thb-md-render--cancel-watch-timer ()
+  "Cancel the current buffer's pending file-watch timer, if any."
+  (when (timerp thb-md-render--watch-timer)
+    (cancel-timer thb-md-render--watch-timer))
+  (setq thb-md-render--watch-timer nil))
+
+(defun thb-md-render--remove-watch ()
+  "Remove the current buffer's file-notify descriptor, if any."
+  (when thb-md-render--watch
+    (ignore-errors (file-notify-rm-watch thb-md-render--watch))
+    (setq thb-md-render--watch nil)))
+
+(defun thb-md-render--run-watch-update (preview-buffer reattach)
+  "Refresh PREVIEW-BUFFER, first replacing its watch when REATTACH is non-nil."
+  (when (buffer-live-p preview-buffer)
+    (with-current-buffer preview-buffer
+      (setq thb-md-render--watch-timer nil)
+      (if (file-readable-p thb-md-render--source-file)
+          (progn
+            (when reattach
+              ;; Always dispose the old descriptor before taking ownership of
+              ;; a replacement.  This is harmless when a terminal event already
+              ;; cleared it and protects direct callers from duplicate watches.
+              (thb-md-render--remove-watch)
+              (setq thb-md-render--watch
+                    (thb-md-render--setup-watch
+                     preview-buffer thb-md-render--source-file)))
+            (thb-md-render-revert))
+        ;; Atomic replacements normally expose the new path immediately, but
+        ;; keep one owned retry timer while it is absent rather than silently
+        ;; leaving a live preview unwatched.
+        (when reattach
+          (thb-md-render--schedule-watch-update preview-buffer t))))))
+
+(defun thb-md-render--schedule-watch-update (preview-buffer reattach)
+  "Debounce a refresh of PREVIEW-BUFFER.
+When REATTACH is non-nil, replace its file watch immediately before refresh."
+  (when (buffer-live-p preview-buffer)
+    (with-current-buffer preview-buffer
+      (thb-md-render--cancel-watch-timer)
+      (setq thb-md-render--watch-timer
+            (run-at-time thb-md-render-watch-debounce nil
+                         #'thb-md-render--run-watch-update
+                         preview-buffer reattach)))))
+
 (defun thb-md-render--setup-watch (preview-buffer source-file)
-  "Install a `file-notify' watch that re-renders PREVIEW-BUFFER on SOURCE-FILE change."
+  "Create a file-notify watch owned by PREVIEW-BUFFER for SOURCE-FILE."
   (file-notify-add-watch
    source-file '(change attribute-change)
    (lambda (event)
      (condition-case err
-         (pcase-let ((`(,_descriptor ,action . ,_rest) event))
+         (pcase-let ((`(,descriptor ,action . ,_rest) event))
            (when (buffer-live-p preview-buffer)
              (with-current-buffer preview-buffer
-               (cond
-                ;; Inode gone (atomic rename): schedule a re-watch + re-render.
-                ((memq action '(stopped deleted renamed))
-                 (run-at-time
-                  0.05 nil
-                  (lambda ()
-                    (when (buffer-live-p preview-buffer)
-                      (with-current-buffer preview-buffer
-                        (when (file-readable-p thb-md-render--source-file)
-                          (setq thb-md-render--watch
-                                (thb-md-render--setup-watch
-                                 preview-buffer thb-md-render--source-file))
-                          (thb-md-render-revert)))))))
-                ((memq action '(changed attribute-changed created))
-                 (thb-md-render-revert))))))
+               ;; A removed descriptor can still have queued events.  Ignore
+               ;; those so an obsolete watch cannot disturb its replacement.
+               (when (equal descriptor thb-md-render--watch)
+                 (cond
+                  ((memq action '(stopped deleted renamed))
+                   (thb-md-render--remove-watch)
+                   (thb-md-render--schedule-watch-update preview-buffer t))
+                  ((memq action '(changed attribute-changed created))
+                   (thb-md-render--schedule-watch-update preview-buffer nil)))))))
        (error (message "thb-md-render watch error: %s" err))))))
 
+(defun thb-md-render--ensure-watch (preview-buffer)
+  "Ensure PREVIEW-BUFFER owns one watch and its cleanup hook."
+  (with-current-buffer preview-buffer
+    (add-hook 'kill-buffer-hook #'thb-md-render--cleanup nil t)
+    (unless thb-md-render--watch
+      (setq thb-md-render--watch
+            (thb-md-render--setup-watch
+             preview-buffer thb-md-render--source-file)))))
+
 (defun thb-md-render--cleanup ()
-  "Remove file-notify watch when the render buffer is killed."
-  (when thb-md-render--watch
-    (ignore-errors (file-notify-rm-watch thb-md-render--watch))
-    (setq thb-md-render--watch nil)))
+  "Remove file-notify resources and timers owned by the current buffer."
+  (thb-md-render--remove-watch)
+  (thb-md-render--cancel-watch-timer)
+  (when (timerp thb-md-render--reflow-timer)
+    (cancel-timer thb-md-render--reflow-timer))
+  (setq thb-md-render--reflow-timer nil))
 
 (defun thb-md-render-toggle ()
   "Toggle between a markdown source buffer and its rendered preview.
@@ -1562,17 +1635,13 @@ via `quit-window'."
     (let ((src (buffer-file-name)))
       (unless src (user-error "Buffer is not visiting a file"))
       (when (buffer-modified-p) (save-buffer))
-      (let* ((buf-name (format "*md render: %s*" (file-name-nondirectory src)))
-             (existing (get-buffer buf-name))
-             (preview (thb-md-render-file src)))
-        (unless (and existing (eq existing preview))
-          (with-current-buffer preview
-            (when thb-md-render--watch
-              (ignore-errors (file-notify-rm-watch thb-md-render--watch))
-              (setq thb-md-render--watch nil))
-            (setq thb-md-render--watch
-                  (thb-md-render--setup-watch preview src))
-            (add-hook 'kill-buffer-hook #'thb-md-render--cleanup nil t)))
+      (let ((preview (thb-md-render-file src)))
+        (with-current-buffer preview
+          ;; A manual toggle already rendered the latest contents, so any
+          ;; queued refresh is redundant.  Reused previews still pass through
+          ;; this path and regain lifecycle hooks after a live code reload.
+          (thb-md-render--cancel-watch-timer)
+          (thb-md-render--ensure-watch preview))
         (switch-to-buffer preview)
         ;; Defensive: re-apply visual tweaks AFTER the buffer is shown
         ;; in a window.  Mode setup runs before the buffer has a
