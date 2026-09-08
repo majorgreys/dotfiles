@@ -123,7 +123,26 @@
         (thb-md-render--pixel-wrap source budget "")))
     ;; The legacy pass measures every growing prefix (~N^2 characters), while
     ;; the new pass measures each word and separator once (~N characters).
-    (should (> legacy-work (* 100 new-work)))))
+    (should (> legacy-work (* 100 new-work)))
+    ;; A tight budget exercises hundreds of forced line breaks.  Measurement
+    ;; remains proportional to input length, and the constant continuation
+    ;; prefix is measured once for the whole wrapping pass.
+    (let ((cont-prefix ">>")
+          (narrow-work 0)
+          (prefix-measurements 0)
+          narrow-result)
+      (cl-labels ((count-width
+                   (string &optional _buffer)
+                   (cl-incf narrow-work (length string))
+                   (when (equal string cont-prefix)
+                     (cl-incf prefix-measurements))
+                   (length string)))
+        (cl-letf (((symbol-function 'string-pixel-width) #'count-width))
+          (setq narrow-result
+                (thb-md-render--pixel-wrap source 30 cont-prefix))))
+      (should (> (length (string-lines narrow-result)) 150))
+      (should (= prefix-measurements 1))
+      (should (< narrow-work (* 2 word-count 5))))))
 
 (ert-deftest thb-md-render-keeps-one-wrapping-window-owner ()
   (with-temp-buffer
@@ -193,18 +212,22 @@
         (thb-md-render--maybe-reflow)
         (should (zerop scheduled))))))
 
-(defun thb-md-render-test-benchmark-pixel-wrap (&optional word-count)
+(defun thb-md-render-test-benchmark-pixel-wrap (&optional word-count budget)
   "Benchmark legacy and linear wrappers on WORD-COUNT words.
-Interactively default to 5000 words.  Return an alist of elapsed seconds.
-This is intentionally not an ERT assertion because wall-clock ratios vary.
+Interactively default to 5000 words.  BUDGET defaults to effectively unlimited;
+pass a narrow pixel budget to include forced line breaks.  Return an alist of
+elapsed seconds.  This is intentionally not an ERT assertion because wall-clock
+ratios vary.
 
-Reproduce in batch from the thbemacs config directory with:
+Reproduce both paths in batch from the thbemacs config directory with:
   emacs -Q --batch -L lisp -L test -l test/thb-markdown-render-test.el \\
-    --eval '(prin1 (thb-md-render-test-benchmark-pixel-wrap 5000))'"
+    --eval '(prin1 (thb-md-render-test-benchmark-pixel-wrap 5000))'
+  emacs -Q --batch -L lisp -L test -l test/thb-markdown-render-test.el \\
+    --eval '(prin1 (thb-md-render-test-benchmark-pixel-wrap 5000 80))'"
   (interactive)
   (let* ((word-count (or word-count 5000))
          (source (mapconcat #'identity (make-list word-count "propertized") " "))
-         (budget most-positive-fixnum)
+         (budget (or budget most-positive-fixnum))
          legacy new)
     (put-text-property 0 (length source) 'face 'thb-md-render-body source)
     (garbage-collect)
@@ -215,6 +238,7 @@ Reproduce in batch from the thbemacs config directory with:
     (setq new (car (benchmark-run 3
                      (thb-md-render--pixel-wrap source budget ""))))
     (let ((result `((words . ,word-count)
+                    (budget . ,budget)
                     (legacy-seconds . ,legacy)
                     (linear-seconds . ,new)
                     (speedup . ,(if (zerop new) nil (/ legacy new))))))
