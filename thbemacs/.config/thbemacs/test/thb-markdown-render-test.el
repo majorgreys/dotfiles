@@ -83,14 +83,14 @@
                         image "image_description"))))
             (should image)
             (should description)
-            ;; The grammar excludes ! from image_description and includes
-            ;; both brackets: ![foo](bar) gives the half-open range 2..7.
-            (should (= (treesit-node-start description) 2))
-            (should (= (treesit-node-end description) 7))
+            ;; The grammar excludes ! and both brackets from
+            ;; image_description: ![foo](bar) gives the half-open range 3..6.
+            (should (= (treesit-node-start description) 3))
+            (should (= (treesit-node-end description) 6))
             (should (equal (buffer-substring-no-properties
                             (treesit-node-start description)
                             (treesit-node-end description))
-                           "[foo]"))
+                           "foo"))
             (with-temp-buffer
               (let ((thb-md-render--src-buffer source))
                 (thb-md-render--emit-inline-node image))
