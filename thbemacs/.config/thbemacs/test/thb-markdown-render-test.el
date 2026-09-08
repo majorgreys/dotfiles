@@ -68,6 +68,35 @@
                           (pipe_table_cell) @capture)
                         treesit-range-settings))))))
 
+(ert-deftest thb-md-render-image-description-uses-real-parser-boundaries ()
+  (skip-unless (treesit-language-available-p 'markdown-inline))
+  (let ((source (generate-new-buffer " *thb-md-render-image-source*")))
+    (unwind-protect
+        (with-current-buffer source
+          (insert "![foo](bar)")
+          (let* ((parser (treesit-parser-create 'markdown-inline))
+                 (root (treesit-parser-root-node parser))
+                 (image (thb-md-render--first-child-of-type root "image"))
+                 (description
+                  (and image
+                       (thb-md-render--first-child-of-type
+                        image "image_description"))))
+            (should image)
+            (should description)
+            ;; The grammar excludes ! from image_description and includes
+            ;; both brackets: ![foo](bar) gives the half-open range 2..7.
+            (should (= (treesit-node-start description) 2))
+            (should (= (treesit-node-end description) 7))
+            (should (equal (buffer-substring-no-properties
+                            (treesit-node-start description)
+                            (treesit-node-end description))
+                           "[foo]"))
+            (with-temp-buffer
+              (let ((thb-md-render--src-buffer source))
+                (thb-md-render--emit-inline-node image))
+              (should (equal (buffer-string) "🖼 foo bar")))))
+      (kill-buffer source))))
+
 (ert-deftest thb-md-render-first-child-stops-at-first-match ()
   (let* ((first '(:type "other"))
          (match '(:type "wanted"))
@@ -173,6 +202,25 @@
             (thb-md-render--walk-list outer))
           (should (equal (buffer-string)
                          "• outer\n  • nested\n• next\n\n")))))))
+
+(ert-deftest thb-md-render-marker-only-parent-separates-nested-marker ()
+  (thb-md-render-test--with-fake-nodes
+    (let* ((marker '(:type "list_marker_minus" :text "-"))
+           (paragraph '(:type "paragraph" :children
+                        ((:type "inline" :start 1 :end 2))))
+           (nested (list :type "list" :children
+                         (list (list :type "list_item" :children
+                                     (list marker paragraph)))))
+           (outer (list :type "list" :children
+                        (list (list :type "list_item" :children
+                                    (list marker nested))))))
+      (cl-letf (((symbol-function 'thb-md-render--inline-walk)
+                 (lambda (_start _end) (insert "nested"))))
+        (with-temp-buffer
+          (let ((thb-md-render--list-state nil))
+            (thb-md-render--walk-list outer))
+          (should (equal (buffer-string) "• \n  • nested\n\n"))
+          (should-not (string-match-p "• +•" (buffer-string))))))))
 
 (defun thb-md-render-test--face-has-p (position face)
   "Return non-nil when POSITION's face property contains FACE."
