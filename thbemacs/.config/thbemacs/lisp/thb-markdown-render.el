@@ -1170,53 +1170,67 @@ the normal first-display reflow renders again with the live width."
   (when (< start end)
     (put-text-property start end 'thb-md-render--nowrap t)))
 
+(defun thb-md-render--string-pixel-width (string)
+  "Return STRING's pixel width using the current render buffer's faces.
+Supplying the buffer is essential: it makes face remapping from
+`text-scale-set' part of the measurement instead of comparing unscaled prose
+with a scaled window."
+  (string-pixel-width string (current-buffer)))
+
+(defvar-local thb-md-render--wrap-window nil
+  "Window that owns hard wrapping for this preview buffer.
+A buffer can be displayed in differently sized windows, but its inserted
+newlines are shared.  Keeping one live owner stable prevents resize events
+from making those windows alternately rewrap the same buffer.")
+
+(defun thb-md-render--wrapping-window ()
+  "Return this preview's stable live wrapping window, or nil.
+Prefer the selected window when choosing an owner for the first time, then
+retain that owner until it stops displaying the current buffer."
+  (let ((buf (current-buffer)))
+    (cond
+     ((and (window-live-p thb-md-render--wrap-window)
+           (eq (window-buffer thb-md-render--wrap-window) buf))
+      thb-md-render--wrap-window)
+     ((and (window-live-p (selected-window))
+           (eq (window-buffer (selected-window)) buf))
+      (setq thb-md-render--wrap-window (selected-window)))
+     ((when-let* ((win (get-buffer-window buf t)))
+        (setq thb-md-render--wrap-window win))))))
+
+(defun thb-md-render--window-width-px ()
+  "Return the wrapping window's text-area width in pixels, or nil."
+  (when-let* ((win (thb-md-render--wrapping-window)))
+    (window-body-width win t)))
+
 (defun thb-md-render--prose-budget-px ()
-  "Pixel budget prose wraps to: the live text-area width of the window
-showing this buffer, in the same base pixel units `string-pixel-width'
-returns -- so the comparison is apples-to-apples and already accounts for
-the olivetti margins (which `window-body-width' excludes).  Falls back to
-the configured body width when the buffer is not yet displayed; that first
-render is corrected on display by `thb-md-render--maybe-reflow'."
-  (let ((win (get-buffer-window (current-buffer) t)))
-    (if (and win (window-live-p win))
-        ;; Leave a one-char safety margin so a glyph landing exactly on the
-        ;; right edge (sub-pixel rounding) never trips the truncation glyph.
-        (max 200 (- (window-body-width win t) (frame-char-width)))
-      (* (if (and (numberp thb-md-render-body-width)
-                  (> thb-md-render-body-width 0))
-             thb-md-render-body-width 80)
-         (frame-char-width)))))
+  "Return the render-buffer-aware pixel budget for prose wrapping.
+Use the stable wrapping window's live text area when displayed.  Otherwise,
+measure the configured fallback column count with the current buffer's face
+remapping; the first display is corrected by `thb-md-render--maybe-reflow'."
+  (if-let* ((width (thb-md-render--window-width-px)))
+      ;; Leave a scaled-character safety margin so a glyph landing exactly
+      ;; on the right edge never trips the truncation glyph.
+      (max 200 (- width (thb-md-render--string-pixel-width "M")))
+    (thb-md-render--string-pixel-width
+     (make-string (if (and (numberp thb-md-render-body-width)
+                           (> thb-md-render-body-width 0))
+                      thb-md-render-body-width 80)
+                  ?M))))
 
 (defvar-local thb-md-render--wrap-width nil
-  "Window text-area pixel width used for the last prose rewrap.
-`thb-md-render--maybe-reflow' compares against it to decide whether a
-resize (or first display) needs a re-wrap.")
+  "Owner-window text-area pixel width used for the last prose rewrap.")
+
+(defvar-local thb-md-render--unwrapped-content nil
+  "Propertized emitted document before width-dependent prose wrapping.
+Resize reflow restores this string instead of rereading and reparsing source.")
 
 (defvar-local thb-md-render--reflow-timer nil
   "Debounce timer for `thb-md-render--maybe-reflow'.")
 
-(defun thb-md-render--maybe-reflow ()
-  "Re-render (re-wrap prose) when the window's text-area width changed.
-Hung buffer-locally on `window-configuration-change-hook'.  The width read
-and the re-render are deferred to an idle timer so olivetti has finished
-re-applying its margins before we measure, and so a burst of resize events
-coalesces into a single re-render."
-  (when thb-md-render--source-file
-    (when (timerp thb-md-render--reflow-timer)
-      (cancel-timer thb-md-render--reflow-timer))
-    (setq thb-md-render--reflow-timer
-          (run-with-idle-timer
-           0.2 nil
-           (lambda (buf)
-             (when (buffer-live-p buf)
-               (with-current-buffer buf
-                 (setq thb-md-render--reflow-timer nil)
-                 (let* ((win (get-buffer-window buf t))
-                        (w   (and win (window-live-p win)
-                                  (window-body-width win t))))
-                   (when (and w (not (equal w thb-md-render--wrap-width)))
-                     (thb-md-render-revert))))))
-           (current-buffer)))))
+(defvar-local thb-md-render--reflowing nil
+  "Non-nil while a width-only reflow is updating margins and content.
+This suppresses window-configuration feedback from margin resets.")
 
 (defun thb-md-render--split-words (s)
   "Split S into a list of non-space substrings (text properties preserved)."
@@ -1248,33 +1262,42 @@ line to the window edge instead of stopping at the last word."
 Line 1 keeps S's own leading indent; continuation lines are prefixed with
 CONT-PREFIX (the line's hang indent).  Returns one propertized string with
 embedded newlines.  Breaks at ASCII spaces; a single over-long word is left
-to overflow (it simply truncates off the right).  Properties are preserved."
+to overflow (it simply truncates off the right).  Properties are preserved.
+
+Each word and inserted separator is measured once.  Widths are accumulated
+instead of repeatedly concatenating and measuring the growing line, making
+the wrapping pass linear in the amount of prose."
   (let* ((lead-len (or (string-match "[^ ]" s) (length s)))
-         (lead  (substring s 0 lead-len))
+         (lead (substring s 0 lead-len))
          (words (thb-md-render--split-words (substring s lead-len))))
     (if (null words)
         s
-      (let ((lines nil) (cur lead) (has nil))
-        (dolist (w words)
-          (let ((cand (if has
-                          (concat cur (thb-md-render--sep-space w) w)
-                        (concat cur w))))
-            (if (<= (string-pixel-width cand) budget)
-                (setq cur cand has t)
-              (if has
-                  (progn (push cur lines)
-                         (setq cur (concat cont-prefix w) has t))
-                ;; No word placed yet on this line: keep it (will overflow).
-                (setq cur cand has t)))))
-        (push cur lines)
-        (let ((ls (nreverse lines)))
-          (if (null (cdr ls))
-              (car ls)
-            (let ((acc (car ls)) (prev (car ls)))
-              (dolist (ln (cdr ls))
-                (setq acc (concat acc (thb-md-render--faced-newline prev) ln)
-                      prev ln))
-              acc)))))))
+      (let ((parts (list lead))
+            (width (thb-md-render--string-pixel-width lead))
+            (cont-prefix-width
+             (thb-md-render--string-pixel-width cont-prefix))
+            (has-word nil)
+            (last-word nil))
+        (dolist (word words)
+          (let* ((space (and has-word (thb-md-render--sep-space word)))
+                 (word-width (thb-md-render--string-pixel-width word))
+                 (space-width (if space
+                                  (thb-md-render--string-pixel-width space)
+                                0))
+                 (candidate-width (+ width space-width word-width)))
+            (if (or (not has-word) (<= candidate-width budget))
+                (progn
+                  (when space (push space parts))
+                  (push word parts)
+                  (setq width candidate-width
+                        has-word t
+                        last-word word))
+              (push (thb-md-render--faced-newline last-word) parts)
+              (push cont-prefix parts)
+              (push word parts)
+              (setq width (+ cont-prefix-width word-width)
+                    last-word word))))
+        (apply #'concat (nreverse parts))))))
 
 (defun thb-md-render--rewrap-prose ()
   "Hard-wrap prose lines to the body width so they read fine in a buffer
@@ -1292,22 +1315,71 @@ Run once, after the whole document has been emitted."
                   (get-text-property bol 'thb-md-render--nowrap))
               (goto-char eol)
             (let ((line (buffer-substring bol eol)))
-              (if (<= (string-pixel-width line) budget)
+              (if (<= (thb-md-render--string-pixel-width line) budget)
                   (goto-char eol)
                 ;; The hang-indent `wrap-prefix' is set over the item's
                 ;; CONTENT (after the bullet / number), not at bol, so read
                 ;; it from the first position on the line that carries it.
-                (let* ((prefix  (or (get-text-property bol 'wrap-prefix)
-                                    (let ((p (next-single-property-change
-                                              bol 'wrap-prefix nil eol)))
-                                      (and p (< p eol)
-                                           (get-text-property p 'wrap-prefix)))
-                                    ""))
+                (let* ((prefix (or (get-text-property bol 'wrap-prefix)
+                                   (let ((p (next-single-property-change
+                                             bol 'wrap-prefix nil eol)))
+                                     (and p (< p eol)
+                                          (get-text-property p 'wrap-prefix)))
+                                   ""))
                        (wrapped (thb-md-render--pixel-wrap line budget prefix)))
                   (delete-region bol eol)
                   (goto-char bol)
                   (insert wrapped))))))
         (forward-line 1)))))
+
+(defun thb-md-render--rewrap-cached-content ()
+  "Restore and rewrap `thb-md-render--unwrapped-content' without parsing.
+Preserve the point's proportional document position and update the owner
+window's point after the width-dependent representation changes."
+  (when thb-md-render--unwrapped-content
+    (let* ((span (- (point-max) (point-min)))
+           (frac (and (> span 0)
+                      (/ (float (- (point) (point-min))) span)))
+           (win (thb-md-render--wrapping-window))
+           (inhibit-read-only t))
+      (erase-buffer)
+      (insert thb-md-render--unwrapped-content)
+      (thb-md-render--apply-olivetti-width)
+      (thb-md-render--rewrap-prose)
+      (setq thb-md-render--wrap-width (thb-md-render--window-width-px))
+      (when frac
+        (goto-char (+ (point-min)
+                      (round (* frac (- (point-max) (point-min))))))
+        (beginning-of-line)
+        (when (window-live-p win)
+          (set-window-point win (point)))))))
+
+(defun thb-md-render--reflow-now ()
+  "Perform one width-only reflow when the owner window width changed."
+  (let ((width (thb-md-render--window-width-px)))
+    (when (and width thb-md-render--unwrapped-content
+               (not (equal width thb-md-render--wrap-width)))
+      (let ((thb-md-render--reflowing t))
+        (thb-md-render--rewrap-cached-content)))))
+
+(defun thb-md-render--maybe-reflow ()
+  "Debounce a width-only reflow for this preview's stable owner window.
+Margin-reset configuration hooks are ignored during reflow.  Reflow restores
+the cached emitted document, so it does not reread or reparse source."
+  (when (and thb-md-render--source-file
+             thb-md-render--unwrapped-content
+             (not thb-md-render--reflowing))
+    (when (timerp thb-md-render--reflow-timer)
+      (cancel-timer thb-md-render--reflow-timer))
+    (setq thb-md-render--reflow-timer
+          (run-with-idle-timer
+           0.2 nil
+           (lambda (buf)
+             (when (buffer-live-p buf)
+               (with-current-buffer buf
+                 (setq thb-md-render--reflow-timer nil)
+                 (thb-md-render--reflow-now))))
+           (current-buffer)))))
 
 (defun thb-md-render--apply-olivetti-width ()
   "Size the olivetti reading column for the current window.
@@ -1325,7 +1397,7 @@ fraction."
            (if (and (floatp thb-md-render-body-width)
                     (<= thb-md-render-body-width 1.0))
                thb-md-render-body-width
-             (let* ((win   (get-buffer-window (current-buffer) t))
+             (let* ((win (thb-md-render--wrapping-window))
                     (total (and win (window-total-width win))))
                (and total (> total 0)
                     (min 1.0 (/ (float thb-md-render-body-width) total)))))))
@@ -1483,20 +1555,18 @@ return the rendered buffer without displaying it."
                       (thb-md-render--inline-cursor 0)
                       (thb-md-render--table-cell-buffer table-scratch))
                   (thb-md-render--walk root))
-                ;; Size the reading column to the current window first, then
+                ;; Cache the fully emitted, propertized document before the
+                ;; width-dependent pass.  Resizes can restore this snapshot
+                ;; and rewrap without rereading or reparsing the source.
+                (setq thb-md-render--unwrapped-content
+                      (buffer-substring (point-min) (point-max)))
+                ;; Size the reading column to the owner window first, then
                 ;; wrap prose to that width (tables / code are skipped via
-                ;; `thb-md-render--nowrap'), so prose fills the window and
-                ;; reads fine while the buffer truncates long table / code
-                ;; lines.
+                ;; `thb-md-render--nowrap').
                 (thb-md-render--apply-olivetti-width)
                 (thb-md-render--rewrap-prose)
-                ;; Record the width we wrapped to, so a later window resize
-                ;; (or the first display, when there was no window yet)
-                ;; triggers `thb-md-render--maybe-reflow'.
                 (setq thb-md-render--wrap-width
-                      (let ((win (get-buffer-window (current-buffer) t)))
-                        (and win (window-live-p win)
-                             (window-body-width win t))))
+                      (thb-md-render--window-width-px))
                 (goto-char (point-min)))
               (setq thb-md-render--source-file path)
               ;; Re-assert no-wrap on every render, not just on fresh
@@ -1517,14 +1587,14 @@ return the rendered buffer without displaying it."
     out))
 
 (defun thb-md-render-revert ()
-  "Re-render the current preview buffer from its source file.
-Keeps point at roughly the same place in the document so a resize-driven
-re-wrap doesn't jump back to the top."
+  "Reparse and re-render the current preview buffer from its source file.
+Keeps point at roughly the same place when an explicit refresh or source-file
+notification replaces the emitted document."
   (interactive)
   (unless thb-md-render--source-file
     (user-error "Not a markdown render buffer"))
   (let* ((source thb-md-render--source-file)
-         (win  (get-buffer-window (current-buffer) t))
+         (win (thb-md-render--wrapping-window))
          (span (- (point-max) (point-min)))
          (frac (and (> span 0)
                     (/ (float (- (point) (point-min))) span))))
