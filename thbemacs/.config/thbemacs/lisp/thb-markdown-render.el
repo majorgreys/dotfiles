@@ -28,19 +28,20 @@
 ;;                                        buffer and its rendered preview
 ;;
 ;; Coverage in v0.1:
-;;   - ATX headings (H1-H6) with scaled faces
+;;   - ATX and Setext headings with scaled faces
 ;;   - Paragraphs, with inline emphasis / strong / strikethrough / code
-;;   - Fenced code blocks (language tag captured but no injection yet)
+;;   - Fenced code blocks with language-aware syntax fontification
+;;   - Indented code blocks
 ;;   - Unordered, ordered, and task lists (with Unicode glyphs)
 ;;   - Block quotes (with marker + bg)
+;;   - GFM pipe tables with alignment
 ;;   - Inline links (text rendered, URL via `help-echo')
+;;   - Image placeholders with alt text and source URL
 ;;   - Thematic breaks
 ;;
 ;; Not yet:
-;;   - Setext headings
-;;   - Tables (next milestone)
-;;   - Indented code blocks
-;;   - Inline images (would need overlays + image scaling)
+;;   - Footnotes
+;;   - Inline image overlays and scaling
 ;;   - Reference-style links / link reference definitions
 ;;   - HTML blocks
 ;;   - Tree-sitter language injection inside fenced code blocks
@@ -48,6 +49,7 @@
 ;;; Code:
 
 (require 'treesit)
+(require 'font-lock)
 (require 'cl-lib)
 (require 'subr-x)
 
@@ -167,23 +169,23 @@ font-lock-keywords which is always available."
 ;; inherit list so its :family wins) so headings stay proportional even
 ;; though the buffer default is fixed-pitch.  Outline-N is inherited for
 ;; the per-level color from modus-themes.  Weight is semi-bold across
-;; the ladder; size carries the hierarchy.
-(defface thb-md-render-h1 '((t :inherit (variable-pitch outline-1) :weight semi-bold :height 1.75))
+;; the ladder; `thb-md-render-heading-scales' supplies the rendered size.
+(defface thb-md-render-h1 '((t :inherit (variable-pitch outline-1) :weight semi-bold))
   "Face for H1 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h2 '((t :inherit (variable-pitch outline-2) :weight semi-bold :height 1.5))
+(defface thb-md-render-h2 '((t :inherit (variable-pitch outline-2) :weight semi-bold))
   "Face for H2 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h3 '((t :inherit (variable-pitch outline-3) :weight semi-bold :height 1.25))
+(defface thb-md-render-h3 '((t :inherit (variable-pitch outline-3) :weight semi-bold))
   "Face for H3 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h4 '((t :inherit (variable-pitch outline-4) :weight semi-bold :height 1.1))
+(defface thb-md-render-h4 '((t :inherit (variable-pitch outline-4) :weight semi-bold))
   "Face for H4 in the rendered preview."
   :group 'thb-md-render)
 (defface thb-md-render-h5 '((t :inherit (variable-pitch outline-5) :weight semi-bold))
   "Face for H5 in the rendered preview."
   :group 'thb-md-render)
-(defface thb-md-render-h6 '((t :inherit (variable-pitch outline-6) :weight semi-bold :height 0.9))
+(defface thb-md-render-h6 '((t :inherit (variable-pitch outline-6) :weight semi-bold))
   "Face for H6 in the rendered preview."
   :group 'thb-md-render)
 
@@ -274,9 +276,9 @@ below the header are the only visual cue; no background tint."
   "Face for the horizontal rule under the table header."
   :group 'thb-md-render)
 
-(defun thb-md-render-apply-theme ()
+(defun thb-md-render-apply-theme (&rest _ignored)
   "Reapply modus-themes-derived backgrounds to `thb-md-render-*' faces.
-Should be called after a theme toggle."
+Should be called after a theme toggle.  Ignore hook arguments."
   (when (featurep 'modus-themes)
     (let ((bg-code  (modus-themes-get-color-value 'bg-dim))
           (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced)))
@@ -285,6 +287,11 @@ Should be called after a theme toggle."
 
 (with-eval-after-load 'modus-themes
   (thb-md-render-apply-theme))
+
+;; `enable-theme-functions' runs after a theme has been enabled, when its
+;; palette is available.  `add-hook' is idempotent, including when this file is
+;; evaluated repeatedly in a long-lived Emacs session.
+(add-hook 'enable-theme-functions #'thb-md-render-apply-theme)
 
 ;;;; Source-buffer state ------------------------------------------------
 
@@ -302,13 +309,41 @@ Bound by `thb-md-render-file' for the duration of one render.")
   (thb-md-render--src-text (treesit-node-start node)
                            (treesit-node-end   node)))
 
+(defun thb-md-render--setup-parsers ()
+  "Create and configure markdown parsers in the current source buffer.
+Make the markdown parser primary, then explicitly apply markdown-inline
+ranges for prose inline nodes and table cells before returning
+(MARKDOWN-PARSER . INLINE-PARSER)."
+  (let ((markdown-parser (treesit-parser-create 'markdown))
+        (inline-parser (treesit-parser-create 'markdown-inline)))
+    (setq-local treesit-primary-parser markdown-parser)
+    (setq-local treesit-range-settings
+                (treesit-range-rules
+                 :embed 'markdown-inline
+                 :host 'markdown
+                 '((inline) @capture
+                   (pipe_table_cell) @capture)))
+    (treesit-update-ranges)
+    (cons markdown-parser inline-parser)))
+
 (defun thb-md-render--children-of-type (node type)
   "Return direct children of NODE whose `treesit-node-type' is TYPE (a string)."
   (seq-filter (lambda (c) (equal (treesit-node-type c) type))
               (treesit-node-children node)))
 
 (defun thb-md-render--first-child-of-type (node type)
-  (car (thb-md-render--children-of-type node type)))
+  "Return NODE's first direct child of TYPE, or nil.
+Stop at the first match instead of allocating and filtering a complete
+child list."
+  (let ((index 0)
+        (count (treesit-node-child-count node))
+        child)
+    (while (and (< index count) (not child))
+      (let ((candidate (treesit-node-child node index)))
+        (when (equal (treesit-node-type candidate) type)
+          (setq child candidate)))
+      (cl-incf index))
+    child))
 
 ;;;; Emit helpers --------------------------------------------------------
 
@@ -324,14 +359,19 @@ Bound by `thb-md-render-file' for the duration of one render.")
   (insert (make-string (or n 1) ?\n)))
 
 (defun thb-md-render--ensure-blank-line ()
-  "Ensure there's at least one blank line before point (block separator).
-Does nothing at buffer start; collapses adjacent blank lines so we don't
-accumulate them across nested blocks."
-  (cond
-   ((= (point) (point-min)) nil)
-   ((looking-back "\n\n" 2) nil)
-   ((looking-back "\n" 1)   (insert "\n"))
-   (t                        (insert "\n\n"))))
+  "Ensure there is at least one blank line before point.
+Do nothing at buffer start or after two newlines, append one newline after
+one, and append two after other text.  Inspect only adjacent characters so
+the work is independent of the output buffer's current position."
+  (unless (= (point) (point-min))
+    (cond
+     ((and (eq (char-before) ?\n)
+           (> (point) (1+ (point-min)))
+           (eq (char-before (1- (point))) ?\n)))
+     ((eq (char-before) ?\n)
+      (insert "\n"))
+     (t
+      (insert "\n\n")))))
 
 ;;;; Inline rendering ----------------------------------------------------
 
@@ -378,14 +418,16 @@ source order, so the cursor never needs to rewind.  Each call to
     (_ nil)))
 
 (defun thb-md-render--emit-plain (start end)
-  "Emit plain (un-tokenized) source text in the range START..END.
-Applies the topmost face from `thb-md-render--inline-face-stack', or
+  "Emit plain source text in the range START..END without allocating it.
+Apply the topmost face from `thb-md-render--inline-face-stack', or
 `thb-md-render-body' if the stack is empty (top-level prose)."
   (when (< start end)
-    (let* ((text (thb-md-render--src-text start end))
-           (face (or (car thb-md-render--inline-face-stack)
-                     'thb-md-render-body)))
-      (thb-md-render--emit text face))))
+    (let ((output-start (point))
+          (face (or (car thb-md-render--inline-face-stack)
+                    'thb-md-render-body)))
+      (insert-buffer-substring-no-properties thb-md-render--src-buffer
+                                             start end)
+      (put-text-property output-start (point) 'face face))))
 
 (defun thb-md-render--walk-inline-range (children start end &optional skip-types)
   "Walk inline CHILDREN that lie within source range START..END.
@@ -499,10 +541,7 @@ inline children), not O(paragraphs * total inline children)."
       ("image"
        (let* ((alt-node (thb-md-render--first-child-of-type node "image_description"))
               (dest-node (thb-md-render--first-child-of-type node "link_destination"))
-              (alt (and alt-node
-                        (let ((s (treesit-node-start alt-node))
-                              (e (treesit-node-end   alt-node)))
-                          (thb-md-render--src-text (+ s 2) (1- e)))))  ;; trim ![ and ]
+              (alt (and alt-node (thb-md-render--node-text alt-node)))
               (src (and dest-node (thb-md-render--node-text dest-node))))
          (thb-md-render--emit "🖼 " 'thb-md-render-list-marker)
          (when alt (thb-md-render--emit alt 'thb-md-render-link-text))
@@ -526,9 +565,9 @@ inline children), not O(paragraphs * total inline children)."
 ;;;; Block rendering -----------------------------------------------------
 
 (defvar thb-md-render--list-state nil
-  "Stack of (KIND . COUNTER) cells while inside lists.
-KIND is `unordered' or `ordered'.  COUNTER is the next ordinal for an
-ordered list (incremented per `list_item').")
+  "Stack of (KIND COUNTER SUFFIX) entries while inside lists.
+KIND is `unordered' or `ordered'.  COUNTER is the next ordered-list
+ordinal, and SUFFIX preserves the source marker style, either `.' or `)'.")
 
 (defun thb-md-render--walk (node)
   "Top-level dispatch on block-level NODE from the markdown parser."
@@ -575,7 +614,10 @@ ordered list (incremented per `list_item').")
      (t 1))))
 
 (defun thb-md-render--heading-face (level)
-  (intern (format "thb-md-render-h%d" level)))
+  "Return the configured face specification for heading LEVEL."
+  (let ((scale (or (nth (1- level) thb-md-render-heading-scales) 1.0)))
+    (list :inherit (intern (format "thb-md-render-h%d" level))
+          :height scale)))
 
 (defun thb-md-render--walk-heading (node)
   (thb-md-render--ensure-blank-line)
@@ -622,16 +664,27 @@ buffers are killed only on `kill-emacs-hook' (via the cleanup helper).")
 
 (defun thb-md-render--fontify-buffer-for-mode (mode)
   "Return a cached hidden buffer initialised in MODE.
-Creates and primes one on first use; subsequent calls reuse it."
+Create and prime one on first use; subsequent calls reuse it.  If MODE
+initialization fails, kill the partially initialized buffer before the
+error is propagated to the caller's plain-text fallback."
   (let ((cached (gethash mode thb-md-render--fontify-buffers)))
     (if (and cached (buffer-live-p cached))
         cached
+      (when cached
+        (remhash mode thb-md-render--fontify-buffers))
       (let ((buf (generate-new-buffer
-                  (format " *thb-md-fontify-cache: %s*" mode) t)))
-        (with-current-buffer buf
-          (delay-mode-hooks (funcall mode)))
-        (puthash mode buf thb-md-render--fontify-buffers)
-        buf))))
+                  (format " *thb-md-fontify-cache: %s*" mode) t))
+            initialized)
+        (unwind-protect
+            (progn
+              (with-current-buffer buf
+                (delay-mode-hooks (funcall mode)))
+              (puthash mode buf thb-md-render--fontify-buffers)
+              (setq initialized t)
+              buf)
+          (unless initialized
+            (when (buffer-live-p buf)
+              (kill-buffer buf))))))))
 
 (defun thb-md-render-fontify-cleanup ()
   "Kill all cached fontification buffers.  Hooked to `kill-emacs-hook'."
@@ -641,26 +694,46 @@ Creates and primes one on first use; subsequent calls reuse it."
   (clrhash thb-md-render--fontify-buffers))
 (add-hook 'kill-emacs-hook #'thb-md-render-fontify-cleanup)
 
-(defun thb-md-render--fontify-code (text lang)
-  "Return TEXT fontified per LANG's major mode (looks up `thb-md-render-
-language-mode-alist').  Returns the original TEXT unchanged on any
-failure: unknown language, mode missing, mode init errors, etc.
+(defun thb-md-render--fontify-face-only-string ()
+  "Return the current buffer text carrying only its `face' properties."
+  (let ((result (buffer-substring-no-properties (point-min) (point-max)))
+        (position (point-min))
+        (origin (point-min))
+        next face)
+    (while (< position (point-max))
+      (setq next (next-single-property-change position 'face nil (point-max))
+            face (get-text-property position 'face))
+      (when face
+        (put-text-property (- position origin) (- next origin)
+                           'face face result))
+      (setq position next))
+    result))
 
-Uses a per-mode cached buffer so mode init (font-lock-keywords compile,
-syntax-table setup, ...) is paid once per language per Emacs session
-rather than once per fontify call.  The returned string carries text
-properties for the per-token faces font-lock applied; inserting it
-preserves those properties."
-  (let ((mode (cdr (assoc lang thb-md-render-language-mode-alist))))
+(defun thb-md-render--fontify-code (text lang)
+  "Return TEXT fontified according to LANG's configured major mode.
+Language lookup is case-insensitive.  Return TEXT unchanged on any failure,
+including an unknown language, missing mode, or mode initialization error.
+
+Reuse a cached buffer per mode, but explicitly flush and ensure font-lock
+for every block.  The returned string carries only display-relevant `face'
+properties; syntax, composition, and fontification bookkeeping remain in
+the scratch buffer."
+  (let* ((language (and (stringp lang) (downcase (string-trim lang))))
+         (mode (cdr (assoc language thb-md-render-language-mode-alist))))
     (if (and mode (fboundp mode))
         (condition-case _err
             (with-current-buffer
                 (thb-md-render--fontify-buffer-for-mode mode)
               (let ((inhibit-read-only t))
+                (widen)
                 (erase-buffer)
                 (insert text)
-                (font-lock-ensure)
-                (buffer-string)))
+                (setq font-lock-fontified nil)
+                (when (fboundp 'syntax-ppss-flush-cache)
+                  (syntax-ppss-flush-cache (point-min)))
+                (font-lock-flush (point-min) (point-max))
+                (font-lock-ensure (point-min) (point-max))
+                (thb-md-render--fontify-face-only-string)))
           (error text))
       text)))
 
@@ -668,8 +741,8 @@ preserves those properties."
   "Render a fenced code block as a unified card:
   - optional top blank line (with bg) for vertical padding
   - optional language tag line (small label, in code-fence-info face)
-  - the code itself, each line prefixed with `thb-md-render-code-indent'
-    for left padding, fontified by language injection if available
+  - the code itself, each line prefixed with two spaces for left padding
+    and fontified by its configured language mode when available
   - bottom blank line (with bg)
 
 All lines share `thb-md-render-code-block' so the bg-dim background
@@ -698,25 +771,19 @@ reads as a continuous card rather than a strip behind the code only."
                (trimmed (string-trim-right raw "\n"))
                (fontified (if (and lang (> (length trimmed) 0))
                               (thb-md-render--fontify-code trimmed lang)
-                            trimmed))
-               (content-start (point)))
+                            trimmed)))
           ;; Insert the (potentially fontified) content one line at a time
           ;; so each line gets the left-padding indent.  Text properties on
           ;; `fontified' are preserved by `insert' so per-token faces
           ;; survive the line splitting.
           (let ((lines (split-string fontified "\n")))
             (dolist (line lines)
-              (insert indent line "\n")))
-          ;; Apply code-block face on the WHOLE content range; append so
-          ;; per-token faces (foreground) win for color while code-block
-          ;; fills bg + fixed-pitch.
-          (font-lock-append-text-property content-start (point)
-                                          'face 'thb-md-render-code-block)))
+              (insert indent line "\n")))))
       ;; Bottom padding line.
       (insert "\n")
-      ;; Apply code-block face to the top padding line + (if no content,
-      ;; ensure the bottom padding line is faced too).  The middle range
-      ;; was already faced above; this catches the bookends.
+      ;; Apply the code-block face exactly once over the complete card.
+      ;; Append it after token faces so syntax foregrounds win while the
+      ;; code-block face supplies fixed pitch and the shared background.
       (font-lock-append-text-property block-start (point)
                                       'face 'thb-md-render-code-block)
       ;; Code blocks are never prose-wrapped: each line extends right.
@@ -742,100 +809,137 @@ reads as a continuous card rather than a strip behind the code only."
 
 ;;;; Block: list ---------------------------------------------------------
 
+(defun thb-md-render--ordered-marker (list-node)
+  "Return LIST-NODE's first ordered marker node, or nil."
+  (when-let* ((item (thb-md-render--first-child-of-type list-node "list_item")))
+    (or (thb-md-render--first-child-of-type item "list_marker_dot")
+        (thb-md-render--first-child-of-type item "list_marker_parenthesis"))))
+
 (defun thb-md-render--list-kind (list-node)
-  "Return `ordered' or `unordered' for LIST-NODE based on first item's marker."
-  (let* ((first-item (thb-md-render--first-child-of-type list-node "list_item")))
-    (if (and first-item
-             (thb-md-render--first-child-of-type first-item "list_marker_dot"))
-        'ordered 'unordered)))
+  "Return `ordered' or `unordered' for LIST-NODE."
+  (if (thb-md-render--ordered-marker list-node) 'ordered 'unordered))
+
+(defun thb-md-render--list-entry (list-node)
+  "Return initial (KIND COUNTER SUFFIX) state for LIST-NODE."
+  (if-let* ((marker (thb-md-render--ordered-marker list-node)))
+      (let ((text (thb-md-render--node-text marker)))
+        (if (string-match "\\`[[:space:]]*\\([0-9]+\\)\\([.)]\\)" text)
+            (list 'ordered
+                  (string-to-number (match-string 1 text))
+                  (match-string 2 text))
+          '(ordered 1 ".")))
+    '(unordered nil nil)))
+
+(defun thb-md-render--task-prefix (task)
+  "Return a configured or safe fallback prefix for TASK marker node."
+  (let* ((kind (pcase (treesit-node-type task)
+                 ("task_list_marker_checked" "checked")
+                 (_ "unchecked")))
+         (configured (alist-get kind thb-md-render-task-glyphs
+                                nil nil #'equal)))
+    (or configured
+        (if (equal kind "checked") "[x] " "[ ] "))))
 
 (defun thb-md-render--walk-list (node)
-  (thb-md-render--ensure-blank-line)
-  (let* ((kind (thb-md-render--list-kind node))
-         (state (cons (cons kind 1) thb-md-render--list-state)))
-    (let ((thb-md-render--list-state state))
+  (let ((top-level (null thb-md-render--list-state)))
+    (when top-level
+      (thb-md-render--ensure-blank-line))
+    (let ((thb-md-render--list-state
+           (cons (thb-md-render--list-entry node)
+                 thb-md-render--list-state)))
       (dolist (item (thb-md-render--children-of-type node "list_item"))
-        (thb-md-render--walk-list-item item))))
-  ;; Items end with a single newline; ensure trailing blank line.
-  (thb-md-render--newline 1))
+        (thb-md-render--walk-list-item item)))
+    ;; Each item already ends in one newline.  Only a top-level list needs
+    ;; the additional separator; adding it to nested lists creates gaps.
+    (when top-level
+      (thb-md-render--newline 1))))
 
 (defun thb-md-render--walk-list-item (node)
-  (let* ((kind (caar thb-md-render--list-state))
+  (let* ((entry (car thb-md-render--list-state))
+         (kind (nth 0 entry))
+         (ordinal (nth 1 entry))
+         (suffix (nth 2 entry))
          (task (or (thb-md-render--first-child-of-type node "task_list_marker_unchecked")
                    (thb-md-render--first-child-of-type node "task_list_marker_checked")))
          (depth (1- (length thb-md-render--list-state)))
          (indent (make-string (* depth 2) ?\s))
          (prefix
           (cond
-           (task
-            (alist-get
-             (pcase (treesit-node-type task)
-               ("task_list_marker_unchecked" "unchecked")
-               ("task_list_marker_checked"   "checked"))
-             thb-md-render-task-glyphs
-             nil nil #'equal))
-           ((eq kind 'ordered)
-            (let* ((n (cdar thb-md-render--list-state)))
-              (setcdr (car thb-md-render--list-state) (1+ n))
-              (format "%d. " n)))
+           (task (thb-md-render--task-prefix task))
+           ((eq kind 'ordered) (format "%d%s " ordinal suffix))
            (t thb-md-render-bullet))))
+    ;; Task-list items still consume an ordinal when their enclosing list is
+    ;; ordered, even though the checkbox replaces the visible number.
+    (when (eq kind 'ordered)
+      (setf (nth 1 entry) (1+ ordinal)))
     (insert indent)
     (thb-md-render--emit prefix 'thb-md-render-list-marker)
-    ;; Remember where the item's CONTENT starts; after walking children we
-    ;; tag the whole content range with a `wrap-prefix' text property so
-    ;; that visual continuation lines align under the text (not column 0).
-    (let* ((content-start (point))
-           ;; Total left padding for wraps = item indent + prefix width.
-           (wrap-pad (concat indent (make-string (length prefix) ?\s))))
+    ;; Total left padding for wrapped paragraph lines = item indent + prefix.
+    (let ((wrap-pad (concat indent (make-string (length prefix) ?\s))))
       (dolist (c (treesit-node-children node))
         (let ((type (treesit-node-type c)))
           (pcase type
             ("paragraph"
-             (let ((inline (thb-md-render--first-child-of-type c "inline")))
+             (let ((paragraph-start (point))
+                   (inline (thb-md-render--first-child-of-type c "inline")))
                (when inline
                  (thb-md-render--inline-walk
-                  (treesit-node-start inline) (treesit-node-end inline))))
-             (thb-md-render--newline 1))
+                  (treesit-node-start inline) (treesit-node-end inline)))
+               (thb-md-render--newline 1)
+               (put-text-property paragraph-start (point)
+                                  'wrap-prefix wrap-pad)))
             ("list"
-             ;; Nested list: continue at next depth.
+             ;; A marker-only parent has not emitted a paragraph newline yet;
+             ;; keep its marker and the first nested marker on separate lines.
+             (unless (bolp)
+               (thb-md-render--newline 1))
+             ;; Nested items set their own indentation and wrap prefix.  Do
+             ;; not add separators or overwrite those properties here.
              (thb-md-render--walk-list c))
             ;; Skip marker children (already handled).
             ((or "list_marker_minus" "list_marker_plus"
                  "list_marker_star" "list_marker_dot"
+                 "list_marker_parenthesis"
                  "task_list_marker_unchecked" "task_list_marker_checked"
                  "block_continuation") nil)
             (_
-             (thb-md-render--walk c)))))
-      ;; Apply wrap-prefix to the item content range.  Visual wraps of the
-      ;; item's first paragraph will now hang under the text rather than
-      ;; reset to column 0.  Nested list content (separate items) gets its
-      ;; own wrap-prefix set by its own --walk-list-item call.
-      (put-text-property content-start (point) 'wrap-prefix wrap-pad))))
+             (thb-md-render--walk c))))))))
 
 ;;;; Block: blockquote ---------------------------------------------------
 
 (defun thb-md-render--walk-blockquote (node)
   (thb-md-render--ensure-blank-line)
   (let ((quote-start (point)))
-    ;; Walk children of the blockquote skipping markers/continuations.
+    ;; Walk children of the blockquote, skipping source-only markers.
     (dolist (c (treesit-node-children node))
       (let ((type (treesit-node-type c)))
         (pcase type
           ((or "block_quote_marker" "block_continuation") nil)
           (_ (thb-md-render--walk c)))))
-    ;; No left bar: a full-width background box denotes the quote (like the
-    ;; code-block card).  A bar glyph breaks up under the italic quote face,
-    ;; and the box alone reads cleanly.  Face the content PLUS its
-    ;; terminating newline so `:extend' fills the last row to the window
-    ;; edge; `thb-md-render--rewrap-prose' faces the wrapped-line newlines
-    ;; (via `thb-md-render--faced-newline') so every interior row fills too.
-    ;; Stop before the trailing blank separator line so its empty row is
-    ;; not tinted.
+    ;; Face the content and its terminating newline, but not the trailing
+    ;; separator.  Prefix every logical quote line with the configured marker;
+    ;; wrapping later preserves that marker as part of the first-line indent.
     (let* ((content-end (save-excursion (skip-chars-backward "\n") (point)))
-           (quote-end   (min (point) (1+ content-end))))
+           (quote-end (min (point) (1+ content-end))))
       (when (> content-end quote-start)
-        (font-lock-prepend-text-property quote-start quote-end
-                                         'face 'thb-md-render-blockquote)))))
+        (let ((end-marker (copy-marker quote-end t)))
+          (save-excursion
+            (goto-char quote-start)
+            (while (< (point) end-marker)
+              (let ((marker-start (point)))
+                (insert thb-md-render-blockquote-prefix)
+                (put-text-property marker-start (point) 'face
+                                   'thb-md-render-blockquote-marker))
+              (forward-line 1)))
+          ;; Append the quote face so the marker face remains the leading
+          ;; face while the shared background still extends across each row.
+          (font-lock-append-text-property quote-start end-marker
+                                          'face 'thb-md-render-blockquote)
+          (put-text-property
+           quote-start end-marker 'wrap-prefix
+           (propertize thb-md-render-blockquote-prefix
+                       'face 'thb-md-render-blockquote-marker))
+          (set-marker end-marker nil))))))
 
 ;;;; Block: pipe table -------------------------------------------------
 
@@ -871,6 +975,9 @@ reads as a continuous card rather than a strip behind the code only."
 ;;   `---'    default (left)
 ;; We parse those into a vector of alignment symbols and pad cells
 ;; accordingly when emitting.
+
+(defvar thb-md-render--table-cell-buffer nil
+  "Dynamic binding: reusable scratch buffer for table-cell rendering.")
 
 (defun thb-md-render--table-cell-alignment (delim-cell)
   "Return `left', `center', `right', or `default' for a delimiter cell.
@@ -917,16 +1024,17 @@ Subsequent elements are body rows (face = nil)."
 
 (defun thb-md-render--table-render-cell (cell)
   "Render CELL's inline content to a trimmed, propertized string.
-Walks the markdown-inline parse for CELL's source range (advancing the
-shared inline cursor) into a scratch buffer, so emphasis / code-spans /
-links survive as text properties on the returned string.  Width
-measurement and wrapping then operate on the rendered text rather than
-the raw source markdown.  Cells must be visited in source order so the
-monotonic inline cursor stays aligned with the inline parse."
-  (with-temp-buffer
-    (thb-md-render--inline-walk (treesit-node-start cell)
-                                (treesit-node-end   cell))
-    (string-trim (buffer-string))))
+Reuse the renderer-owned table scratch buffer while advancing the shared
+inline cursor.  Cells must be visited in source order so that cursor remains
+aligned with the markdown-inline parse."
+  (unless (buffer-live-p thb-md-render--table-cell-buffer)
+    (error "Table-cell scratch buffer is not initialized"))
+  (with-current-buffer thb-md-render--table-cell-buffer
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (thb-md-render--inline-walk (treesit-node-start cell)
+                                  (treesit-node-end cell))
+      (string-trim (buffer-string)))))
 
 (defun thb-md-render--table-natural-widths (rendered n-cols)
   "Return a vector of the max rendered display width per column.
@@ -1028,12 +1136,24 @@ FACE, when non-nil, is prepended over the row (e.g. the header's bold)."
 
 ;;;; Block: thematic break ----------------------------------------------
 
+(defun thb-md-render--thematic-break-width ()
+  "Return the current preview body width in character columns.
+Use the live window body after margins when displayed.  Before first display,
+fall back to the configured body width (or 80 columns for fill-window mode);
+the normal first-display reflow renders again with the live width."
+  (let ((window (get-buffer-window (current-buffer) t)))
+    (max 1
+         (if (and window (window-live-p window))
+             (window-body-width window)
+           (if (and (integerp thb-md-render-body-width)
+                    (> thb-md-render-body-width 0))
+               thb-md-render-body-width
+             80)))))
+
 (defun thb-md-render--walk-thematic-break ()
   (thb-md-render--ensure-blank-line)
-  (let ((start (point))
-        ;; Use a thin rule that fills the window width via :extend.
-        (rule (make-string 60 ?─)))
-    (insert rule "\n\n")
+  (let ((start (point)))
+    (insert (make-string (thb-md-render--thematic-break-width) ?─) "\n\n")
     (put-text-property start (point) 'face 'thb-md-render-thematic-break)))
 
 ;;;; Prose soft-wrap (renderer-owned) ----------------------------------
@@ -1051,53 +1171,67 @@ FACE, when non-nil, is prepended over the row (e.g. the header's bold)."
   (when (< start end)
     (put-text-property start end 'thb-md-render--nowrap t)))
 
+(defun thb-md-render--string-pixel-width (string)
+  "Return STRING's pixel width using the current render buffer's faces.
+Supplying the buffer is essential: it makes face remapping from
+`text-scale-set' part of the measurement instead of comparing unscaled prose
+with a scaled window."
+  (string-pixel-width string (current-buffer)))
+
+(defvar-local thb-md-render--wrap-window nil
+  "Window that owns hard wrapping for this preview buffer.
+A buffer can be displayed in differently sized windows, but its inserted
+newlines are shared.  Keeping one live owner stable prevents resize events
+from making those windows alternately rewrap the same buffer.")
+
+(defun thb-md-render--wrapping-window ()
+  "Return this preview's stable live wrapping window, or nil.
+Prefer the selected window when choosing an owner for the first time, then
+retain that owner until it stops displaying the current buffer."
+  (let ((buf (current-buffer)))
+    (cond
+     ((and (window-live-p thb-md-render--wrap-window)
+           (eq (window-buffer thb-md-render--wrap-window) buf))
+      thb-md-render--wrap-window)
+     ((and (window-live-p (selected-window))
+           (eq (window-buffer (selected-window)) buf))
+      (setq thb-md-render--wrap-window (selected-window)))
+     ((when-let* ((win (get-buffer-window buf t)))
+        (setq thb-md-render--wrap-window win))))))
+
+(defun thb-md-render--window-width-px ()
+  "Return the wrapping window's text-area width in pixels, or nil."
+  (when-let* ((win (thb-md-render--wrapping-window)))
+    (window-body-width win t)))
+
 (defun thb-md-render--prose-budget-px ()
-  "Pixel budget prose wraps to: the live text-area width of the window
-showing this buffer, in the same base pixel units `string-pixel-width'
-returns -- so the comparison is apples-to-apples and already accounts for
-the olivetti margins (which `window-body-width' excludes).  Falls back to
-the configured body width when the buffer is not yet displayed; that first
-render is corrected on display by `thb-md-render--maybe-reflow'."
-  (let ((win (get-buffer-window (current-buffer) t)))
-    (if (and win (window-live-p win))
-        ;; Leave a one-char safety margin so a glyph landing exactly on the
-        ;; right edge (sub-pixel rounding) never trips the truncation glyph.
-        (max 200 (- (window-body-width win t) (frame-char-width)))
-      (* (if (and (numberp thb-md-render-body-width)
-                  (> thb-md-render-body-width 0))
-             thb-md-render-body-width 80)
-         (frame-char-width)))))
+  "Return the render-buffer-aware pixel budget for prose wrapping.
+Use the stable wrapping window's live text area when displayed.  Otherwise,
+measure the configured fallback column count with the current buffer's face
+remapping; the first display is corrected by `thb-md-render--maybe-reflow'."
+  (if-let* ((width (thb-md-render--window-width-px)))
+      ;; Leave a scaled-character safety margin so a glyph landing exactly
+      ;; on the right edge never trips the truncation glyph.
+      (max 200 (- width (thb-md-render--string-pixel-width "M")))
+    (thb-md-render--string-pixel-width
+     (make-string (if (and (numberp thb-md-render-body-width)
+                           (> thb-md-render-body-width 0))
+                      thb-md-render-body-width 80)
+                  ?M))))
 
 (defvar-local thb-md-render--wrap-width nil
-  "Window text-area pixel width used for the last prose rewrap.
-`thb-md-render--maybe-reflow' compares against it to decide whether a
-resize (or first display) needs a re-wrap.")
+  "Owner-window text-area pixel width used for the last prose rewrap.")
+
+(defvar-local thb-md-render--unwrapped-content nil
+  "Propertized emitted document before width-dependent prose wrapping.
+Resize reflow restores this string instead of rereading and reparsing source.")
 
 (defvar-local thb-md-render--reflow-timer nil
   "Debounce timer for `thb-md-render--maybe-reflow'.")
 
-(defun thb-md-render--maybe-reflow ()
-  "Re-render (re-wrap prose) when the window's text-area width changed.
-Hung buffer-locally on `window-configuration-change-hook'.  The width read
-and the re-render are deferred to an idle timer so olivetti has finished
-re-applying its margins before we measure, and so a burst of resize events
-coalesces into a single re-render."
-  (when thb-md-render--source-file
-    (when (timerp thb-md-render--reflow-timer)
-      (cancel-timer thb-md-render--reflow-timer))
-    (setq thb-md-render--reflow-timer
-          (run-with-idle-timer
-           0.2 nil
-           (lambda (buf)
-             (when (buffer-live-p buf)
-               (with-current-buffer buf
-                 (setq thb-md-render--reflow-timer nil)
-                 (let* ((win (get-buffer-window buf t))
-                        (w   (and win (window-live-p win)
-                                  (window-body-width win t))))
-                   (when (and w (not (equal w thb-md-render--wrap-width)))
-                     (thb-md-render-revert))))))
-           (current-buffer)))))
+(defvar-local thb-md-render--reflowing nil
+  "Non-nil while a width-only reflow is updating margins and content.
+This suppresses window-configuration feedback from margin resets.")
 
 (defun thb-md-render--split-words (s)
   "Split S into a list of non-space substrings (text properties preserved)."
@@ -1129,33 +1263,42 @@ line to the window edge instead of stopping at the last word."
 Line 1 keeps S's own leading indent; continuation lines are prefixed with
 CONT-PREFIX (the line's hang indent).  Returns one propertized string with
 embedded newlines.  Breaks at ASCII spaces; a single over-long word is left
-to overflow (it simply truncates off the right).  Properties are preserved."
+to overflow (it simply truncates off the right).  Properties are preserved.
+
+Each word and inserted separator is measured once.  Widths are accumulated
+instead of repeatedly concatenating and measuring the growing line, making
+the wrapping pass linear in the amount of prose."
   (let* ((lead-len (or (string-match "[^ ]" s) (length s)))
-         (lead  (substring s 0 lead-len))
+         (lead (substring s 0 lead-len))
          (words (thb-md-render--split-words (substring s lead-len))))
     (if (null words)
         s
-      (let ((lines nil) (cur lead) (has nil))
-        (dolist (w words)
-          (let ((cand (if has
-                          (concat cur (thb-md-render--sep-space w) w)
-                        (concat cur w))))
-            (if (<= (string-pixel-width cand) budget)
-                (setq cur cand has t)
-              (if has
-                  (progn (push cur lines)
-                         (setq cur (concat cont-prefix w) has t))
-                ;; No word placed yet on this line: keep it (will overflow).
-                (setq cur cand has t)))))
-        (push cur lines)
-        (let ((ls (nreverse lines)))
-          (if (null (cdr ls))
-              (car ls)
-            (let ((acc (car ls)) (prev (car ls)))
-              (dolist (ln (cdr ls))
-                (setq acc (concat acc (thb-md-render--faced-newline prev) ln)
-                      prev ln))
-              acc)))))))
+      (let ((parts (list lead))
+            (width (thb-md-render--string-pixel-width lead))
+            (cont-prefix-width
+             (thb-md-render--string-pixel-width cont-prefix))
+            (has-word nil)
+            (last-word nil))
+        (dolist (word words)
+          (let* ((space (and has-word (thb-md-render--sep-space word)))
+                 (word-width (thb-md-render--string-pixel-width word))
+                 (space-width (if space
+                                  (thb-md-render--string-pixel-width space)
+                                0))
+                 (candidate-width (+ width space-width word-width)))
+            (if (or (not has-word) (<= candidate-width budget))
+                (progn
+                  (when space (push space parts))
+                  (push word parts)
+                  (setq width candidate-width
+                        has-word t
+                        last-word word))
+              (push (thb-md-render--faced-newline last-word) parts)
+              (push cont-prefix parts)
+              (push word parts)
+              (setq width (+ cont-prefix-width word-width)
+                    last-word word))))
+        (apply #'concat (nreverse parts))))))
 
 (defun thb-md-render--rewrap-prose ()
   "Hard-wrap prose lines to the body width so they read fine in a buffer
@@ -1173,22 +1316,71 @@ Run once, after the whole document has been emitted."
                   (get-text-property bol 'thb-md-render--nowrap))
               (goto-char eol)
             (let ((line (buffer-substring bol eol)))
-              (if (<= (string-pixel-width line) budget)
+              (if (<= (thb-md-render--string-pixel-width line) budget)
                   (goto-char eol)
                 ;; The hang-indent `wrap-prefix' is set over the item's
                 ;; CONTENT (after the bullet / number), not at bol, so read
                 ;; it from the first position on the line that carries it.
-                (let* ((prefix  (or (get-text-property bol 'wrap-prefix)
-                                    (let ((p (next-single-property-change
-                                              bol 'wrap-prefix nil eol)))
-                                      (and p (< p eol)
-                                           (get-text-property p 'wrap-prefix)))
-                                    ""))
+                (let* ((prefix (or (get-text-property bol 'wrap-prefix)
+                                   (let ((p (next-single-property-change
+                                             bol 'wrap-prefix nil eol)))
+                                     (and p (< p eol)
+                                          (get-text-property p 'wrap-prefix)))
+                                   ""))
                        (wrapped (thb-md-render--pixel-wrap line budget prefix)))
                   (delete-region bol eol)
                   (goto-char bol)
                   (insert wrapped))))))
         (forward-line 1)))))
+
+(defun thb-md-render--rewrap-cached-content ()
+  "Restore and rewrap `thb-md-render--unwrapped-content' without parsing.
+Preserve the point's proportional document position and update the owner
+window's point after the width-dependent representation changes."
+  (when thb-md-render--unwrapped-content
+    (let* ((span (- (point-max) (point-min)))
+           (frac (and (> span 0)
+                      (/ (float (- (point) (point-min))) span)))
+           (win (thb-md-render--wrapping-window))
+           (inhibit-read-only t))
+      (erase-buffer)
+      (insert thb-md-render--unwrapped-content)
+      (thb-md-render--apply-olivetti-width)
+      (thb-md-render--rewrap-prose)
+      (setq thb-md-render--wrap-width (thb-md-render--window-width-px))
+      (when frac
+        (goto-char (+ (point-min)
+                      (round (* frac (- (point-max) (point-min))))))
+        (beginning-of-line)
+        (when (window-live-p win)
+          (set-window-point win (point)))))))
+
+(defun thb-md-render--reflow-now ()
+  "Perform one width-only reflow when the owner window width changed."
+  (let ((width (thb-md-render--window-width-px)))
+    (when (and width thb-md-render--unwrapped-content
+               (not (equal width thb-md-render--wrap-width)))
+      (let ((thb-md-render--reflowing t))
+        (thb-md-render--rewrap-cached-content)))))
+
+(defun thb-md-render--maybe-reflow ()
+  "Debounce a width-only reflow for this preview's stable owner window.
+Margin-reset configuration hooks are ignored during reflow.  Reflow restores
+the cached emitted document, so it does not reread or reparse source."
+  (when (and thb-md-render--source-file
+             thb-md-render--unwrapped-content
+             (not thb-md-render--reflowing))
+    (when (timerp thb-md-render--reflow-timer)
+      (cancel-timer thb-md-render--reflow-timer))
+    (setq thb-md-render--reflow-timer
+          (run-with-idle-timer
+           0.2 nil
+           (lambda (buf)
+             (when (buffer-live-p buf)
+               (with-current-buffer buf
+                 (setq thb-md-render--reflow-timer nil)
+                 (thb-md-render--reflow-now))))
+           (current-buffer)))))
 
 (defun thb-md-render--apply-olivetti-width ()
   "Size the olivetti reading column for the current window.
@@ -1206,7 +1398,7 @@ fraction."
            (if (and (floatp thb-md-render-body-width)
                     (<= thb-md-render-body-width 1.0))
                thb-md-render-body-width
-             (let* ((win   (get-buffer-window (current-buffer) t))
+             (let* ((win (thb-md-render--wrapping-window))
                     (total (and win (window-total-width win))))
                (and total (> total 0)
                     (min 1.0 (/ (float thb-md-render-body-width) total)))))))
@@ -1244,7 +1436,7 @@ fraction."
   (visual-line-mode -1)
   (setq-local left-fringe-width 0)
   (setq-local right-fringe-width 0)
-  (when-let ((w (get-buffer-window (current-buffer))))
+  (when-let* ((w (get-buffer-window (current-buffer))))
     (set-window-fringes w 0 0))
   (setq-local header-line-format nil)
   (display-line-numbers-mode -1)
@@ -1293,6 +1485,9 @@ fraction."
   ;; resized, so prose neither clips (budget too wide) nor under-fills.
   (add-hook 'window-configuration-change-hook
             #'thb-md-render--maybe-reflow nil t)
+  ;; Timers can outlive a buffer unless they are cancelled explicitly.  Keep
+  ;; cleanup on every render buffer, even ones that are never file-watched.
+  (add-hook 'kill-buffer-hook #'thb-md-render--cleanup nil t)
   (buffer-disable-undo))
 
 ;;;; Entry points -------------------------------------------------------
@@ -1303,42 +1498,52 @@ fraction."
 (defvar-local thb-md-render--watch nil
   "`file-notify' descriptor for the source file; re-renders on change.")
 
+(defvar-local thb-md-render--watch-timer nil
+  "Debounce or reattachment timer for `thb-md-render--watch'.")
+
+(defcustom thb-md-render-watch-debounce 0.1
+  "Seconds to debounce file-notify events before refreshing a preview."
+  :type 'number
+  :group 'thb-md-render)
+
+(defun thb-md-render--canonical-source-file (path)
+  "Return the canonical absolute identity for markdown source PATH."
+  (file-truename (expand-file-name path)))
+
+(defun thb-md-render--preview-buffer-name (source-file)
+  "Return the unique preview buffer name for canonical SOURCE-FILE."
+  (format "*md render: %s*" source-file))
+
 (defun thb-md-render-file (path)
-  "Parse PATH as markdown and render it into a fresh buffer.
-Return the rendered buffer."
+  "Parse PATH into its source-specific markdown preview buffer.
+When called interactively, also display the rendered buffer.  Lisp calls
+return the rendered buffer without displaying it."
   (interactive "fMarkdown file: ")
-  (let* ((path (expand-file-name path))
-         (buf-name (format "*md render: %s*" (file-name-nondirectory path)))
+  (let* ((interactivep (called-interactively-p 'interactive))
+         (path (thb-md-render--canonical-source-file path))
+         (buf-name (thb-md-render--preview-buffer-name path))
          (out (get-buffer-create buf-name))
          (src (generate-new-buffer (format " *thb-md-source: %s*"
                                            (file-name-nondirectory path))
-                                   t)))
+                                   t))
+         (table-scratch
+          (generate-new-buffer (format " *thb-md-table-cells: %s*"
+                                       (file-name-nondirectory path)) t))
+         markdown-parser
+         inline-parser)
     (unwind-protect
         (progn
-          ;; Set up source buffer with parsers
+          ;; Configure the host and embedded parsers once, then explicitly
+          ;; apply the inline ranges before reading either syntax tree.  Merely
+          ;; assigning `treesit-range-settings' does not update parser ranges.
           (with-current-buffer src
             (insert-file-contents path)
-            (treesit-parser-create 'markdown)
-            (treesit-parser-create 'markdown-inline)
-            (setq-local treesit-range-settings
-                        (treesit-range-rules
-                         :embed 'markdown-inline
-                         :host 'markdown
-                         '((inline) @capture))))
-          ;; Walk + emit.  Note: we extend the inline-parser range
-          ;; restriction to include pipe_table_cell so cells get tokenized
-          ;; (code spans, emphasis, etc.) just like paragraph content.
-          (with-current-buffer src
-            (setq-local treesit-range-settings
-                        (treesit-range-rules
-                         :embed 'markdown-inline
-                         :host 'markdown
-                         '((inline) @capture
-                           (pipe_table_cell) @capture))))
-          (let* ((root (treesit-parser-root-node
-                        (car (treesit-parser-list src 'markdown))))
-                 (inline-root (treesit-parser-root-node
-                               (car (treesit-parser-list src 'markdown-inline))))
+            (pcase-let ((`(,host . ,embedded)
+                         (thb-md-render--setup-parsers)))
+              (setq markdown-parser host
+                    inline-parser embedded)))
+          (let* ((root (treesit-parser-root-node markdown-parser))
+                 (inline-root (treesit-parser-root-node inline-parser))
                  (inline-vec (vconcat (treesit-node-children inline-root))))
             (with-current-buffer out
               (unless (derived-mode-p 'thb-md-render-mode)
@@ -1348,22 +1553,21 @@ Return the rendered buffer."
                 (let ((thb-md-render--src-buffer src)
                       (thb-md-render--inline-children inline-vec)
                       (thb-md-render--inline-children-len (length inline-vec))
-                      (thb-md-render--inline-cursor 0))
+                      (thb-md-render--inline-cursor 0)
+                      (thb-md-render--table-cell-buffer table-scratch))
                   (thb-md-render--walk root))
-                ;; Size the reading column to the current window first, then
+                ;; Cache the fully emitted, propertized document before the
+                ;; width-dependent pass.  Resizes can restore this snapshot
+                ;; and rewrap without rereading or reparsing the source.
+                (setq thb-md-render--unwrapped-content
+                      (buffer-substring (point-min) (point-max)))
+                ;; Size the reading column to the owner window first, then
                 ;; wrap prose to that width (tables / code are skipped via
-                ;; `thb-md-render--nowrap'), so prose fills the window and
-                ;; reads fine while the buffer truncates long table / code
-                ;; lines.
+                ;; `thb-md-render--nowrap').
                 (thb-md-render--apply-olivetti-width)
                 (thb-md-render--rewrap-prose)
-                ;; Record the width we wrapped to, so a later window resize
-                ;; (or the first display, when there was no window yet)
-                ;; triggers `thb-md-render--maybe-reflow'.
                 (setq thb-md-render--wrap-width
-                      (let ((win (get-buffer-window (current-buffer) t)))
-                        (and win (window-live-p win)
-                             (window-body-width win t))))
+                      (thb-md-render--window-width-px))
                 (goto-char (point-min)))
               (setq thb-md-render--source-file path)
               ;; Re-assert no-wrap on every render, not just on fresh
@@ -1375,25 +1579,28 @@ Return the rendered buffer."
               (when (bound-and-true-p visual-line-mode) (visual-line-mode -1))
               (setq-local truncate-lines t)
               (setq-local word-wrap nil))))
-      (kill-buffer src))
+      (when (buffer-live-p src)
+        (kill-buffer src))
+      (when (buffer-live-p table-scratch)
+        (kill-buffer table-scratch)))
+    (when interactivep
+      (pop-to-buffer out))
     out))
 
 (defun thb-md-render-revert ()
-  "Re-render the current preview buffer from its source file.
-Keeps point at roughly the same place in the document so a resize-driven
-re-wrap doesn't jump back to the top."
+  "Reparse and re-render the current preview buffer from its source file.
+Keeps point at roughly the same place when an explicit refresh or source-file
+notification replaces the emitted document."
   (interactive)
   (unless thb-md-render--source-file
     (user-error "Not a markdown render buffer"))
   (let* ((source thb-md-render--source-file)
-         (win  (get-buffer-window (current-buffer) t))
+         (win (thb-md-render--wrapping-window))
          (span (- (point-max) (point-min)))
          (frac (and (> span 0)
                     (/ (float (- (point) (point-min))) span))))
-    (thb-md-render-file source)
-    (let ((buf (get-buffer (format "*md render: %s*"
-                                   (file-name-nondirectory source)))))
-      (when (and buf frac)
+    (let ((buf (thb-md-render-file source)))
+      (when (and (buffer-live-p buf) frac)
         (with-current-buffer buf
           (goto-char (+ (point-min)
                         (round (* frac (- (point-max) (point-min))))))
@@ -1401,37 +1608,87 @@ re-wrap doesn't jump back to the top."
           (when (window-live-p win)
             (set-window-point win (point))))))))
 
+(defun thb-md-render--cancel-watch-timer ()
+  "Cancel the current buffer's pending file-watch timer, if any."
+  (when (timerp thb-md-render--watch-timer)
+    (cancel-timer thb-md-render--watch-timer))
+  (setq thb-md-render--watch-timer nil))
+
+(defun thb-md-render--remove-watch ()
+  "Remove the current buffer's file-notify descriptor, if any."
+  (when thb-md-render--watch
+    (ignore-errors (file-notify-rm-watch thb-md-render--watch))
+    (setq thb-md-render--watch nil)))
+
+(defun thb-md-render--run-watch-update (preview-buffer reattach)
+  "Refresh PREVIEW-BUFFER, first replacing its watch when REATTACH is non-nil."
+  (when (buffer-live-p preview-buffer)
+    (with-current-buffer preview-buffer
+      (setq thb-md-render--watch-timer nil)
+      (if (file-readable-p thb-md-render--source-file)
+          (progn
+            (when reattach
+              ;; Always dispose the old descriptor before taking ownership of
+              ;; a replacement.  This is harmless when a terminal event already
+              ;; cleared it and protects direct callers from duplicate watches.
+              (thb-md-render--remove-watch)
+              (setq thb-md-render--watch
+                    (thb-md-render--setup-watch
+                     preview-buffer thb-md-render--source-file)))
+            (thb-md-render-revert))
+        ;; Atomic replacements normally expose the new path immediately, but
+        ;; keep one owned retry timer while it is absent rather than silently
+        ;; leaving a live preview unwatched.
+        (when reattach
+          (thb-md-render--schedule-watch-update preview-buffer t))))))
+
+(defun thb-md-render--schedule-watch-update (preview-buffer reattach)
+  "Debounce a refresh of PREVIEW-BUFFER.
+When REATTACH is non-nil, replace its file watch immediately before refresh."
+  (when (buffer-live-p preview-buffer)
+    (with-current-buffer preview-buffer
+      (thb-md-render--cancel-watch-timer)
+      (setq thb-md-render--watch-timer
+            (run-at-time thb-md-render-watch-debounce nil
+                         #'thb-md-render--run-watch-update
+                         preview-buffer reattach)))))
+
 (defun thb-md-render--setup-watch (preview-buffer source-file)
-  "Install a `file-notify' watch that re-renders PREVIEW-BUFFER on SOURCE-FILE change."
+  "Create a file-notify watch owned by PREVIEW-BUFFER for SOURCE-FILE."
   (file-notify-add-watch
    source-file '(change attribute-change)
    (lambda (event)
      (condition-case err
-         (pcase-let ((`(,_descriptor ,action . ,_rest) event))
+         (pcase-let ((`(,descriptor ,action . ,_rest) event))
            (when (buffer-live-p preview-buffer)
              (with-current-buffer preview-buffer
-               (cond
-                ;; Inode gone (atomic rename): schedule a re-watch + re-render.
-                ((memq action '(stopped deleted renamed))
-                 (run-at-time
-                  0.05 nil
-                  (lambda ()
-                    (when (buffer-live-p preview-buffer)
-                      (with-current-buffer preview-buffer
-                        (when (file-readable-p thb-md-render--source-file)
-                          (setq thb-md-render--watch
-                                (thb-md-render--setup-watch
-                                 preview-buffer thb-md-render--source-file))
-                          (thb-md-render-revert)))))))
-                ((memq action '(changed attribute-changed created))
-                 (thb-md-render-revert))))))
+               ;; A removed descriptor can still have queued events.  Ignore
+               ;; those so an obsolete watch cannot disturb its replacement.
+               (when (equal descriptor thb-md-render--watch)
+                 (cond
+                  ((memq action '(stopped deleted renamed))
+                   (thb-md-render--remove-watch)
+                   (thb-md-render--schedule-watch-update preview-buffer t))
+                  ((memq action '(changed attribute-changed created))
+                   (thb-md-render--schedule-watch-update preview-buffer nil)))))))
        (error (message "thb-md-render watch error: %s" err))))))
 
+(defun thb-md-render--ensure-watch (preview-buffer)
+  "Ensure PREVIEW-BUFFER owns one watch and its cleanup hook."
+  (with-current-buffer preview-buffer
+    (add-hook 'kill-buffer-hook #'thb-md-render--cleanup nil t)
+    (unless thb-md-render--watch
+      (setq thb-md-render--watch
+            (thb-md-render--setup-watch
+             preview-buffer thb-md-render--source-file)))))
+
 (defun thb-md-render--cleanup ()
-  "Remove file-notify watch when the render buffer is killed."
-  (when thb-md-render--watch
-    (ignore-errors (file-notify-rm-watch thb-md-render--watch))
-    (setq thb-md-render--watch nil)))
+  "Remove file-notify resources and timers owned by the current buffer."
+  (thb-md-render--remove-watch)
+  (thb-md-render--cancel-watch-timer)
+  (when (timerp thb-md-render--reflow-timer)
+    (cancel-timer thb-md-render--reflow-timer))
+  (setq thb-md-render--reflow-timer nil))
 
 (defun thb-md-render-toggle ()
   "Toggle between a markdown source buffer and its rendered preview.
@@ -1449,23 +1706,19 @@ via `quit-window'."
     (let ((src (buffer-file-name)))
       (unless src (user-error "Buffer is not visiting a file"))
       (when (buffer-modified-p) (save-buffer))
-      (let* ((buf-name (format "*md render: %s*" (file-name-nondirectory src)))
-             (existing (get-buffer buf-name))
-             (preview (thb-md-render-file src)))
-        (unless (and existing (eq existing preview))
-          (with-current-buffer preview
-            (when thb-md-render--watch
-              (ignore-errors (file-notify-rm-watch thb-md-render--watch))
-              (setq thb-md-render--watch nil))
-            (setq thb-md-render--watch
-                  (thb-md-render--setup-watch preview src))
-            (add-hook 'kill-buffer-hook #'thb-md-render--cleanup nil t)))
+      (let ((preview (thb-md-render-file src)))
+        (with-current-buffer preview
+          ;; A manual toggle already rendered the latest contents, so any
+          ;; queued refresh is redundant.  Reused previews still pass through
+          ;; this path and regain lifecycle hooks after a live code reload.
+          (thb-md-render--cancel-watch-timer)
+          (thb-md-render--ensure-watch preview))
         (switch-to-buffer preview)
         ;; Defensive: re-apply visual tweaks AFTER the buffer is shown
         ;; in a window.  Mode setup runs before the buffer has a
         ;; window, so `set-window-fringes' and global-mode hooks can
         ;; race and reset what mode init tried to set.
-        (when-let ((win (selected-window)))
+        (when-let* ((win (selected-window)))
           (set-window-fringes win 0 0))
         (display-line-numbers-mode -1))))
    (t (user-error "Not in markdown-ts-mode or a render preview"))))
