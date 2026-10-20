@@ -16,12 +16,7 @@ local bindings = {
   { key = "⌥⇧ H/J/K/L", action = "join left / down / up / right" },
 }
 
--- Hotload preserves existing items across reloads.
-for i = 1, #bindings do
-  pcall(sbar.remove, item_name .. ".binding." .. i)
-end
-pcall(sbar.remove, item_name)
-
+-- SketchyBar clears items before rerunning the config on reload/hotload.
 local mode_item = sbar.add("item", item_name, {
   position = "left",
   drawing = false,
