@@ -11,10 +11,15 @@ local clock = sbar.add("item", "clock", {
   padding_right = 4,
 })
 
+local refresh_calendar = require("status.calendar").attach(clock)
+local previous
 local function repaint()
-  clock:set({
-    label = { string = os.date("%a %b %d  %H:%M") },
-  })
+  local label = os.date("%a %b %d  %H:%M")
+  if label ~= previous then
+    clock:set({ label = { string = label } })
+    previous = label
+  end
+  refresh_calendar()
 end
 
 clock:subscribe({"routine", "system_woke", "forced"}, repaint)

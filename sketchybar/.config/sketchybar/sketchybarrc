@@ -10,8 +10,10 @@
 --   bar.lua             — bar shell + Modus Vivendi Tinted palette + fonts.
 --   mode.lua            — visible indicator for non-main AeroSpace modes.
 --   workspaces.lua      — active AeroSpace workspace + focused window title.
---   status/clock.lua    — right-side clock.
---   status/battery.lua  — right-side battery.
+--   status/clock.lua    — right-side clock + current-month hover calendar.
+--   status/battery.lua  — low-battery warning.
+--   status/volume.lua   — muted-output warning.
+--   status/network.lua  — unreachable-network warning.
 --   agent_status.lua   — optional agent_sessions parent + popup, push-driven
 --                         from sketchybar-set-state hook events (disabled).
 
@@ -40,6 +42,8 @@ require("mode")
 require("workspaces")
 require("status.clock")
 require("status.battery")
+require("status.volume")
+require("status.network")
 -- Agent status is disabled; omitting this module removes the pizza session item.
 
 sbar.end_config()

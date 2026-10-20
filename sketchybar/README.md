@@ -3,9 +3,11 @@
 Minimal AeroSpace status bar for macOS, configured in Lua through [SbarLua](https://github.com/FelixKratz/SbarLua).
 
 - Left: active workspace number and focused window title. Outside AeroSpace's main mode, a mode indicator with a keybinding popup also appears.
-- Right: clock and a low-battery warning while on battery below 25%.
-- Modus Vivendi Tinted palette, 38-pixel bar, PragmataPro Mono Liga text and FiraCode Nerd Font icons.
-- Wi-Fi, volume and agent-status modules are present but are not loaded by `sketchybarrc`.
+- Hover the workspace number to see occupied workspaces, their window counts, and app names. The current workspace is included even when empty. Click a popup row to switch workspaces. Clicking the workspace marker itself still switches back and forth.
+- Right: clock, plus warnings that appear only in exception states: battery below 25% while discharging, muted audio output, and an unreachable network path. Normal audio and network states stay hidden.
+- Hover the clock to see a Monday-first calendar of the current month. Brackets mark today. The calendar follows the local date automatically.
+- Modus Vivendi Tinted palette, 38-pixel bar, PragmataPro Mono Liga text, and FiraCode Nerd Font icons.
+- The old Wi-Fi/SSID widget and agent-status module are present but not loaded.
 
 ## Install
 
@@ -16,7 +18,7 @@ brew install sketchybar lua stow
 brew install --cask font-fira-code-nerd-font
 ```
 
-Install the licensed PragmataPro Mono Liga font separately. Build and install SbarLua using its upstream installation instructions. `make install` places `sketchybar.so` in `~/.local/share/sketchybar_lua/`, and the entry point adds that directory to Lua's native-module search path. Rebuild SbarLua if the installed Lua ABI (application binary interface, the compiled-code compatibility contract) changes. The optional agent popup uses a custom font built by `scripts/build-claude-font.py`; the active bar does not require that variant.
+Install the licensed PragmataPro Mono Liga font separately. Build and install SbarLua using its upstream installation instructions. `make install` places `sketchybar.so` in `~/.local/share/sketchybar_lua/`, and the entry point adds that directory to Lua's native-module search path. Rebuild SbarLua after an incompatible Lua version change. The optional agent popup uses a custom font built by `scripts/build-claude-font.py`; the active bar does not require that variant.
 
 ```sh
 cd ~/.dotfiles
@@ -28,28 +30,39 @@ The AeroSpace package supplies the event hooks and reserves 38 pixels above wind
 
 ## Configuration
 
-`sketchybarrc` batches setup, loads the modules below, and enters SbarLua's long-lived event loop:
+`sketchybarrc` batches setup, loads the modules, and enters SbarLua's long-lived event loop (the loop that keeps running and handles events):
 
-- `lua/bar.lua`: bar geometry, palette, fonts, defaults and custom events.
+- `lua/bar.lua`: bar geometry, palette, fonts, defaults, and custom events.
 - `lua/mode.lua`: non-main AeroSpace mode indicator and hover keybinding reference.
-- `lua/workspaces.lua`: active workspace and focused title.
-- `lua/window_title.lua`: pure title truncation helpers.
-- `lua/status/clock.lua` and `lua/status/battery.lua`: active right-side items.
-- `lua/tooltip.lua`: shared hover popup helper.
+- `lua/workspaces.lua` and `lua/window_title.lua`: active workspace and bounded title formatting.
+- `lua/workspace_popup.lua` and `lua/workspace_list.lua`: on-demand workspace picker and pure summary/quoting helpers (functions with no side effects).
+- `lua/status/clock.lua`, `lua/status/calendar.lua`, and `lua/calendar.lua`: clock and current-month calendar.
+- `lua/status/battery.lua`, `lua/status/volume.lua`, `lua/status/network.lua`, and `lua/status/health.lua`: exception-only status and pure parsers.
+- `lua/popup.lua` and `lua/tooltip.lua`: shared hover behavior and tooltips.
 
 There is no shell `plugins.d` loader. To enable another module, add it explicitly with `require(...)` in `sketchybarrc`.
 
-Titles keep at most 20 words and 100 Unicode code points, including any ellipsis; the `| ` separator is additional. This limits long URLs and other single-word titles without cutting UTF-8 byte sequences. The title label uses the `font.typographical_width` measurement from v2.24.1 instead of a trailing non-breaking-space workaround.
+Titles keep at most 20 words and 100 Unicode code points, including any ellipsis; the `| ` separator is additional. This limits long URLs and other single-word titles without cutting UTF-8 byte sequences. The title and calendar use `font.typographical_width` from v2.24.1 to measure glyph advances, including spaces.
 
-### Events
+### Popups
 
-AeroSpace pushes these events:
+Only one managed popup is open at a time. Selectable workspace rows highlight blue with dark text on hover, then restore their normal or current-workspace style on exit. Each workspace option has a full-width hit area. A 250 ms close delay lets the pointer cross the gap between a parent and its popup rows. Hiding a battery, audio, or network warning, or leaving the AeroSpace mode, closes its popup.
+
+The workspace picker queries `aerospace list-windows --all` when opened. It refreshes if the focused workspace changes while open, discards responses received after closing, and shows an unavailable message if the query fails. It does not poll all windows in the background. Workspace names are shell-quoted before a click runs `aerospace workspace`.
+
+### Events and status checks
+
+AeroSpace pushes:
 
 - `aerospace_workspace_change` with `FOCUSED_WORKSPACE=<workspace>`.
 - `aerospace_focus_change` when window focus changes.
 - `aerospace_mode_change` when the binding mode changes.
 
-The title also polls every second, because Ghostty split focus can change the window title without an AeroSpace focus event. Unchanged displayed workspace and title values do not send item updates. Wake and forced updates refresh the title too.
+The title also polls every second, because Ghostty split focus can change the window title without an AeroSpace focus event. Unchanged workspace and title values do not send item updates. Wake and forced updates refresh the title too. The clock checks every 10 seconds but sends a label update only when the displayed minute changes. The calendar rebuilds only when the local date changes.
+
+The audio indicator reads macOS output mute state on `volume_change`, wake, and forced updates, with a 30-second fallback poll. It does not change volume or device settings. Zero volume without the mute flag does not show a warning.
+
+The network indicator checks macOS default-address reachability for IPv4 and IPv6 using `scutil -r`. It runs every 30 seconds and on Wi-Fi-change, wake, and forced events. One reachable address family is enough to keep the warning hidden. This is a local path check, not an internet, DNS, captive-portal, or VPN-health test. Ethernet is not mistaken for disconnected Wi-Fi. No external host is contacted. Failed or unrecognized status queries do not claim an outage or muted output. Overlapping audio and network events are coalesced into one fresh read, so stale results are not painted.
 
 Shell commands use asynchronous `sbar.exec`. Do not use blocking `io.popen` or `os.execute` in event handlers.
 
@@ -59,13 +72,14 @@ Shell commands use asynchronous `sbar.exec`. Do not use blocking `io.popen` or `
 sketchybar --reload
 cd ~/.dotfiles
 lua sketchybar/tests/first_pass.lua
+lua sketchybar/tests/second_pass.lua
 find sketchybar/.config/sketchybar -name '*.lua' -type f -exec luac -p {} \;
 luac -p sketchybar/.config/sketchybar/sketchybarrc
 ```
 
-The regression checks mock SbarLua. They do not contact the running bar or change AeroSpace focus.
+The regression checks mock SbarLua. They do not contact the running bar, switch workspaces, or change audio or network settings. They cover UTF-8 title bounds and asynchronous focus updates, calendar dates and layout, workspace summaries and quoting, popup close and re-entry, failed and stale queries, and warning visibility.
 
-Hotload (automatic config reload) is enabled. On reload or hotload, SketchyBar clears items before rerunning the config, so startup modules must not try to remove old items. For a multi-file edit, use `sketchybar --hotload off`, finish editing and checking, then run `sketchybar --reload`; the entry point enables hotload again.
+Hotload (automatic config reload) is enabled. On reload or hotload, SketchyBar clears items before rerunning the config, so startup modules must not try to remove old items. For a multi-file edit, use `sketchybar --hotload off`, finish editing and checking, then run `sketchybar --reload`. The entry point enables hotload again.
 
 The entry point line-buffers stdout before setup. SbarLua forks for asynchronous commands, and line buffering stops the forked processes from repeatedly flushing inherited startup diagnostics. On this machine, Homebrew service logs are in `/opt/homebrew/var/log/sketchybar/`. After a reload, check that new output stays quiet before rotating an oversized old log.
 
