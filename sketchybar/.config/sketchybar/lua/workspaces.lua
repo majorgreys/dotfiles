@@ -66,6 +66,8 @@ local title_item = sbar.add("item", "space.active.title", {
   click_script = "aerospace workspace-back-and-forth",
 })
 
+local workspace_popup = require("workspace_popup").attach(workspace_item)
+
 local generation = 0
 
 local function clean(s)
@@ -92,6 +94,7 @@ local function paint(workspace, title)
   if title == "" then title = "No focused window" end
 
   local label = title_label(title)
+  workspace_popup.update(workspace)
   if workspace ~= last_workspace then
     workspace_item:set({ icon = { string = workspace } })
     last_workspace = workspace

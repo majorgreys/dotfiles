@@ -78,6 +78,7 @@ equal(title_item.properties.label.string:find("\194\160", 1, true), nil,
   "no non-breaking-space workaround")
 equal(title_item.properties.label.max_chars, 0, "native max_chars stays constant")
 equal(title_item.properties.update_freq, 1, "Ghostty polling preserved")
+paints = {} -- Ignore initial popup styling; count only runtime focus paints.
 respond("1\tGhostty\tA title\n")
 equal(#paints, 2, "first response paints workspace and title")
 routine("1\tGhostty\tA title\n")

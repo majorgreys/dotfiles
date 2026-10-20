@@ -36,41 +36,10 @@ local mode_item = sbar.add("item", item_name, {
     height = 26,
     corner_radius = 4,
   },
-  popup = {
-    background = {
-      color = Colors.popup_bg,
-      corner_radius = 6,
-      border_width = 1,
-      border_color = Colors.popup_border,
-    },
-    horizontal = false,
-    align = "left",
-    y_offset = 4,
-  },
   click_script = "aerospace mode main",
 })
 
-local CLOSE_DELAY_S = 0.25
-local close_token = 0
-
-local function open_popup()
-  close_token = close_token + 1
-  mode_item:set({ popup = { drawing = "on" } })
-end
-
-local function schedule_close_popup()
-  close_token = close_token + 1
-  local this_token = close_token
-
-  sbar.exec(string.format("sleep %.2f", CLOSE_DELAY_S), function()
-    if this_token == close_token then
-      mode_item:set({ popup = { drawing = "off" } })
-    end
-  end)
-end
-
-mode_item:subscribe("mouse.entered", open_popup)
-mode_item:subscribe("mouse.exited", schedule_close_popup)
+local hover = require("popup").attach(mode_item, { align = "left" })
 
 for i, binding in ipairs(bindings) do
   local row = sbar.add("item", item_name .. ".binding." .. i, {
@@ -101,8 +70,7 @@ for i, binding in ipairs(bindings) do
     },
   })
 
-  row:subscribe("mouse.entered", open_popup)
-  row:subscribe("mouse.exited", schedule_close_popup)
+  hover.watch(row)
 end
 
 local generation = 0
@@ -115,10 +83,8 @@ local function paint(mode)
   mode = clean(mode)
   local is_main = mode == "" or mode == "main"
 
-  mode_item:set({
-    drawing = not is_main,
-    popup = { drawing = "off" },
-  })
+  hover.close()
+  mode_item:set({ drawing = not is_main })
 end
 
 local function refresh()

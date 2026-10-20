@@ -16,7 +16,7 @@ local battery = sbar.add("item", "battery", {
   padding_right = 8,
 })
 
-local set_tooltip = tooltip.attach(battery, { initial = "Battery: ?" })
+local set_tooltip, hover = tooltip.attach(battery, { initial = "Battery: ?" })
 
 local LOW_BATTERY_PERCENT = 25
 
@@ -39,12 +39,14 @@ local function repaint()
   sbar.exec("pmset -g batt", function(out)
     if not out or out == "" then
       battery:set({ drawing = false })
+      hover.close()
       return
     end
     local percent = tonumber(out:match("(%d+)%%"))
     local charging = out:find("AC Power", 1, true) ~= nil
     if not percent or charging or percent >= LOW_BATTERY_PERCENT then
       battery:set({ drawing = false })
+      hover.close()
       return
     end
 

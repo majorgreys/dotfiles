@@ -1,63 +1,41 @@
--- Right-side volume. Repaints on volume_change. Glyphs from MDI Nerd Font.
-
+-- Exception-only audio warning. Normal/unmuted output stays out of the bar.
+-- A single async query reads mute state; no volume or device settings change.
 local sbar = require("sketchybar")
-require("bar")
+local health = require("status.health")
 local tooltip = require("tooltip")
+require("bar")
 
 local volume = sbar.add("item", "volume", {
-  position      = "right",
-  icon          = { font = Fonts.icon },
-  label         = { drawing = false },
-  padding_left  = 8,
-  padding_right = 8,
+  position = "right", drawing = false, update_freq = 30,
+  icon = { string = "󰝟", font = "FiraCode Nerd Font Mono:Regular:16.0", color = Colors.yellow },
+  label = { drawing = false }, padding_left = 8, padding_right = 8,
 })
-
-local set_tooltip = tooltip.attach(volume, { initial = "Volume: ?" })
-
-local function pick(vol, muted)
-  if muted or vol == 0 then return "󰝟", Colors.dim end
-  if vol >= 66 then return "󰕾", Colors.fg end
-  if vol >= 33 then return "󰖀", Colors.fg end
-  return "󰕿", Colors.fg
-end
-
-local function paint(vol, muted)
-  local icon, color = pick(vol, muted)
-  volume:set({ icon = { string = icon, color = color } })
-  if muted then
-    set_tooltip("Volume: muted")
-  else
-    set_tooltip(string.format("Volume: %d%%", vol))
+local _, hover = tooltip.attach(volume, { initial = "Audio output is muted" })
+local last_drawing, in_flight, refresh_pending = false, false, false
+local function repaint()
+  if in_flight then
+    refresh_pending = true
+    return
   end
-end
-
-local function query_and_repaint(env)
-  -- volume_change events carry env.INFO with the new volume level.
-  if env and env.INFO and env.INFO ~= "" then
-    local vol = tonumber(env.INFO)
-    if vol then
-      sbar.exec("osascript -e 'output muted of (get volume settings)'", function(muted_out)
-        local muted = (muted_out or ""):find("true") ~= nil
-        paint(vol, muted)
-      end)
+  in_flight = true
+  sbar.exec("osascript -e 'output muted of (get volume settings)' 2>/dev/null", function(out, code)
+    in_flight = false
+    -- A state-change event during the query makes its result stale. Coalesce
+    -- the events into one fresh read rather than waiting for the next poll.
+    if refresh_pending then
+      refresh_pending = false
+      repaint()
       return
     end
-  end
-  -- Fall back to a full query.
-  sbar.exec("osascript -e 'output volume of (get volume settings)'", function(vol_out)
-    -- Parens truncate gsub's (string, count) multi-return to one value;
-    -- otherwise the count becomes tonumber's `base` arg (out of range).
-    local vol = tonumber(((vol_out or ""):gsub("%s+$", "")))
-    if not vol then
-      volume:set({ icon = { string = "󰕿", color = Colors.dim } })
-      return
+    local muted
+    if not code or code == 0 then muted = health.muted(out) end
+    local drawing = muted == true
+    if drawing ~= last_drawing then
+      volume:set({ drawing = drawing })
+      last_drawing = drawing
     end
-    sbar.exec("osascript -e 'output muted of (get volume settings)'", function(muted_out)
-      local muted = (muted_out or ""):find("true") ~= nil
-      paint(vol, muted)
-    end)
+    if not drawing then hover.close() end
   end)
 end
-
-volume:subscribe({"volume_change", "forced"}, query_and_repaint)
-query_and_repaint({})
+volume:subscribe({ "volume_change", "routine", "system_woke", "forced" }, repaint)
+repaint()
