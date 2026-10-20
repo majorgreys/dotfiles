@@ -1,6 +1,6 @@
 -- bar.lua — bar shell, palette, fonts, defaults.
 --
--- Loaded once at startup. Exposes the Catppuccin palette via the global
+-- Loaded once at startup. Exposes the Modus Vivendi Tinted palette via the global
 -- `Colors` table and the font set via the global `Fonts` table so other
 -- modules can require this file (`require("bar")`) and then read those
 -- globals.
@@ -50,8 +50,8 @@ sbar.bar({
   position         = "top",
   sticky           = "on",
   topmost          = "window",
-  padding_left     = 6,
-  padding_right    = 6,
+  padding_left     = 14,
+  padding_right    = 14,
   color            = Colors.bg,
   border_width     = 0,
   blur_radius      = 0,

@@ -23,7 +23,7 @@ local MAX_TITLE_WORDS = 20
 local MAX_TITLE_CHARS = 100
 
 local function title_label(title)
-  return "| " .. window_title.format(title, MAX_TITLE_WORDS, MAX_TITLE_CHARS)
+  return window_title.format(title, MAX_TITLE_WORDS, MAX_TITLE_CHARS)
 end
 
 local workspace_item = sbar.add("item", "space.active.workspace", {
@@ -48,7 +48,7 @@ local title_item = sbar.add("item", "space.active.title", {
   position = "left",
   update_freq = 1,
   scroll_texts = false,
-  padding_left = 0,
+  padding_left = 8,
   padding_right = 0,
   icon = { drawing = false },
   label = {
@@ -57,7 +57,7 @@ local title_item = sbar.add("item", "space.active.title", {
     width         = "dynamic",
     padding_left  = 0,
     padding_right = 6,
-    color         = Colors.fg,
+    color         = Colors.dim,
     font          = Fonts.regular,
     -- v2.24.1: measure full glyph advances instead of adding a padding glyph.
     ["font.typographical_width"] = true,

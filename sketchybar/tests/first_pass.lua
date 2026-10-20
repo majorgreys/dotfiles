@@ -56,7 +56,7 @@ function sbar.remove()
 end
 package.loaded.sketchybar = sbar
 package.loaded.bar = true
-Colors = { accent_bg = 1, fg = 2 }
+Colors = { accent_bg = 1, fg = 2, dim = 3 }
 Fonts = { bold = "Test:Bold:15.0", regular = "Test:Regular:15.0" }
 require("workspaces")
 local workspace_item = items["space.active.workspace"]
@@ -78,6 +78,9 @@ equal(title_item.properties.label.string:find("\194\160", 1, true), nil,
   "no non-breaking-space workaround")
 equal(title_item.properties.label.max_chars, 0, "native max_chars stays constant")
 equal(title_item.properties.update_freq, 1, "Ghostty polling preserved")
+equal(title_item.properties.padding_left, 8, "spacing replaces title separator")
+equal(title_item.properties.label.color, Colors.dim, "window title is secondary text")
+equal(workspace_item.properties.icon.color, Colors.fg, "workspace marker stays bright")
 paints = {} -- Ignore initial popup styling; count only runtime focus paints.
 respond("1\tGhostty\tA title\n")
 equal(#paints, 2, "first response paints workspace and title")
@@ -89,9 +92,9 @@ equal(paints[1].name, workspace_item.name, "workspace update targets marker")
 routine("2\tGhostty\tAnother title\n")
 equal(#paints, 1, "title-only change updates one item")
 equal(paints[1].name, title_item.name, "title update targets label")
-equal(paints[1].properties.label.string, "| Another title", "title label content")
+equal(paints[1].properties.label.string, "Another title", "title label has no separator")
 routine("2\tGhostty\t" .. string.rep("x", 500) .. "\n")
-equal(utf8.len(paints[1].properties.label.string), 102, "100 code points plus separator")
+equal(utf8.len(paints[1].properties.label.string), 100, "100 code points without separator")
 routine("2\tGhostty\t" .. string.rep("x", 501) .. "\n")
 equal(#paints, 0, "different raw titles with identical displayed text skip paints")
 
@@ -101,16 +104,16 @@ workspace_item.callbacks.aerospace_workspace_change({ FOCUSED_WORKSPACE = "3" })
 respond("3\tChrome\tNewest\n", 2)
 respond("2\tGhostty\tStale\n")
 equal(#paints, 2, "late response cannot repaint stale state")
-equal(paints[2].properties.label.string, "| Newest", "newest event wins")
+equal(paints[2].properties.label.string, "Newest", "newest event wins")
 
 paints = {}
 workspace_item.callbacks.aerospace_workspace_change({ FOCUSED_WORKSPACE = "4" })
 respond("")
 equal(#pending, 0, "empty workspace uses event fallback without extra query")
 equal(paints[1].properties.icon.string, "4", "fallback workspace")
-equal(paints[2].properties.label.string, "| No focused window", "empty workspace title")
+equal(paints[2].properties.label.string, "No focused window", "empty workspace title")
 routine("4\tFinder\t\n")
-equal(paints[1].properties.label.string, "| Finder", "empty title falls back to app")
+equal(paints[1].properties.label.string, "Finder", "empty title falls back to app")
 
 equal(type(title_item.callbacks.system_woke), "function", "wake refresh registered")
 equal(type(title_item.callbacks.forced), "function", "forced refresh registered")
