@@ -5,20 +5,34 @@ require("bar")
 
 local clock = sbar.add("item", "clock", {
   position      = "right",
-  icon          = { drawing = false },
+  -- Date and time share one item/hit area, so the calendar opens over either.
+  icon = { drawing = true, font = Fonts.regular, color = Colors.dim,
+           padding_left = 0, padding_right = 12,
+           ["font.typographical_width"] = true },
+  label = { font = Fonts.bold, color = Colors.fg,
+            padding_left = 0, padding_right = 0,
+            ["font.typographical_width"] = true },
   update_freq   = 10,
   padding_left  = 8,
-  padding_right = 4,
+  padding_right = 0,
 })
 
 local refresh_calendar = require("status.calendar").attach(clock)
-local previous
+local previous_date, previous_time
 local function repaint()
-  local label = os.date("%a %b %d  %H:%M")
-  if label ~= previous then
-    clock:set({ label = { string = label } })
-    previous = label
+  local now = os.time()
+  local date = os.date("%a %b %d", now)
+  local time = os.date("%H:%M", now)
+  local properties = {}
+  if date ~= previous_date then
+    properties.icon = { string = date }
+    previous_date = date
   end
+  if time ~= previous_time then
+    properties.label = { string = time }
+    previous_time = time
+  end
+  if next(properties) then clock:set(properties) end
   refresh_calendar()
 end
 

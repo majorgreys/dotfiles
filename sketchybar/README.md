@@ -42,7 +42,9 @@ The AeroSpace package supplies the event hooks and reserves 38 pixels above wind
 
 There is no shell `plugins.d` loader. To enable another module, add it explicitly with `require(...)` in `sketchybarrc`.
 
-Titles keep at most 20 words and 100 Unicode code points, including any ellipsis; the `| ` separator is additional. This limits long URLs and other single-word titles without cutting UTF-8 byte sequences. The title and calendar use `font.typographical_width` from v2.24.1 to measure glyph advances, including spaces.
+The bar keeps its 38-pixel height and solid Modus background, with 14 pixels of outer padding on each side. The workspace marker stays bright with its blue underline. An 8-pixel gap replaces the title's pipe separator, and the title uses the softer foreground. Hostnames and other title content are not stripped.
+
+Titles keep at most 20 words and 100 Unicode code points, including any ellipsis, and truncation never cuts through a UTF-8 byte sequence. The title and calendar use `font.typographical_width` from v2.24.1 to measure glyph advances (the horizontal width of each character), including spaces.
 
 ### Popups
 
@@ -58,7 +60,9 @@ AeroSpace pushes:
 - `aerospace_focus_change` when window focus changes.
 - `aerospace_mode_change` when the binding mode changes.
 
-The title also polls every second, because Ghostty split focus can change the window title without an AeroSpace focus event. Unchanged workspace and title values do not send item updates. Wake and forced updates refresh the title too. The clock checks every 10 seconds but sends a label update only when the displayed minute changes. The calendar rebuilds only when the local date changes.
+The title also polls every second, because Ghostty split focus can change the window title without an AeroSpace focus event. Unchanged workspace and title values do not send item updates. Wake and forced updates refresh the title too.
+
+The clock checks every 10 seconds. Its date is regular-weight secondary text, and its time is bold primary text, with a 12-pixel gap between them. Both fields share one item, so hovering either one opens the calendar. The clock sends only changed date or time fields to SketchyBar, and the calendar rebuilds only when the local date changes.
 
 The audio indicator reads macOS output mute state on `volume_change`, wake, and forced updates, with a 30-second fallback poll. It does not change volume or device settings. Zero volume without the mute flag does not show a warning.
 
@@ -73,6 +77,7 @@ sketchybar --reload
 cd ~/.dotfiles
 lua sketchybar/tests/first_pass.lua
 lua sketchybar/tests/second_pass.lua
+lua sketchybar/tests/visual_polish.lua
 find sketchybar/.config/sketchybar -name '*.lua' -type f -exec luac -p {} \;
 luac -p sketchybar/.config/sketchybar/sketchybarrc
 ```
