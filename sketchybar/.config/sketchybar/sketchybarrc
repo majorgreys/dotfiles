@@ -7,13 +7,13 @@
 -- dispatches sketchybar events to the lua handlers registered above.
 --
 -- Layout under $CONFIG_DIR/lua/:
---   bar.lua             — bar shell + Catppuccin palette + fonts.
+--   bar.lua             — bar shell + Modus Vivendi Tinted palette + fonts.
 --   mode.lua            — visible indicator for non-main AeroSpace modes.
 --   workspaces.lua      — active AeroSpace workspace + focused window title.
 --   status/clock.lua    — right-side clock.
 --   status/battery.lua  — right-side battery.
---   agent_status.lua   — agent_sessions parent + popup, push-driven
---                         from sketchybar-set-state hook events.
+--   agent_status.lua   — optional agent_sessions parent + popup, push-driven
+--                         from sketchybar-set-state hook events (disabled).
 
 package.cpath = package.cpath
   .. ";" .. os.getenv("HOME") .. "/.local/share/sketchybar_lua/?.so"
@@ -23,6 +23,10 @@ local CONFIG_DIR = os.getenv("CONFIG_DIR")
 package.path = package.path
   .. ";" .. CONFIG_DIR .. "/lua/?.lua"
   .. ";" .. CONFIG_DIR .. "/lua/?/init.lua"
+
+-- SbarLua forks for sbar.exec. Flush complete diagnostic lines immediately
+-- so child processes cannot inherit and repeatedly flush startup output.
+io.stdout:setvbuf("line")
 
 local sbar = require("sketchybar")
 
@@ -36,7 +40,7 @@ require("mode")
 require("workspaces")
 require("status.clock")
 require("status.battery")
-require("agent_status")
+-- Agent status is disabled; omitting this module removes the pizza session item.
 
 sbar.end_config()
 

@@ -8,21 +8,23 @@
 -- io.popen/os.execute here; all shell reads must go through async sbar.exec.
 
 local sbar = require("sketchybar")
+local window_title = require("window_title")
 require("bar")
 
--- Hotload preserves existing items across reloads. Remove both the original
--- ten workspace items and older one-item focus indicator before rebuilding.
-for i = 1, 10 do
-  pcall(sbar.remove, "space." .. i)
-end
-pcall(sbar.remove, "space.active")
-
+-- SketchyBar clears items before rerunning the config on reload/hotload.
 local underline = {
   color         = Colors.accent_bg,
   height        = 2,
   corner_radius = 0,
   y_offset      = -14,
 }
+
+local MAX_TITLE_WORDS = 20
+local MAX_TITLE_CHARS = 100
+
+local function title_label(title)
+  return "| " .. window_title.format(title, MAX_TITLE_WORDS, MAX_TITLE_CHARS)
+end
 
 local workspace_item = sbar.add("item", "space.active.workspace", {
   position = "left",
@@ -44,17 +46,23 @@ local workspace_item = sbar.add("item", "space.active.workspace", {
 
 local title_item = sbar.add("item", "space.active.title", {
   position = "left",
+  update_freq = 1,
+  scroll_texts = false,
   padding_left = 0,
   padding_right = 0,
   icon = { drawing = false },
   label = {
-    string        = "| No focused window",
+    string        = title_label("No focused window"),
+    max_chars     = 0,
+    width         = "dynamic",
     padding_left  = 0,
     padding_right = 6,
     color         = Colors.fg,
     font          = Fonts.regular,
+    -- v2.24.1: measure full glyph advances instead of adding a padding glyph.
+    ["font.typographical_width"] = true,
   },
-  background = underline,
+  background = { drawing = false },
   click_script = "aerospace workspace-back-and-forth",
 })
 
@@ -74,6 +82,8 @@ local function title_for(app, title)
   return "No focused window"
 end
 
+local last_workspace, last_label
+
 local function paint(workspace, title)
   workspace = clean(workspace)
   title = clean(title)
@@ -81,8 +91,15 @@ local function paint(workspace, title)
   if workspace == "" then workspace = "–" end
   if title == "" then title = "No focused window" end
 
-  workspace_item:set({ icon = { string = workspace } })
-  title_item:set({ label = { string = "| " .. title } })
+  local label = title_label(title)
+  if workspace ~= last_workspace then
+    workspace_item:set({ icon = { string = workspace } })
+    last_workspace = workspace
+  end
+  if label ~= last_label then
+    title_item:set({ label = { string = label } })
+    last_label = label
+  end
 end
 
 local function refresh_from_workspace(workspace)
@@ -130,5 +147,12 @@ end
 
 workspace_item:subscribe("aerospace_workspace_change", on_workspace_change)
 workspace_item:subscribe("aerospace_focus_change", on_focus_change)
+
+-- AeroSpace only reports macOS window-focus changes. Ghostty split focus can
+-- change inside the same window without firing either callback, so poll the
+-- focused window title once per second to keep the active pane title current.
+title_item:subscribe({ "routine", "system_woke", "forced" }, function()
+  refresh_from_focused_window(nil)
+end)
 
 refresh_from_focused_window(nil)
