@@ -1,6 +1,6 @@
 # Local fish completions for wmux, based on its installed "wmux help --json" manifest.
-# Static by design: pressing Tab never runs wmux or contacts a workspace.
-# Refresh this snapshot when wmux adds commands or flags.
+# Command/flag snapshot: refresh when wmux adds commands or flags.
+# Workspace names come from local SSH snippets; Tab never runs wmux or SSH.
 complete -c wmux -f
 
 # Ignore option values when deciding which subcommand comes next.
@@ -49,6 +49,37 @@ function __wmux_using_command
     test (count $words) -ge 2
     and test "$words[2]" = "$argv[1]"
     and not contains -- -- $words[2..-1]
+end
+
+# Match wmux's own discovery: a workspace snippet must declare its literal alias.
+function __wmux_workspaces --argument-names suffix
+    command python3 -c '
+import pathlib
+import re
+import shlex
+import sys
+
+root = pathlib.Path.home() / ".ssh" / "workspaces"
+for path in sorted(root.glob("*.config")):
+    name = path.stem
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", name):
+        continue
+    try:
+        with path.open() as config:
+            for line in config:
+                host = re.match(r"^\s*Host(?:\s*=\s*|\s+)(.*)$", line, re.I)
+                if not host:
+                    continue
+                try:
+                    patterns = shlex.split(host[1], comments=True)
+                except ValueError:
+                    continue
+                if "workspace-" + name in patterns:
+                    print(name + sys.argv[1])
+                    break
+    except (OSError, UnicodeError):
+        continue
+' "$suffix" 2>/dev/null
 end
 
 complete -c wmux -s h -l help -d 'Show help'
@@ -111,8 +142,11 @@ for flag in rescue delegated-offline
     complete -c wmux -n '__wmux_using_command attach' -l $flag
 end
 for flag in workspace target-id target-epoch
-    complete -c wmux -n '__wmux_using_command attach' -l $flag -r
+    complete -c wmux -n '__wmux_using_command attach' -l $flag -x
 end
+# A bare workspace is not an attach target: continue with workspace:repo[:branch].
+complete -c wmux -n '__wmux_at_path attach' -a '(__wmux_workspaces :)' -d 'SSH workspace; add repo[:branch]'
+complete -c wmux -n '__wmux_using_command attach' -l workspace -x -a '(__wmux_workspaces)' -d 'Select SSH workspace'
 
 complete -c wmux -n __wmux_at_path -a manage -d 'proactively manage auth on a destination without attaching'
 for flag in json

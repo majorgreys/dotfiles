@@ -45,4 +45,43 @@ assert_no_completion 'wmux ' __agent
 assert_no_completion 'wmux delegate -- ' status
 assert_no_completion 'wmux delegate -- --' --workspace
 
-echo 'PASS: wmux completions (20 checks; no wmux calls)'
+# Use only fixture SSH configs, not the operator's workspace inventory.
+set -g __wmux_test_home (mktemp -d)
+function __wmux_test_cleanup --on-event fish_exit
+    command rm -rf -- "$__wmux_test_home"
+end
+mkdir -p "$__wmux_test_home/.ssh/workspaces"
+printf '%s\n' 'Host workspace-test-one' >"$__wmux_test_home/.ssh/workspaces/test-one.config"
+printf '%s\n' 'hOsT = "workspace-test-two" another-alias # comment' >"$__wmux_test_home/.ssh/workspaces/test-two.config"
+printf '%s\n' 'Host workspace-*' >"$__wmux_test_home/.ssh/workspaces/wildcard.config"
+printf '%s\n' 'Match all' >"$__wmux_test_home/.ssh/workspaces/00-common.config"
+printf '%s\n' 'Host workspace-other-name' >"$__wmux_test_home/.ssh/workspaces/mismatch.config"
+printf '%s\n' 'Host "unterminated' >"$__wmux_test_home/.ssh/workspaces/broken.config"
+
+function ssh
+    echo 'FAIL: completion executed ssh' >&2
+    exit 1
+end
+
+begin
+    set -lx HOME "$__wmux_test_home"
+    assert_completion 'wmux attach ' test-one:
+    assert_completion 'wmux attach test-t' test-two:
+    assert_completion 'wmux attach --workspace ' test-one
+    assert_completion 'wmux attach --workspace=test-t' --workspace=test-two
+    assert_no_completion 'wmux attach ' wildcard:
+    assert_no_completion 'wmux attach ' 00-common:
+    assert_no_completion 'wmux attach ' mismatch:
+    assert_no_completion 'wmux attach ' broken:
+    assert_no_completion 'wmux attach --workspace ' test-one:
+    pushd "$root"
+    assert_no_completion 'wmux attach --workspace ' wmux.fish
+    popd
+    assert_no_completion 'wmux attach target ' test-one:
+    assert_no_completion 'wmux attach -- ' test-one:
+    assert_no_completion 'wmux list ' test-one:
+    rm -rf -- "$__wmux_test_home/.ssh/workspaces"
+    assert_no_completion 'wmux attach ' test-one:
+end
+
+echo 'PASS: wmux completions (34 checks; no wmux or SSH calls)'
