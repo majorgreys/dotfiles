@@ -1,6 +1,7 @@
 # Local fish completions for wmux, based on its installed "wmux help --json" manifest.
 # Command/flag snapshot: refresh when wmux adds commands or flags.
-# Workspace names come from local SSH snippets; Tab never runs wmux or SSH.
+# Workspaces come from local SSH snippets, targets from wmux's local cache.
+# Tab never runs wmux or SSH.
 complete -c wmux -f
 
 # Ignore option values when deciding which subcommand comes next.
@@ -82,6 +83,77 @@ for path in sorted(root.glob("*.config")):
 ' "$suffix" 2>/dev/null
 end
 
+# Suggest cached targets without invoking wmux (which might refresh on a miss).
+function __wmux_attach_targets
+    set -l words (commandline -opc)
+    set -l token (commandline -ct)
+    command python3 -c '
+import json
+import os
+import pathlib
+import re
+import sys
+
+prefix, *words = sys.argv[1:]
+workspace = ""
+for i, word in enumerate(words):
+    if word == "--workspace" and i + 1 < len(words):
+        workspace = words[i + 1]
+    elif word.startswith("--workspace="):
+        workspace = word.split("=", 1)[1]
+
+home = pathlib.Path.home()
+local_root = os.environ.get("WMUX_LOCAL_ROOT", "").strip()
+cache_home = os.environ.get("XDG_CACHE_HOME", "").strip()
+if local_root:
+    root = pathlib.Path(local_root) / "xdg" / "cache"
+else:
+    root = pathlib.Path(cache_home) if cache_home else home / ".cache"
+try:
+    with (root / "wmux" / "__all__.json").open() as source:
+        cache = json.load(source)
+except (OSError, ValueError, UnicodeError):
+    sys.exit(0)
+
+workspaces = cache.get("workspaces", {}) if isinstance(cache, dict) else {}
+if not isinstance(workspaces, dict):
+    sys.exit(0)
+
+def component(value, empty=False):
+    return isinstance(value, str) and (empty and value == "" or re.fullmatch(r"[A-Za-z0-9_./+@-]+", value))
+
+choices = set()
+for name, state in workspaces.items():
+    if not component(name) or workspace and name != workspace or not isinstance(state, dict):
+        continue
+    records = state.get("records", [])
+    if not isinstance(records, list):
+        continue
+    for record in records:
+        if not isinstance(record, dict) or record.get("workspace_name", name) != name:
+            continue
+        repo, branch = record.get("repo_name"), record.get("branch")
+        if not component(repo) or not component(branch, empty=True):
+            continue
+        # Always include the final colon, including branchless repo targets.
+        target = f"{name}:{repo}:{branch}"
+        stem = f"{name}:{repo}:"
+        if workspace and not prefix.startswith(name + ":"):
+            target, stem = f"{repo}:{branch}", f"{repo}:"
+        choices.add((target, "Cached wmux target"))
+        if branch:
+            choices.add((stem, "Cached repo; choose branch"))
+        # Also support repo:branch when the user starts typing a repo name.
+        if not workspace and prefix and ((repo + ":").startswith(prefix) or prefix.startswith(repo + ":")):
+            choices.add((f"{repo}:{branch}", "Cached target; workspace may be ambiguous"))
+            if branch:
+                choices.add((f"{repo}:", "Cached repo; choose branch"))
+for value, description in sorted(choices):
+    if value.startswith(prefix):
+        print(value + "\t" + description)
+' "$token" $words[2..-1] 2>/dev/null
+end
+
 complete -c wmux -s h -l help -d 'Show help'
 
 complete -c wmux -n __wmux_at_path -a chat -d 'open and develop the WMUX chat manager'
@@ -146,6 +218,7 @@ for flag in workspace target-id target-epoch
 end
 # A bare workspace is not an attach target: continue with workspace:repo[:branch].
 complete -c wmux -n '__wmux_at_path attach' -a '(__wmux_workspaces :)' -d 'SSH workspace; add repo[:branch]'
+complete -c wmux -n '__wmux_at_path attach' -a '(__wmux_attach_targets)'
 complete -c wmux -n '__wmux_using_command attach' -l workspace -x -a '(__wmux_workspaces)' -d 'Select SSH workspace'
 
 complete -c wmux -n __wmux_at_path -a manage -d 'proactively manage auth on a destination without attaching'
