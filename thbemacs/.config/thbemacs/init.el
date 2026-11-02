@@ -165,6 +165,12 @@
 (setq recentf-max-items 200)
 (savehist-mode 1)                         ; persist minibuffer history
 
+;; Keep directory listings compact; `(' toggles details when needed.
+(defun thb/dired-hide-details ()
+  "Hide verbose file details in Dired buffers."
+  (dired-hide-details-mode 1))
+(add-hook 'dired-mode-hook #'thb/dired-hide-details)
+
 ;; Hide .beads/ contents from project-find-file.  ~/work/ tracks
 ;; .beads/issues.jsonl per project on purpose; we just don't want those
 ;; files swamping completion candidates.
