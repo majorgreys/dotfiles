@@ -526,11 +526,8 @@ inline children), not O(paragraphs * total inline children)."
       ("inline_link"
        (let* ((text-node (thb-md-render--first-child-of-type node "link_text"))
               (dest-node (thb-md-render--first-child-of-type node "link_destination"))
-              (text (and text-node
-                         (let ((s (treesit-node-start text-node))
-                               (e (treesit-node-end   text-node)))
-                           ;; link_text contains [ ... ]; trim the brackets.
-                           (thb-md-render--src-text (1+ s) (1- e)))))
+              ;; The grammar excludes brackets from link_text already.
+              (text (and text-node (thb-md-render--node-text text-node)))
               (url  (and dest-node (thb-md-render--node-text dest-node))))
          (let ((start-out (point)))
            (thb-md-render--emit (or text "") 'thb-md-render-link-text)
@@ -551,10 +548,7 @@ inline children), not O(paragraphs * total inline children)."
       ;; Shortcut link [foo]: just emit the text in link face.
       ("shortcut_link"
        (let* ((text-node (thb-md-render--first-child-of-type node "link_text"))
-              (text (and text-node
-                         (let ((s (treesit-node-start text-node))
-                               (e (treesit-node-end   text-node)))
-                           (thb-md-render--src-text (1+ s) (1- e))))))
+              (text (and text-node (thb-md-render--node-text text-node))))
          (thb-md-render--emit (or text "") 'thb-md-render-link-text)))
       ;; Fallthrough: just emit the source text with current face.
       (_
