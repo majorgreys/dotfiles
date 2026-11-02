@@ -98,6 +98,40 @@
               (should (equal (buffer-string) "🖼 foo bar")))))
       (kill-buffer source))))
 
+(ert-deftest thb-md-render-links-use-real-parser-label-boundaries ()
+  (skip-unless (treesit-language-available-p 'markdown-inline))
+  (dolist (kind '("inline_link" "shortcut_link"))
+    (dolist (label '("requires both original keys"
+                     "visits other top-level service entries"
+                     "https://example.test/path" "x" "界é"))
+      (with-temp-buffer
+        (insert (if (equal kind "inline_link")
+                    (format "[%s](https://example.test/target)" label)
+                  (format "[%s]" label)))
+        (let* ((source (current-buffer))
+               (parser (treesit-parser-create 'markdown-inline))
+               (node (thb-md-render--first-child-of-type
+                      (treesit-parser-root-node parser) kind))
+               (text-node (and node (thb-md-render--first-child-of-type
+                                     node "link_text"))))
+          (should node)
+          (should text-node)
+          ;; link_text excludes both brackets; neither end needs trimming.
+          (should (equal (treesit-node-text text-node t) label))
+          (with-temp-buffer
+            (let ((thb-md-render--src-buffer source))
+              (thb-md-render--emit-inline-node node))
+            (should (equal (buffer-substring-no-properties
+                            (point-min) (point-max))
+                           label))
+            (when (equal kind "inline_link")
+              (dotimes (offset (length label))
+                (let ((pos (+ (point-min) offset)))
+                  (should (equal (get-text-property pos 'help-echo)
+                                 "https://example.test/target"))
+                  (should (equal (get-text-property pos 'thb-md-link)
+                                 "https://example.test/target")))))))))))
+
 (ert-deftest thb-md-render-first-child-stops-at-first-match ()
   (let* ((first '(:type "other"))
          (match '(:type "wanted"))
