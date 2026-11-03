@@ -43,31 +43,41 @@
         (thb-md-render--ensure-blank-line))
       (should (equal (buffer-string) (cdr case))))))
 
-(ert-deftest thb-md-render-setup-applies-inline-ranges-before-use ()
-  (let (created update-snapshot)
-    (cl-letf (((symbol-function 'treesit-parser-create)
-               (lambda (language)
-                 (push language created)
-                 language))
-              ((symbol-function 'treesit-range-rules)
-               (lambda (&rest arguments) (cons 'ranges arguments)))
-              ((symbol-function 'treesit-update-ranges)
-               (lambda (&rest _)
-                 (setq update-snapshot
-                       (list treesit-primary-parser
-                             treesit-range-settings)))))
-      (with-temp-buffer
-        (should (equal (thb-md-render--setup-parsers)
-                       '(markdown . markdown-inline)))
-        (should (equal (nreverse created)
-                       '(markdown markdown-inline)))
-        (should (eq treesit-primary-parser 'markdown))
-        (should (equal (car treesit-range-settings) 'ranges))
-        (should (equal update-snapshot
-                       (list 'markdown treesit-range-settings)))
-        (should (member '((inline) @capture
-                          (pipe_table_cell) @capture)
-                        treesit-range-settings))))))
+(ert-deftest thb-md-render-setup-blanks-continuations-and-parses-ranges-alone ()
+  (skip-unless (and (treesit-language-available-p 'markdown)
+                    (treesit-language-available-p 'markdown-inline)))
+  (let ((source "> `a\n> b\n\n`c` d\n")
+        (inline-buffer (generate-new-buffer " *thb-md-test-inline*" t)))
+    (unwind-protect
+        (with-temp-buffer
+          (insert source)
+          (with-current-buffer inline-buffer (insert source))
+          (pcase-let ((`(,markdown . ,inline)
+                       (thb-md-render--setup-parsers inline-buffer)))
+            (should (eq (treesit-parser-language markdown) 'markdown))
+            (should (eq (treesit-parser-buffer inline) inline-buffer))
+            ;; Continuation-line quote markers are blanked to spaces of equal
+            ;; length, so positions match the source exactly.  The first
+            ;; line's marker is a `block_quote_marker', outside every range.
+            (should (equal (with-current-buffer inline-buffer (buffer-string))
+                           "> `a\n  b\n\n`c` d\n"))
+            ;; Each range parses alone: the quote's unmatched backtick does
+            ;; not pair with the next paragraph's.
+            (let ((thb-md-render--inline-parser inline)
+                  (ranges (mapcar (lambda (n) (cons (treesit-node-start n)
+                                                    (treesit-node-end n)))
+                                  (treesit-query-capture
+                                   (treesit-parser-root-node markdown)
+                                   '((inline) @i) nil nil t))))
+              (should (= (length ranges) 2))
+              (should-not (mapcar #'treesit-node-type
+                                  (thb-md-render--inline-nodes
+                                   (car (nth 0 ranges)) (cdr (nth 0 ranges)))))
+              (should (equal (mapcar #'treesit-node-type
+                                     (thb-md-render--inline-nodes
+                                      (car (nth 1 ranges)) (cdr (nth 1 ranges))))
+                             '("code_span"))))))
+      (kill-buffer inline-buffer))))
 
 (ert-deftest thb-md-render-image-description-uses-real-parser-boundaries ()
   (skip-unless (treesit-language-available-p 'markdown-inline))
@@ -119,12 +129,19 @@
           ;; link_text excludes both brackets; neither end needs trimming.
           (should (equal (treesit-node-text text-node t) label))
           (with-temp-buffer
-            (let ((thb-md-render--src-buffer source))
+            ;; A shortcut link is a link only when its label is defined;
+            ;; undefined, it stays literal text as in CommonMark.
+            (let ((thb-md-render--src-buffer source)
+                  (thb-md-render--link-definitions
+                   (let ((table (make-hash-table :test 'equal)))
+                     (puthash (thb-md-render--normalize-label label)
+                              "https://example.test/target" table)
+                     table)))
               (thb-md-render--emit-inline-node node))
             (should (equal (buffer-substring-no-properties
                             (point-min) (point-max))
                            label))
-            (when (equal kind "inline_link")
+            (progn
               (dotimes (offset (length label))
                 (let ((pos (+ (point-min) offset)))
                   (should (equal (get-text-property pos 'help-echo)
@@ -268,10 +285,12 @@
                  (lambda (_node &optional _named) '(child)))
                 ((symbol-function 'treesit-node-type)
                  (lambda (_node) "paragraph"))
+                ((symbol-function 'thb-md-render--alert) #'ignore)
                 ((symbol-function 'thb-md-render--walk)
                  (lambda (_node) (insert "quoted\n\n"))))
         (thb-md-render--walk-blockquote 'quote)))
-    (should (equal (buffer-string) ">> quoted\n\n"))
+    ;; A tinted padding line, with the bar, sits above and below the content.
+    (should (equal (buffer-string) ">> \n>> quoted\n>> \n\n"))
     (should (thb-md-render-test--face-has-p
              1 'thb-md-render-blockquote-marker))
     (should (thb-md-render-test--face-has-p
@@ -279,12 +298,16 @@
     (should (equal (get-text-property 1 'wrap-prefix) ">> "))))
 
 (ert-deftest thb-md-render-thematic-break-uses-body-width ()
+  ;; The rule is a placeholder until wrapping redraws it to the budget, which
+  ;; before first display is the configured body width.
   (with-temp-buffer
     (let ((thb-md-render-body-width 17))
       (cl-letf (((symbol-function 'get-buffer-window)
-                 (lambda (&rest _) nil)))
-        (should (= (thb-md-render--thematic-break-width) 17))
-        (thb-md-render--walk-thematic-break)))
+                 (lambda (&rest _) nil))
+                ((symbol-function 'display-graphic-p)
+                 (lambda (&optional _) nil)))
+        (thb-md-render--walk-thematic-break)
+        (thb-md-render--rewrap-prose)))
     (should (equal (buffer-string)
                    (concat (make-string 17 ?─) "\n\n")))))
 
@@ -424,7 +447,10 @@
   "Run BODY with parsing and layout reduced to deterministic unit seams."
   (declare (indent 0) (debug t))
   `(cl-letf (((symbol-function 'treesit-parser-create) #'ignore)
-             ((symbol-function 'treesit-range-rules) (lambda (&rest _args) nil))
+             ((symbol-function 'thb-md-render--setup-parsers)
+              (lambda (_inline-buffer) '(parser . inline-parser)))
+             ((symbol-function 'thb-md-render--collect-link-definitions)
+              (lambda (_root) (make-hash-table :test 'equal)))
              ((symbol-function 'treesit-parser-list)
               (lambda (&rest _args) '(parser)))
              ((symbol-function 'treesit-parser-root-node) #'identity)
@@ -667,7 +693,9 @@
   (with-temp-buffer
     (let ((render-buffer (current-buffer))
           observed-buffer)
-      (cl-letf (((symbol-function 'string-pixel-width)
+      ;; Pixel measurement is the graphical path; batch Emacs is a terminal.
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t))
+                ((symbol-function 'string-pixel-width)
                  (lambda (string &optional buffer)
                    (setq observed-buffer buffer)
                    (* 2 (length string)))))
@@ -685,7 +713,8 @@
     (pcase-let ((`(,scale ,expected-lines) case))
       (with-temp-buffer
         (setq-local text-scale-mode-amount scale)
-        (cl-letf (((symbol-function 'string-pixel-width)
+        (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t))
+                  ((symbol-function 'string-pixel-width)
                    (lambda (string &optional buffer)
                      (with-current-buffer buffer
                        (* (+ 2 text-scale-mode-amount)
@@ -705,14 +734,16 @@
                  (cl-incf legacy-work (length string))
                  (length string)))
       (setq legacy-work 0)
-      (cl-letf (((symbol-function 'string-pixel-width) #'count-width))
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t))
+                 ((symbol-function 'string-pixel-width) #'count-width))
         (thb-md-render-test--legacy-pixel-wrap source budget "")))
     (cl-labels ((count-width
                  (string &optional _buffer)
                  (cl-incf new-work (length string))
                  (length string)))
       (setq new-work 0)
-      (cl-letf (((symbol-function 'string-pixel-width) #'count-width))
+      (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t))
+                 ((symbol-function 'string-pixel-width) #'count-width))
         (thb-md-render--pixel-wrap source budget "")))
     ;; The legacy pass measures every growing prefix (~N^2 characters), while
     ;; the new pass measures each word and separator once (~N characters).
@@ -730,7 +761,8 @@
                    (when (equal string cont-prefix)
                      (cl-incf prefix-measurements))
                    (length string)))
-        (cl-letf (((symbol-function 'string-pixel-width) #'count-width))
+        (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t))
+                 ((symbol-function 'string-pixel-width) #'count-width))
           (setq narrow-result
                 (thb-md-render--pixel-wrap source 30 cont-prefix))))
       (should (> (length (string-lines narrow-result)) 150))
