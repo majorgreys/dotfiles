@@ -652,7 +652,10 @@ as CommonMark does, so `[a](<my file.md>)' names `my file.md'."
 ;; its footnote is shown below the reference's line.
 
 (cl-defstruct (thb-md-render--footnote
-               (:constructor thb-md-render--make-footnote (start end)))
+               (:constructor thb-md-render--make-footnote (start end))
+               ;; A prefix of its own, so a slot cannot redefine one of the
+               ;; thb-md-render--footnote-* helpers below.
+               (:conc-name thb-md-render--fn-))
   "A footnote definition during one render."
   (start nil :documentation "Source position where the content starts.")
   (end nil :documentation "Source position where the content ends.")
@@ -670,11 +673,36 @@ The label excludes the leading `^'.  Bound by `thb-md-render-file'.")
   "\\[\\^\\([^]\n\t ]+\\)\\]:[ \t]*"
   "Regexp for the `[^label]:' that starts a footnote definition.")
 
+(defun thb-md-render--footnote-continuation (node)
+  "Return the paragraph that continues link reference definition NODE, or nil.
+The parser ends a link reference definition at its line, so the lines
+that follow it without a blank line form a separate paragraph.  For a
+footnote with a spaceless first line, such as `[^1]: https://x', that
+paragraph is the rest of the footnote."
+  (when (equal (treesit-node-type node) "link_reference_definition")
+    (let ((next (treesit-node-next-sibling node t)))
+      (and next
+           (equal (treesit-node-type next) "paragraph")
+           (= (treesit-node-end node) (treesit-node-start next))
+           next))))
+
+(defun thb-md-render--footnote-block-p (node)
+  "Return non-nil if block NODE belongs to footnote definitions.
+That is, NODE holds definitions or continues one, so it renders nothing
+in place."
+  (or (thb-md-render--footnote-definitions node)
+      (let ((prev (treesit-node-prev-sibling node t)))
+        (and prev
+             (treesit-node-eq (thb-md-render--footnote-continuation prev) node)
+             (thb-md-render--footnote-definitions prev)))))
+
 (defun thb-md-render--footnote-definitions (node)
   "Return (LABEL START END) for each footnote definition in block NODE.
 Return nil unless NODE is a top-level paragraph or link reference
-definition whose text starts with `[^label]:'.  Each later line that
-starts the same way begins another definition.  START..END is the
+definition whose text starts with `[^label]:'.  The block extends over
+a paragraph continuing a link reference definition (see
+`thb-md-render--footnote-continuation').  Each later line that starts
+with `[^label]:' begins another definition.  START..END is the
 definition's content in the source."
   (when (and (member (treesit-node-type node)
                      '("paragraph" "link_reference_definition"))
@@ -682,7 +710,8 @@ definition's content in the source."
                      '("document" "section")))
     (with-current-buffer thb-md-render--src-buffer
       (save-excursion
-        (let ((end (treesit-node-end node))
+        (let ((end (treesit-node-end
+                    (or (thb-md-render--footnote-continuation node) node)))
               (next-re (concat "^ \\{0,3\\}" thb-md-render--footnote-label-re))
               defs)
           (goto-char (treesit-node-start node))
@@ -726,22 +755,30 @@ label wins."
              (gethash (thb-md-render--normalize-label (substring text 1))
                       thb-md-render--footnotes))))))
 
+;; Footnote anchors contain `:', which `thb-md-render--anchor' strips from
+;; heading anchors, so a heading such as `# fn 1' (anchor fn-1) can never
+;; be taken for a footnote by `thb-md-render--follow-url'.
+
+(defun thb-md-render--footnote-anchor (number)
+  "Return the anchor of footnote NUMBER in the footnotes list."
+  (format "fn:%d" number))
+
 (defun thb-md-render--footnote-ref-anchor (number ref)
   "Return the anchor of reference REF (1-based) to footnote NUMBER.
-GitHub's form: fnref-1, then fnref-1-2, fnref-1-3, ..."
+The form is fnref:1, then fnref:1:2, fnref:1:3, ..."
   (if (= ref 1)
-      (format "fnref-%d" number)
-    (format "fnref-%d-%d" number ref)))
+      (format "fnref:%d" number)
+    (format "fnref:%d:%d" number ref)))
 
 (defun thb-md-render--emit-footnote-ref (footnote)
   "Emit a reference to FOOTNOTE as a raised, numbered link to it.
 The first reference numbers the footnote."
-  (unless (thb-md-render--footnote-number footnote)
+  (unless (thb-md-render--fn-number footnote)
     (push footnote thb-md-render--footnote-order)
-    (setf (thb-md-render--footnote-number footnote)
+    (setf (thb-md-render--fn-number footnote)
           (length thb-md-render--footnote-order)))
-  (let ((number (thb-md-render--footnote-number footnote))
-        (ref (cl-incf (thb-md-render--footnote-refs footnote)))
+  (let ((number (thb-md-render--fn-number footnote))
+        (ref (cl-incf (thb-md-render--fn-refs footnote)))
         (start (point)))
     (thb-md-render--emit (format "[%d]" number)
                          (thb-md-render--face-with 'thb-md-render-footnote-ref))
@@ -752,7 +789,7 @@ The first reference numbers the footnote."
                    'thb-md-render--footnote-anchor
                    (thb-md-render--footnote-ref-anchor number ref))
              (thb-md-render--link-properties
-              (format "#fn-%d" number)
+              (concat "#" (thb-md-render--footnote-anchor number))
               #'thb-md-render--footnote-help-echo)))))
 
 (defun thb-md-render--emit-footnotes ()
@@ -770,18 +807,18 @@ that reference renders, so the loop rereads the list's length."
 
 (defun thb-md-render--emit-footnote (footnote)
   "Emit FOOTNOTE as a numbered item followed by one back-link per reference."
-  (let* ((number (thb-md-render--footnote-number footnote))
+  (let* ((number (thb-md-render--fn-number footnote))
          (marker (format "%d. " number))
          (pad (make-string (length marker) ?\s))
          (start (point)))
     (thb-md-render--emit marker 'thb-md-render-list-marker)
     (put-text-property start (point) 'thb-md-render--footnote-anchor
-                       (format "fn-%d" number))
+                       (thb-md-render--footnote-anchor number))
     (let ((body (point)))
-      (thb-md-render--inline-walk (thb-md-render--footnote-start footnote)
-                                  (thb-md-render--footnote-end footnote))
+      (thb-md-render--inline-walk (thb-md-render--fn-start footnote)
+                                  (thb-md-render--fn-end footnote))
       (put-text-property body (point) 'thb-md-render--footnote-body number))
-    (dotimes (i (thb-md-render--footnote-refs footnote))
+    (dotimes (i (thb-md-render--fn-refs footnote))
       (let ((anchor (thb-md-render--footnote-ref-anchor number (1+ i)))
             (link-start (progn (thb-md-render--emit " " 'thb-md-render-body)
                                (point))))
@@ -810,7 +847,8 @@ that reference renders, so the loop rereads the list's length."
   "Return footnote NUMBER as rendered in the footnotes list, or nil.
 The text runs from its number to the end of its content, without the
 back-links, and keeps the list's wrapping and hang."
-  (when-let* ((start (thb-md-render--anchor-position (format "fn-%d" number))))
+  (when-let* ((start (thb-md-render--anchor-position
+                     (thb-md-render--footnote-anchor number))))
     (save-excursion
       (goto-char start)
       (let ((end start) match)
@@ -1037,14 +1075,21 @@ another inline range, so the nodes stay valid until this call returns."
                 (thb-md-render--emit (thb-md-render--node-text label-node) face))
                ("collapsed_reference_link"
                 (thb-md-render--emit "[]" face)))))))
-      ;; Image ![alt](src): a glyph and the alt text as a link to the
+      ;; Image ![alt](src), or ![alt][label], ![label][] and ![label] with a
+      ;; matching definition: a glyph and the alt text as a link to the
       ;; source.  The URL itself is not shown: source URLs are often long
       ;; single words that the prose wrapper cannot break.  No inline image.
       ("image"
        (let* ((alt-node (thb-md-render--first-child-of-type node "image_description"))
               (dest-node (thb-md-render--first-child-of-type node "link_destination"))
-              (url (and dest-node (thb-md-render--link-destination
-                                   (thb-md-render--node-text dest-node))))
+              (label-node (thb-md-render--first-child-of-type node "link_label"))
+              (url (cond
+                    (dest-node (thb-md-render--link-destination
+                                (thb-md-render--node-text dest-node)))
+                    (label-node (thb-md-render--link-definition
+                                 (thb-md-render--node-text label-node)))
+                    (alt-node (thb-md-render--link-definition
+                               (thb-md-render--node-text alt-node)))))
               (start (point)))
          (thb-md-render--emit "🖼 " (thb-md-render--face-with
                                     'thb-md-render-list-marker))
@@ -1079,7 +1124,7 @@ ordinal, and SUFFIX preserves the source marker style, either `.' or `)'.")
        (thb-md-render--walk c)))
     ;; Footnote definitions render in the list at the document's end.
     ((and (or "paragraph" "link_reference_definition")
-          (guard (thb-md-render--footnote-definitions node)))
+          (guard (thb-md-render--footnote-block-p node)))
      nil)
     ("atx_heading"
      (thb-md-render--walk-heading node))
