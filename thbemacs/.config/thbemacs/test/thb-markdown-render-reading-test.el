@@ -708,6 +708,14 @@ newline, must carry `thb-md-render-blockquote' so the tint is unbroken."
     (search-forward "image")
     (should (equal (get-text-property (1- (point)) 'thb-md-link) "my pic.png"))))
 
+(ert-deftest thb-md-render-reference-images-link-to-definition ()
+  (thb-md-test--rendering "![a][logo] ![logo] ![logo][] ![b][none]\n\n[logo]: pic.png\n"
+    (should (string-match-p "^🖼 a 🖼 logo 🖼 logo 🖼 b$" (thb-md-test--text)))
+    (goto-char (point-min))
+    (dolist (expected '("pic.png" "pic.png" "pic.png" nil))
+      (search-forward "🖼 ")
+      (should (equal (get-text-property (point) 'thb-md-link) expected)))))
+
 (ert-deftest thb-md-render-autolinks-drop-brackets-and-link ()
   (thb-md-test--rendering "a <https://x.y/z?q=1&r=2> b <me@x.com> c\n"
     (should (string-match-p "^a https://x\\.y/z\\?q=1&r=2 b me@x\\.com c$"
@@ -794,28 +802,38 @@ newline, must carry `thb-md-render-blockquote' so the tint is unbroken."
         (should-not thb-md-render--footnote-overlay)))))
 
 (defun thb-md-test--footnote-document (seed)
-  "Return (MARKDOWN . REFS) for a random footnote document for SEED.
+  "Return (MARKDOWN REFS BODIES) for a random footnote document for SEED.
 REFS lists the referenced labels in order; labels starting with `u' have
-no definition."
+no definition.  BODIES is an alist of label -> expected rendered body.
+A spaceless first line (`http://...') parses as a link reference
+definition, optionally continued by the next line."
   (random (format "thb-md-fn-%d" seed))
   (let* ((labels (cl-loop for i from 1 to (1+ (random 5)) collect (format "l%d" i)))
          (refs (cl-loop repeat (1+ (random 8))
                         collect (if (zerop (random 6))
                                     "u1"
                                   (nth (random (length labels)) labels))))
-         (defs (sort (copy-sequence labels) (lambda (_ _) (zerop (random 2))))))
-    (cons (concat "Text"
+         (defs (sort (copy-sequence labels) (lambda (_ _) (zerop (random 2)))))
+         (forms (mapcar (lambda (l)
+                          (pcase (random 4)
+                            (0 (list l (format "body %s" l)))
+                            (1 (list l (format "body %s more words" l)))
+                            (2 (list l (format "http://%s" l)))
+                            (_ (list l (format "http://%s\ncont %s" l l)))))
+                        defs)))
+    (list (concat "Text"
                   (mapconcat (lambda (l) (format " w[^%s]" l)) refs "")
                   ".\n\n"
-                  (mapconcat (lambda (l)
-                               (format "[^%s]: body %s%s\n" l l
-                                       (if (zerop (random 2)) " more words" "")))
-                             defs (if (zerop (random 2)) "\n" "")))
-          refs)))
+                  (mapconcat (lambda (form) (format "[^%s]: %s\n" (car form) (cadr form)))
+                             forms (if (zerop (random 2)) "\n" "")))
+          refs
+          (mapcar (lambda (form)
+                    (cons (car form) (string-replace "\n" " " (cadr form))))
+                  forms))))
 
 (ert-deftest thb-md-render-property-footnotes-number-by-first-reference ()
   (dolist (seed thb-md-test--seeds)
-    (pcase-let* ((`(,doc . ,refs) (thb-md-test--footnote-document seed))
+    (pcase-let* ((`(,doc ,refs ,bodies) (thb-md-test--footnote-document seed))
                  (defined (seq-uniq (seq-remove (lambda (l) (string-prefix-p "u" l))
                                                 refs)))
                  (expected-refs
@@ -827,15 +845,20 @@ no definition."
       (ert-info ((format "seed %d:\n%s" seed doc))
         (thb-md-test--rendering doc
           (let ((text (thb-md-test--text)))
-            (should (string-prefix-p (concat "Text" expected-refs ".\n") text))
+            ;; Definitions, continuation lines included, render nothing in
+            ;; place: the footnotes rule follows the paragraph directly.
+            (if defined
+                (should (string-prefix-p (concat "Text" expected-refs ".\n\n─") text))
+              (should (equal text (concat "Text" expected-refs ".\n"))))
             ;; One list item per referenced label, in first-reference
-            ;; order, with one back-link per reference.
+            ;; order, with its whole body and one back-link per reference.
             (should (equal (cl-loop for l in defined
                                     for i from 1
-                                    collect (list i l (seq-count (apply-partially #'equal l)
-                                                                 refs)))
+                                    collect (list i (cdr (assoc l bodies))
+                                                  (seq-count (apply-partially #'equal l)
+                                                             refs)))
                            (let ((pos 0) items)
-                             (while (string-match "^\\([0-9]+\\)\\. body \\(l[0-9]+\\)[^↩\n]*\\(.*\\)$"
+                             (while (string-match "^\\([0-9]+\\)\\. \\([^↩\n]*?\\)\\(\\(?: ↩[0-9]*\\)+\\)$"
                                                   text pos)
                                (push (list (string-to-number (match-string 1 text))
                                            (match-string 2 text)
@@ -849,6 +872,36 @@ no definition."
             (let ((url (get-text-property start 'thb-md-link)))
               (should (string-prefix-p "#fn" url))
               (should (thb-md-render--anchor-position (substring url 1))))))))))
+
+(ert-deftest thb-md-render-footnote-anchors-do-not-capture-headings ()
+  (thb-md-test--rendering "# fn 1\n\nGo [h](#fn-1) and A[^z].\n\n[^z]: zed\n"
+    (save-window-excursion
+      (switch-to-buffer (current-buffer))
+      (goto-char (point-min))
+      (search-forward "Go h")
+      (thb-md-render-follow-link (1- (point)))
+      (should (equal (nth 1 (thb-md-render--heading-at (point))) "fn-1")))))
+
+(ert-deftest thb-md-render-footnote-preview-hook-and-reflow ()
+  (thb-md-test--rendering thb-md-test--footnotes
+    (save-window-excursion
+      (switch-to-buffer (current-buffer))
+      ;; Every render adds the hook, including a revert of a buffer that
+      ;; lost it (a preview open across a live code reload).
+      (should (memq #'thb-md-render--update-footnote-preview post-command-hook))
+      (remove-hook 'post-command-hook #'thb-md-render--update-footnote-preview t)
+      (thb-md-render-revert)
+      (should (memq #'thb-md-render--update-footnote-preview post-command-hook))
+      ;; A reflow replaces the text, so it drops a shown preview.
+      (goto-char (point-min))
+      (search-forward "Two.[")
+      (thb-md-render--update-footnote-preview)
+      (should (overlayp thb-md-render--footnote-overlay))
+      (thb-md-test--at-columns 30
+        (thb-md-render--rewrap-cached-content))
+      (should-not thb-md-render--footnote-overlay)
+      (should-not (seq-some (lambda (ov) (overlay-get ov 'before-string))
+                            (overlays-in (point-min) (point-max)))))))
 
 (ert-deftest thb-md-render-fontifies-fenced-code ()
   (thb-md-test--rendering "```elisp\n(defun f () \"s\")\n```\n"
