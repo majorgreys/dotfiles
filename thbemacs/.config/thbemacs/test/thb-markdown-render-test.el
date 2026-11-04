@@ -105,7 +105,8 @@
             (with-temp-buffer
               (let ((thb-md-render--src-buffer source))
                 (thb-md-render--emit-inline-node image))
-              (should (equal (buffer-string) "🖼 foo bar")))))
+              (should (equal (buffer-string) "🖼 foo"))
+              (should (equal (get-text-property 3 'thb-md-link) "bar")))))
       (kill-buffer source))))
 
 (ert-deftest thb-md-render-links-use-real-parser-label-boundaries ()
@@ -450,6 +451,8 @@
              ((symbol-function 'thb-md-render--setup-parsers)
               (lambda (_inline-buffer) '(parser . inline-parser)))
              ((symbol-function 'thb-md-render--collect-link-definitions)
+              (lambda (_root) (make-hash-table :test 'equal)))
+             ((symbol-function 'thb-md-render--collect-footnotes)
               (lambda (_root) (make-hash-table :test 'equal)))
              ((symbol-function 'treesit-parser-list)
               (lambda (&rest _args) '(parser)))
