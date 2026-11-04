@@ -664,10 +664,7 @@ In TUI frames, skip backgrounds to avoid 256-color approximation issues."
     "qq" '(save-buffers-kill-terminal :which-key "close frame")
     "qQ" '(save-buffers-kill-emacs :which-key "kill daemon")
     "qp" '(thb/package-refresh-if-stale :which-key "refresh packages")
-    "qr" '((lambda () (interactive)
-              (load-file (expand-file-name "init.el" user-emacs-directory))
-              (message "init.el reloaded"))
-           :which-key "reload init.el")
+    "qr" '(thb/reload-config :which-key "reload config")
     "qR" '(thb/restart-emacs-restore :which-key "restart daemon"))
 
   ;; --- SPC p: Project ---
@@ -2553,6 +2550,35 @@ content field is visible in the detail view."
          (magit-post-refresh . diff-hl-magit-post-refresh))
   :config
   (setq diff-hl-draw-borders nil))
+
+;; --- Reload Config ---
+(defun thb/reload-config ()
+  "Reload init.el and the loaded libraries in lisp/, then re-render previews.
+Each library is byte-compiled before loading, so a later start does not
+load a stale .elc.  ELPA packages are not reloaded: re-evaluating them
+neither resets their variables nor removes hooks they added, so use
+`thb/restart-emacs-restore' after package changes."
+  (interactive)
+  (load-file (expand-file-name "init.el" user-emacs-directory))
+  (let (reloaded)
+    (dolist (file (directory-files (expand-file-name "lisp" user-emacs-directory)
+                                   t "\\`[^.].*\\.el\\'"))
+      (when (featurep (intern (file-name-base file)))
+        ;; Fall back to the source when compilation fails.
+        (load (if (byte-compile-file file) (concat file "c") file) nil t t)
+        (push (file-name-base file) reloaded)))
+    (when (featurep 'thb-markdown-render)
+      (dolist (buf (buffer-list))
+        (with-current-buffer buf
+          (when (derived-mode-p 'thb-md-render-mode)
+            (condition-case err
+                (thb-md-render-revert)
+              (error (message "Could not re-render %s: %s"
+                              (buffer-name) (error-message-string err))))))))
+    (message "Reloaded init.el%s"
+             (if reloaded
+                 (concat " and " (string-join (nreverse reloaded) ", "))
+               ""))))
 
 ;; --- Restart with Session Restore ---
 (defun thb/restart-emacs-restore ()
