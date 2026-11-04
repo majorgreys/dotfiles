@@ -2485,10 +2485,12 @@ Jumps inside Emacs push the xref marker stack, so \\[xref-go-back] returns."
 ;; so `q' in motion falls through to our local binding.  Motion state still
 ;; shadows the other mode-map keys, so give them evil-style equivalents.
 (declare-function evil-set-initial-state "evil-core")
-(declare-function evil-define-key "evil-core")
+(declare-function evil-define-key* "evil-core")
 (with-eval-after-load 'evil
   (evil-set-initial-state 'thb-md-render-mode 'motion)
-  (evil-define-key 'motion thb-md-render-mode-map
+  ;; The function form: the `evil-define-key' macro compiles to a broken
+  ;; call when this file is byte-compiled without evil loaded.
+  (evil-define-key* 'motion thb-md-render-mode-map
     (kbd "RET") #'thb-md-render-follow-link
     (kbd "TAB") #'thb-md-render-next-link
     (kbd "<backtab>") #'thb-md-render-previous-link
