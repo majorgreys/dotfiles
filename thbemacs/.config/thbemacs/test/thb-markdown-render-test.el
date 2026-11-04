@@ -27,7 +27,10 @@
              ((symbol-function 'treesit-node-end)
               (lambda (node) (plist-get node :end)))
              ((symbol-function 'thb-md-render--node-text)
-              (lambda (node) (plist-get node :text))))
+              (lambda (node) (plist-get node :text)))
+             ;; Footnote detection needs parents and siblings, which these
+             ;; nodes lack; real-parser tests cover it.
+             ((symbol-function 'thb-md-render--footnote-block-p) #'ignore))
      ,@body))
 
 (ert-deftest thb-md-render-ensure-blank-line-is-local-and-correct ()

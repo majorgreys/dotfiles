@@ -878,6 +878,26 @@ definition, optionally continued by the next line."
               (should (string-prefix-p "#fn" url))
               (should (thb-md-render--anchor-position (substring url 1))))))))))
 
+(ert-deftest thb-md-render-footnote-definitions-in-containers ()
+  (thb-md-test--rendering
+      (concat "Q[^q] N[^n] L[^l] M[^m].\n\n"
+              "> Quote text.\n>\n> [^q]: quoted def\n> [^n]: http://n\n> lazy n\n\n"
+              "- one\n- [^l]: list def\n- three\n\n"
+              "> [^m]: only a def\n\nAfter.\n")
+    (let ((text (replace-regexp-in-string "─+" "─" (thb-md-test--text))))
+      ;; Definitions leave their containers; a quote holding only a
+      ;; definition renders nothing, a list item an empty bullet.
+      (should (string-match-p "^▎ Quote text\\.\n▎ \n\n• one\n• \n• three\n\nAfter\\.\n" text))
+      (should-not (string-match-p "\\[\\^" text))
+      (should (string-suffix-p (concat "─\n\n1. quoted def ↩\n2. http://n lazy n ↩\n"
+                                       "3. list def ↩\n4. only a def ↩\n")
+                               text)))))
+
+(ert-deftest thb-md-render-footnote-definitions-split-in-nested-quote ()
+  ;; The blanked `> > ' markers indent the second definition four columns.
+  (thb-md-test--rendering "P[^p] R[^r].\n\n> > [^p]: first note\n> > [^r]: second note\n"
+    (should (string-suffix-p "1. first note ↩\n2. second note ↩\n" (thb-md-test--text)))))
+
 (ert-deftest thb-md-render-footnote-anchors-do-not-capture-headings ()
   (thb-md-test--rendering "# fn 1\n\nGo [h](#fn-1) and A[^z].\n\n[^z]: zed\n"
     (save-window-excursion

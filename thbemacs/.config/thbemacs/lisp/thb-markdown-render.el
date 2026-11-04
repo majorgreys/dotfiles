@@ -644,8 +644,9 @@ as CommonMark does, so `[a](<my file.md>)' names `my file.md'."
 ;; tree-sitter-markdown has no footnote syntax.  A definition
 ;; `[^label]: text' parses as a paragraph, or as a link reference
 ;; definition when its text has no spaces, and a reference `[^label]'
-;; parses as a shortcut link.  Top-level blocks made of definitions are
-;; collected before the walk and render nothing in place.  As on GitHub,
+;; parses as a shortcut link.  Blocks made of definitions, at top level or
+;; in a quote or list item, are collected before the walk and render
+;; nothing in place.  As on GitHub,
 ;; the referenced footnotes render in a list at the end of the document,
 ;; numbered by first reference, each with a back-link per reference;
 ;; unreferenced definitions are dropped.  While point is on a reference,
@@ -698,8 +699,9 @@ in place."
 
 (defun thb-md-render--footnote-definitions (node)
   "Return (LABEL START END) for each footnote definition in block NODE.
-Return nil unless NODE is a top-level paragraph or link reference
-definition whose text starts with `[^label]:'.  The block extends over
+Return nil unless NODE is a paragraph or link reference definition,
+at top level or directly in a block quote or list item, whose text starts
+with `[^label]:'.  The block extends over
 a paragraph continuing a link reference definition (see
 `thb-md-render--footnote-continuation').  Each later line that starts
 with `[^label]:' begins another definition.  START..END is the
@@ -707,12 +709,14 @@ definition's content in the source."
   (when (and (member (treesit-node-type node)
                      '("paragraph" "link_reference_definition"))
              (member (treesit-node-type (treesit-node-parent node))
-                     '("document" "section")))
+                     '("document" "section" "block_quote" "list_item")))
     (with-current-buffer thb-md-render--src-buffer
       (save-excursion
         (let ((end (treesit-node-end
                     (or (thb-md-render--footnote-continuation node) node)))
-              (next-re (concat "^ \\{0,3\\}" thb-md-render--footnote-label-re))
+              ;; Blanked container markers indent later lines, so allow
+              ;; any indentation.
+              (next-re (concat "^[ \t]*" thb-md-render--footnote-label-re))
               defs)
           (goto-char (treesit-node-start node))
           (when (looking-at thb-md-render--footnote-label-re)
@@ -1473,6 +1477,10 @@ reads as a continuous card rather than a strip behind the code only."
       (dolist (c (treesit-node-children node))
         (let ((type (treesit-node-type c)))
           (pcase type
+            ;; Footnote definitions render in the list at the document's end.
+            ((and (or "paragraph" "link_reference_definition")
+                  (guard (thb-md-render--footnote-block-p c)))
+             nil)
             ("paragraph"
              (when content-emitted
                ;; A later paragraph of a loose item: one blank line (blocks
