@@ -608,7 +608,7 @@ newline, must carry `thb-md-render-blockquote' so the tint is unbroken."
     (should (equal (mapcar (lambda (h) (list (nth 2 h) (nth 3 h))) (thb-md-render--headings))
                    '(("logo" "Logo"))))
     ;; The image placeholder still renders in the heading.
-    (should (string-match-p "^Logo 🖼 alt x\\.png$" (thb-md-test--text)))))
+    (should (string-match-p "^Logo 🖼 alt$" (thb-md-test--text)))))
 
 ;;;; Fitted tables ---------------------------------------------------------
 
@@ -695,14 +695,160 @@ newline, must carry `thb-md-render-blockquote' so the tint is unbroken."
     (should (eq (plist-get (get-text-property (1- (point)) 'face) :inherit)
                 'thb-md-render-h2))))
 
-(ert-deftest thb-md-render-image-alt-and-source ()
-  (thb-md-test--rendering "![*alt*](pic.png)\n"
-    (should (string-match-p "^🖼 alt pic\\.png$" (thb-md-test--text)))
+(ert-deftest thb-md-render-image-alt-links-to-source ()
+  (thb-md-test--rendering "![*alt*](pic.png) ![](<my pic.png>)\n"
+    ;; The source URL is not printed; an empty alt shows `image'.
+    (should (string-match-p "^🖼 alt 🖼 image$" (thb-md-test--text)))
     (goto-char (point-min))
     (search-forward "alt")
     (let ((face (get-text-property (1- (point)) 'face)))
       (should (memq 'thb-md-render-emphasis face))
-      (should (memq 'thb-md-render-link-text face)))))
+      (should (memq 'thb-md-render-link-text face)))
+    (should (equal (get-text-property (1- (point)) 'thb-md-link) "pic.png"))
+    (search-forward "image")
+    (should (equal (get-text-property (1- (point)) 'thb-md-link) "my pic.png"))))
+
+(ert-deftest thb-md-render-autolinks-drop-brackets-and-link ()
+  (thb-md-test--rendering "a <https://x.y/z?q=1&r=2> b <me@x.com> c\n"
+    (should (string-match-p "^a https://x\\.y/z\\?q=1&r=2 b me@x\\.com c$"
+                            (thb-md-test--text)))
+    (goto-char (point-min))
+    (search-forward "z?q")
+    (should (equal (get-text-property (1- (point)) 'thb-md-link)
+                   "https://x.y/z?q=1&r=2"))
+    (search-forward "me@")
+    (should (equal (get-text-property (1- (point)) 'thb-md-link)
+                   "mailto:me@x.com"))))
+
+;;;; Footnotes ----------------------------------------------------------
+
+(defconst thb-md-test--footnotes
+  (concat "One.[^b] Two.[^a] Again[^b] and [^nope].\n\n"
+          ;; Two definitions in one paragraph; the second has no spaces,
+          ;; so it parses as a link reference definition.
+          "[^a]: [Endpoint health](https://docs/x)\nsecond line[^c]\n"
+          "[^b]: [https://a/b?q=…](https://a/b?q=1)\n\n"
+          "[^c]: Note with `code`.\n\n"
+          "[^unused]: never shown\n")
+  "Document exercising footnote definition forms and numbering.")
+
+(ert-deftest thb-md-render-footnotes-list-at-end-in-reference-order ()
+  (thb-md-test--rendering thb-md-test--footnotes
+    (should (equal
+             (replace-regexp-in-string "─+" "─" (thb-md-test--text))
+             (concat "One.[1] Two.[2] Again[1] and [^nope].\n\n─\n\n"
+                     "1. https://a/b?q=… ↩ ↩2\n"
+                     "2. Endpoint health second line[3] ↩\n"
+                     "3. Note with code. ↩\n")))
+    ;; The spaceless definition is a footnote, not a link reference.
+    (should-not (thb-md-render--link-definition "^b"))
+    (goto-char (point-min))
+    (search-forward "[2")
+    (should (eq (get-text-property (1- (point)) 'thb-md-render--footnote) 2))
+    (should (memq 'thb-md-render-footnote-ref
+                  (ensure-list (get-text-property (1- (point)) 'face))))
+    (should (equal (get-text-property (1- (point)) 'display) '(raise 0.3)))
+    (search-forward "Endpoint")
+    (should (equal (get-text-property (1- (point)) 'thb-md-link) "https://docs/x"))))
+
+(ert-deftest thb-md-render-footnote-links-jump-both-ways ()
+  (thb-md-test--rendering thb-md-test--footnotes
+    (save-window-excursion
+      (switch-to-buffer (current-buffer))
+      (goto-char (point-min))
+      (search-forward "Again[")
+      (let ((second-ref (point)))
+        (thb-md-render-follow-link)
+        (should (looking-at "1\\. https"))
+        (xref-go-back)
+        (should (= (point) second-ref))
+        ;; The second back-link returns to the second reference.
+        (thb-md-render-follow-link)
+        (search-forward "↩2")
+        (thb-md-render-follow-link (1- (point)))
+        (should (= (point) (1- second-ref)))))))
+
+(ert-deftest thb-md-render-footnote-preview-follows-point ()
+  (thb-md-test--rendering thb-md-test--footnotes
+    (save-window-excursion
+      (switch-to-buffer (current-buffer))
+      (thb-md-test--at-columns 30
+        (thb-md-render--rewrap-cached-content)
+        (goto-char (point-min))
+        (search-forward "Two.[")
+        (thb-md-render--update-footnote-preview)
+        (let* ((ov thb-md-render--footnote-overlay)
+               (text (overlay-get ov 'before-string)))
+          (should (= (overlay-start ov) (line-beginning-position 2)))
+          ;; Wrapped as in the list, hang included, without back-links.
+          (should (equal (substring-no-properties text)
+                         "2. Endpoint health second\n   line[3]\n"))
+          (should (memq 'thb-md-render-footnote-preview
+                        (ensure-list (get-text-property 0 'face text))))
+          (should-not (get-text-property 3 'keymap text))
+          (should (equal (thb-md-render--footnote-help-echo
+                          nil (current-buffer) (point))
+                         "2. Endpoint health second line[3]")))
+        (goto-char (point-min))
+        (thb-md-render--update-footnote-preview)
+        (should-not thb-md-render--footnote-overlay)))))
+
+(defun thb-md-test--footnote-document (seed)
+  "Return (MARKDOWN . REFS) for a random footnote document for SEED.
+REFS lists the referenced labels in order; labels starting with `u' have
+no definition."
+  (random (format "thb-md-fn-%d" seed))
+  (let* ((labels (cl-loop for i from 1 to (1+ (random 5)) collect (format "l%d" i)))
+         (refs (cl-loop repeat (1+ (random 8))
+                        collect (if (zerop (random 6))
+                                    "u1"
+                                  (nth (random (length labels)) labels))))
+         (defs (sort (copy-sequence labels) (lambda (_ _) (zerop (random 2))))))
+    (cons (concat "Text"
+                  (mapconcat (lambda (l) (format " w[^%s]" l)) refs "")
+                  ".\n\n"
+                  (mapconcat (lambda (l)
+                               (format "[^%s]: body %s%s\n" l l
+                                       (if (zerop (random 2)) " more words" "")))
+                             defs (if (zerop (random 2)) "\n" "")))
+          refs)))
+
+(ert-deftest thb-md-render-property-footnotes-number-by-first-reference ()
+  (dolist (seed thb-md-test--seeds)
+    (pcase-let* ((`(,doc . ,refs) (thb-md-test--footnote-document seed))
+                 (defined (seq-uniq (seq-remove (lambda (l) (string-prefix-p "u" l))
+                                                refs)))
+                 (expected-refs
+                  (mapconcat (lambda (l)
+                               (if (member l defined)
+                                   (format " w[%d]" (1+ (seq-position defined l)))
+                                 (format " w[^%s]" l)))
+                             refs "")))
+      (ert-info ((format "seed %d:\n%s" seed doc))
+        (thb-md-test--rendering doc
+          (let ((text (thb-md-test--text)))
+            (should (string-prefix-p (concat "Text" expected-refs ".\n") text))
+            ;; One list item per referenced label, in first-reference
+            ;; order, with one back-link per reference.
+            (should (equal (cl-loop for l in defined
+                                    for i from 1
+                                    collect (list i l (seq-count (apply-partially #'equal l)
+                                                                 refs)))
+                           (let ((pos 0) items)
+                             (while (string-match "^\\([0-9]+\\)\\. body \\(l[0-9]+\\)[^↩\n]*\\(.*\\)$"
+                                                  text pos)
+                               (push (list (string-to-number (match-string 1 text))
+                                           (match-string 2 text)
+                                           (seq-count (apply-partially #'eq ?↩)
+                                                      (match-string 3 text)))
+                                     items)
+                               (setq pos (match-end 0)))
+                             (nreverse items)))))
+          ;; Every reference and back-link names an anchor in the buffer.
+          (dolist (start (thb-md-render--link-starts))
+            (let ((url (get-text-property start 'thb-md-link)))
+              (should (string-prefix-p "#fn" url))
+              (should (thb-md-render--anchor-position (substring url 1))))))))))
 
 (ert-deftest thb-md-render-fontifies-fenced-code ()
   (thb-md-test--rendering "```elisp\n(defun f () \"s\")\n```\n"
