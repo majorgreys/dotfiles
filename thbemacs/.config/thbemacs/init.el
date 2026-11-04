@@ -282,7 +282,43 @@
 
   ;; Use macOS trash instead of rm
   (setq delete-by-moving-to-trash t
-        trash-directory "~/.Trash"))
+        trash-directory "~/.Trash")
+
+  ;; Clipboard in terminal frames.  GUI frames reach the macOS pasteboard
+  ;; through `gui-select-text'.  A terminal frame reaches it only by OSC 52,
+  ;; which xterm.el enables when the terminal answers its capability query;
+  ;; Rex panes do not answer, so kills in thbemacs-tui stayed inside Emacs.
+  ;; The daemon always runs on this Mac (LaunchAgent), so terminal frames
+  ;; use pbcopy/pbpaste, whatever the terminal supports.
+  (defvar thb/clipboard--last-copied nil
+    "Text most recently sent to pbcopy, so yanking does not paste it twice.")
+
+  (defun thb/clipboard-cut (text)
+    "Put TEXT on the macOS clipboard from the selected frame.
+GUI frames use `gui-select-text'; terminal frames run pbcopy."
+    (if (display-graphic-p)
+        (gui-select-text text)
+      (let ((coding-system-for-write 'utf-8))
+        (call-process-region text nil "pbcopy"))
+      (setq thb/clipboard--last-copied text)))
+
+  (defun thb/clipboard-paste ()
+    "Return the macOS clipboard text if it is new to Emacs, else nil.
+GUI frames use `gui-selection-value'; terminal frames run pbpaste.  Text
+this Emacs just copied, or an empty clipboard, returns nil, as
+`interprogram-paste-function' requires."
+    (if (display-graphic-p)
+        (gui-selection-value)
+      (let ((text (with-temp-buffer
+                    (let ((coding-system-for-read 'utf-8))
+                      (call-process "pbpaste" nil t nil))
+                    (buffer-string))))
+        (unless (or (string-empty-p text)
+                    (equal text thb/clipboard--last-copied))
+          (setq thb/clipboard--last-copied text)))))
+
+  (setq interprogram-cut-function #'thb/clipboard-cut
+        interprogram-paste-function #'thb/clipboard-paste))
 
 
 ;;; ============================================================
