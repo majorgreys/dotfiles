@@ -30,6 +30,12 @@
 ;; package-initialize that would otherwise run between early-init and init.
 (setq package-enable-at-startup nil)
 
+;;; Prefer Newer Source
+;; Load a library's .el when it is newer than its .elc, so a file in lisp/
+;; edited (or failed to compile) after its last compile never runs the
+;; stale compiled copy.
+(setq load-prefer-newer t)
+
 ;;; Native Compilation (Emacs 29+)
 ;; Suppress noisy native-comp warnings. Enable JIT compilation.
 (when (featurep 'native-compile)
