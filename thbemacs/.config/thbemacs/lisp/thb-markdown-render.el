@@ -1515,7 +1515,11 @@ reads as a continuous card rather than a strip behind the code only."
                ;; Keep a nested quote's own hang (its bar) under the item.
                (thb-md-render--compose-wrap-prefix block-start (point)
                                                    wrap-pad t))
-             (setq content-emitted t))))))))
+             (setq content-emitted t)))))
+      ;; An item that emitted nothing after its marker (`-' alone, or only
+      ;; a definition) still ends its line, so the next item starts anew.
+      (unless (bolp)
+        (thb-md-render--newline 1)))))
 
 (defun thb-md-render--indent-lines (start end prefix)
   "Insert PREFIX at the start of each line that begins in START..END.
