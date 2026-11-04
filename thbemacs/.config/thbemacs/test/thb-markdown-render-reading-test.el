@@ -317,6 +317,11 @@ newline, must carry `thb-md-render-blockquote' so the tint is unbroken."
   (thb-md-test--rendering "1. a\n2. b\n\npara\n\n1. c\n"
     (should (string-match-p "^1\\. c$" (thb-md-test--text)))))
 
+(ert-deftest thb-md-render-empty-list-item-ends-its-line ()
+  (thb-md-test--rendering "- a\n-\n- c\n\n1. x\n2.\n3. z\n"
+    (should (string-match-p "^• a\n• \n• c$" (thb-md-test--text)))
+    (should (string-match-p "^1\\. x\n2\\. \n3\\. z$" (thb-md-test--text)))))
+
 (ert-deftest thb-md-render-inline-walk-rejects-reentry ()
   ;; Re-pointing the shared inline parser would outdate the outer nodes.
   (let ((thb-md-render--inline-active t))
