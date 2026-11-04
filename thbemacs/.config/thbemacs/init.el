@@ -2554,30 +2554,49 @@ content field is visible in the detail view."
 ;; --- Reload Config ---
 (defun thb/reload-config ()
   "Reload init.el and the loaded libraries in lisp/, then re-render previews.
-Each library is byte-compiled before loading, so a later start does not
-load a stale .elc.  ELPA packages are not reloaded: re-evaluating them
-neither resets their variables nor removes hooks they added, so use
+Each library is byte-compiled and its .elc loaded.  A library that fails
+to compile is not loaded, so its current definitions stay intact; one that
+signals while loading keeps what it defined before the error.  Failures
+are listed in the closing message, and the remaining steps still run.
+After a failed compile the old .elc stays on disk, but `load-prefer-newer'
+(early-init.el) makes the next start load the newer source.  ELPA
+packages are not reloaded: re-evaluating them neither resets their
+variables nor removes hooks they added, so use
 `thb/restart-emacs-restore' after package changes."
   (interactive)
-  (load-file (expand-file-name "init.el" user-emacs-directory))
-  (let (reloaded)
+  (let (reloaded failed)
+    (condition-case err
+        (progn
+          (load-file (expand-file-name "init.el" user-emacs-directory))
+          (push "init.el" reloaded))
+      (error (push (format "init.el (%s)" (error-message-string err)) failed)))
     (dolist (file (directory-files (expand-file-name "lisp" user-emacs-directory)
                                    t "\\`[^.].*\\.el\\'"))
-      (when (featurep (intern (file-name-base file)))
-        ;; Fall back to the source when compilation fails.
-        (load (if (byte-compile-file file) (concat file "c") file) nil t t)
-        (push (file-name-base file) reloaded)))
+      (let ((name (file-name-base file)))
+        (when (featurep (intern name))
+          (condition-case err
+              (progn
+                (pcase (byte-compile-file file)
+                  ('nil (error "Compilation failed; see *Compile-Log*"))
+                  ;; A file that sets `no-byte-compile' has no .elc.
+                  ('no-byte-compile (load file nil t t))
+                  (_ (load (concat file "c") nil t t)))
+                (push name reloaded))
+            (error (push (format "%s (%s)" name (error-message-string err))
+                         failed))))))
     (when (featurep 'thb-markdown-render)
       (dolist (buf (buffer-list))
         (with-current-buffer buf
           (when (derived-mode-p 'thb-md-render-mode)
             (condition-case err
                 (thb-md-render-revert)
-              (error (message "Could not re-render %s: %s"
-                              (buffer-name) (error-message-string err))))))))
-    (message "Reloaded init.el%s"
-             (if reloaded
-                 (concat " and " (string-join (nreverse reloaded) ", "))
+              (error (push (format "preview %s (%s)" (buffer-name)
+                                   (error-message-string err))
+                           failed)))))))
+    (message "Reloaded %s%s"
+             (if reloaded (string-join (nreverse reloaded) ", ") "nothing")
+             (if failed
+                 (concat "; failed: " (string-join (nreverse failed) "; "))
                ""))))
 
 ;; --- Restart with Session Restore ---
