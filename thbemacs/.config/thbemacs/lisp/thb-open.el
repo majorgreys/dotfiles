@@ -32,12 +32,27 @@ Unused workspace slots need not appear in AeroSpace's live workspace list."
 (defun thb-open--aerospace (&rest args)
   "Run AeroSpace with separate ARGS; return its standard output.
 No shell interprets arguments.  Signal an error on failure."
-  (with-temp-buffer
-    (let ((status (apply #'call-process thb-open-aerospace-program
-                         nil t nil args)))
-      (unless (eql status 0)
-        (error "AeroSpace failed (%s): %s" status (string-trim (buffer-string))))
-      (buffer-string))))
+  ;; A previous request may have left Dired's default-directory on TRAMP.
+  ;; AeroSpace always runs locally, independent of the buffer being viewed.
+  (let ((default-directory "/"))
+    (with-temp-buffer
+      (let ((process (make-process
+                      :name "thb-open-aerospace" :buffer (current-buffer)
+                      :command (cons thb-open-aerospace-program args)
+                      :connection-type 'pipe :noquery t :sentinel #'ignore)))
+        (unwind-protect
+            (progn
+              ;; Keep servicing events while Accessibility asks the active
+              ;; Emacs frame for its title; call-process can deadlock here.
+              (with-timeout (5 (error "AeroSpace command timed out"))
+                (while (process-live-p process)
+                  (accept-process-output process 0.05)))
+              (unless (and (eq (process-status process) 'exit)
+                           (zerop (process-exit-status process)))
+                (error "AeroSpace failed (%s): %s"
+                       (process-exit-status process) (string-trim (buffer-string))))
+              (buffer-string))
+          (when (process-live-p process) (delete-process process)))))))
 
 (defun thb-open--json (&rest args)
   "Run AeroSpace with ARGS and parse the JSON array response."
@@ -113,7 +128,7 @@ Temporarily give this frame a unique title, then restore its original title."
 
 (defun thb-open--focus-frame ()
   "Select a normal GUI frame, creating and placing one if needed.
-Return the selected frame.  Never move a pre-existing frame."
+Return (FRAME . AEROSPACE-WINDOW-ID).  Never move a pre-existing frame."
   (let* ((frame (thb-open--existing-frame))
          (workspace (unless frame (thb-open--empty-workspace))))
     (unless frame
@@ -123,9 +138,37 @@ Return the selected frame.  Never move a pre-existing frame."
       (when workspace
         (thb-open--aerospace "move-node-to-workspace" "--window-id"
                              window-id "--" workspace))
-      (thb-open--aerospace "focus" "--window-id" window-id))
-    (select-frame-set-input-focus frame)
-    frame))
+      (thb-open--aerospace "focus" "--window-id" window-id)
+      (select-frame-set-input-focus frame)
+      (cons frame window-id))))
+
+(defun thb-open--focus-final (window-id)
+  "Asynchronously focus WINDOW-ID after loading and selecting the buffer.
+Reuse the ID verified before opening.  Do not synchronously query AeroSpace
+from the now-active Emacs frame: its Accessibility requests may need Emacs's
+event loop.  Bound the subprocess lifetime and report failure without retry."
+  (let ((default-directory "/") timer timed-out)
+    (let ((process
+           (make-process
+            :name "thb-open-focus" :buffer nil :noquery t :connection-type 'pipe
+            :command (list thb-open-aerospace-program "focus" "--window-id" window-id)
+            :sentinel
+            (lambda (process _event)
+              (when (memq (process-status process) '(exit signal))
+                (when timer (cancel-timer timer))
+                (unless (or timed-out (and (eq (process-status process) 'exit)
+                                          (zerop (process-exit-status process))))
+                  (message "Opened the Emacs buffer, but AeroSpace focus failed (exit %s)"
+                           (process-exit-status process))))))))
+      (setq timer
+            (run-at-time
+             5 nil
+             (lambda ()
+               (when (process-live-p process)
+                 (setq timed-out t)
+                 (delete-process process)
+                 (message "Opened the Emacs buffer, but AeroSpace focus timed out")))))
+      process)))
 
 ;;;###autoload
 (defun thb-open (&optional target directory)
@@ -137,7 +180,9 @@ selected without reverting them.  No daemon, transfer, or URL handler is set up.
   (when thb-open--busy
     (user-error "An Emacs open request is already active"))
   (let* ((thb-open--busy t)
-         (frame (thb-open--focus-frame)))
+         (destination (thb-open--focus-frame))
+         (frame (car destination))
+         (window-id (cdr destination)))
     (let* ((default-directory (file-name-as-directory
                                (expand-file-name (or directory default-directory))))
            (path (expand-file-name
@@ -152,6 +197,10 @@ selected without reverting them.  No daemon, transfer, or URL handler is set up.
       (let ((buffer (current-buffer)))
         (select-frame-set-input-focus frame)
         (switch-to-buffer buffer)
+        ;; TRAMP/Dired may wait after the initial focus.  Emacs frame selection
+        ;; alone does not reliably activate its macOS workspace/application.
+        ;; Make OS focus the final step, after the result buffer is selected.
+        (thb-open--focus-final window-id)
         buffer))))
 
 (provide 'thb-open)
