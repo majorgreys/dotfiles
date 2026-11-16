@@ -613,6 +613,110 @@
       (when (buffer-live-p preview)
         (kill-buffer preview)))))
 
+(ert-deftest thb-md-render-remote-preview-does-not-watch-and-cleans-stale-resources ()
+  (require 'tramp)
+  (let ((preview (generate-new-buffer " *thb-md-remote-watch-test*"))
+        removed cancelled)
+    (unwind-protect
+        (cl-letf (((symbol-function 'file-notify-add-watch)
+                   (lambda (&rest _) (ert-fail "Remote previews must not watch files")))
+                  ((symbol-function 'file-notify-rm-watch)
+                   (lambda (watch) (push watch removed)))
+                  ((symbol-function 'timerp)
+                   (lambda (timer) (eq timer 'stale-remote-timer)))
+                  ((symbol-function 'cancel-timer)
+                   (lambda (timer) (push timer cancelled))))
+          (with-current-buffer preview
+            (setq-local thb-md-render--source-file
+                        "/ssh:example.invalid:/tmp/source.md")
+            (thb-md-render--ensure-watch preview)
+            (should-not thb-md-render--watch)
+            ;; Revisiting an old preview after a live reload also removes
+            ;; its pre-policy descriptor, queued timer, and retry state.
+            (setq thb-md-render--watch 'stale-remote-watch
+                  thb-md-render--watch-timer 'stale-remote-timer
+                  thb-md-render--watch-retry-delay 1.0)
+            (thb-md-render--ensure-watch preview)
+            (thb-md-render--ensure-watch preview)
+            (should-not thb-md-render--watch)
+            (should-not thb-md-render--watch-timer)
+            (should-not thb-md-render--watch-retry-delay)
+            (should (= (cl-count #'thb-md-render--cleanup kill-buffer-hook) 1))
+            (should (equal removed '(stale-remote-watch)))
+            (should (equal cancelled '(stale-remote-timer)))))
+      (kill-buffer preview))))
+
+(ert-deftest thb-md-render-queued-remote-watch-update-does-no-file-io ()
+  (require 'tramp)
+  (let ((preview (generate-new-buffer " *thb-md-remote-update-test*"))
+        (source "/ssh:example.invalid:/tmp/source.md")
+        (original-readable (symbol-function 'file-readable-p))
+        removed)
+    (unwind-protect
+        (progn
+          ;; Load any filename-handler support before installing I/O spies.
+          (should (file-remote-p source))
+          (cl-letf (((symbol-function 'file-readable-p)
+                     (lambda (file)
+                       (if (equal file source)
+                           (ert-fail "Queued remote refresh must not read attributes")
+                         (funcall original-readable file))))
+                    ((symbol-function 'file-notify-add-watch)
+                     (lambda (&rest _) (ert-fail "Remote refresh must not reattach")))
+                    ((symbol-function 'file-notify-rm-watch)
+                     (lambda (watch) (push watch removed)))
+                    ((symbol-function 'thb-md-render-revert)
+                     (lambda () (ert-fail "Queued remote refresh must not render")))
+                    ((symbol-function 'thb-md-render--schedule-watch-update)
+                     (lambda (&rest _) (ert-fail "Remote refresh must not retry"))))
+            (with-current-buffer preview
+              (setq-local thb-md-render--source-file source)
+              (dolist (reattach '(nil t))
+                (setq thb-md-render--watch 'stale-remote-watch
+                      thb-md-render--watch-timer 'fired-timer
+                      thb-md-render--watch-retry-delay 1.0)
+                (thb-md-render--run-watch-update preview reattach)
+                (should-not thb-md-render--watch)
+                (should-not thb-md-render--watch-timer)
+                (should-not thb-md-render--watch-retry-delay)))
+            (should (= (length removed) 2))))
+      (kill-buffer preview))))
+
+(ert-deftest thb-md-render-remote-preview-keeps-explicit-refresh ()
+  (let ((preview (generate-new-buffer " *thb-md-remote-refresh-test*"))
+        (source "/ssh:example.invalid:/tmp/source.md")
+        rendered restored)
+    (unwind-protect
+        (cl-letf (((symbol-function 'thb-md-render-file)
+                   (lambda (file) (setq rendered file) preview))
+                  ((symbol-function 'thb-md-render--wrapping-window) #'ignore)
+                  ((symbol-function 'thb-md-render--capture-view) #'ignore)
+                  ((symbol-function 'thb-md-render--restore-view)
+                   (lambda (&rest _) (setq restored t))))
+          (with-current-buffer preview
+            (setq-local thb-md-render--source-file source)
+            (should (eq (lookup-key thb-md-render-mode-map (kbd "g"))
+                        #'thb-md-render-revert))
+            (should (eq (lookup-key thb-md-render-mode-map (kbd "C-c C-r"))
+                        #'thb-md-render-revert))
+            (thb-md-render-revert)
+            (should (equal rendered source))
+            (should restored)))
+      (kill-buffer preview))))
+
+(ert-deftest thb-md-render-refresh-keys-work-in-evil-motion-state ()
+  (skip-unless (featurep 'evil))
+  (with-temp-buffer
+    (thb-md-render-mode)
+    (evil-local-mode 1)
+    (evil-motion-state)
+    (should (keymapp (key-binding (kbd "g"))))
+    (should (eq (key-binding (kbd "g r")) #'thb-md-render-revert))
+    (should (eq (key-binding (kbd "C-c C-r")) #'thb-md-render-revert))
+    (should (eq (key-binding (kbd "g j")) #'thb-md-render-forward-same-level))
+    (should (eq (key-binding (kbd "g k")) #'thb-md-render-backward-same-level))
+    (should (eq (key-binding (kbd "g h")) #'thb-md-render-up-heading))))
+
 (ert-deftest thb-md-render-theme-hook-is-idempotent-and-refreshes-faces ()
   (add-hook 'enable-theme-functions #'thb-md-render-apply-theme)
   (should (= (cl-count #'thb-md-render-apply-theme enable-theme-functions) 1))

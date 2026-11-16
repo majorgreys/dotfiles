@@ -2520,6 +2520,7 @@ Jumps inside Emacs push the xref marker stack, so \\[xref-go-back] returns."
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "q") #'quit-window)
     (define-key map (kbd "g") #'thb-md-render-revert)
+    (define-key map (kbd "C-c C-r") #'thb-md-render-revert)
     (define-key map (kbd "RET") #'thb-md-render-follow-link)
     (define-key map (kbd "C-c C-o") #'thb-md-render-follow-link)
     (define-key map (kbd "TAB") #'thb-md-render-next-link)
@@ -2555,7 +2556,8 @@ Jumps inside Emacs push the xref marker stack, so \\[xref-go-back] returns."
     "[[" #'thb-md-render-previous-heading
     "gj" #'thb-md-render-forward-same-level
     "gk" #'thb-md-render-backward-same-level
-    "gh" #'thb-md-render-up-heading))
+    "gh" #'thb-md-render-up-heading
+    "gr" #'thb-md-render-revert))
 
 (define-derived-mode thb-md-render-mode special-mode "MD-Render"
   "Major mode for rendered markdown preview buffers."
@@ -2629,7 +2631,7 @@ Jumps inside Emacs push the xref marker stack, so \\[xref-go-back] returns."
 ;;;; Entry points -------------------------------------------------------
 
 (defvar-local thb-md-render--watch nil
-  "`file-notify' descriptor for the source file; re-renders on change.")
+  "`file-notify' descriptor for a local source file; nil for remote sources.")
 
 (defvar-local thb-md-render--watch-timer nil
   "Debounce or reattachment timer for `thb-md-render--watch'.")
@@ -2774,29 +2776,34 @@ refresh or source-file notification replaces the emitted document."
   (when (buffer-live-p preview-buffer)
     (with-current-buffer preview-buffer
       (setq thb-md-render--watch-timer nil)
-      (if (file-readable-p thb-md-render--source-file)
-          (progn
-            (setq thb-md-render--watch-retry-delay nil)
-            (when reattach
-              ;; Always dispose the old descriptor before taking ownership of
-              ;; a replacement.  This is harmless when a terminal event already
-              ;; cleared it and protects direct callers from duplicate watches.
-              (thb-md-render--remove-watch)
-              (setq thb-md-render--watch
-                    (thb-md-render--setup-watch
-                     preview-buffer thb-md-render--source-file)))
-            (thb-md-render-revert))
+      (cond
+       ((file-remote-p thb-md-render--source-file)
+        ;; A timer queued before a live reload must not re-enter TRAMP while
+        ;; another operation owns its connection.  Use `C-c C-r' to refresh.
+        (setq thb-md-render--watch-retry-delay nil)
+        (thb-md-render--remove-watch))
+       ((file-readable-p thb-md-render--source-file)
+        (setq thb-md-render--watch-retry-delay nil)
+        (when reattach
+          ;; Always dispose the old descriptor before taking ownership of
+          ;; a replacement.  This is harmless when a terminal event already
+          ;; cleared it and protects direct callers from duplicate watches.
+          (thb-md-render--remove-watch)
+          (setq thb-md-render--watch
+                (thb-md-render--setup-watch
+                 preview-buffer thb-md-render--source-file)))
+        (thb-md-render-revert))
+       (reattach
         ;; Atomic replacements normally expose the new path immediately, but
         ;; keep one owned retry timer while it is absent rather than silently
         ;; leaving a live preview unwatched.  Back off so a source that stays
         ;; deleted costs one check per `thb-md-render--watch-retry-max'.
-        (when reattach
-          (setq thb-md-render--watch-retry-delay
-                (min thb-md-render--watch-retry-max
-                     (max 0.1 (* 2 (or thb-md-render--watch-retry-delay
-                                       thb-md-render-watch-debounce)))))
-          (thb-md-render--schedule-watch-update
-           preview-buffer t thb-md-render--watch-retry-delay))))))
+        (setq thb-md-render--watch-retry-delay
+              (min thb-md-render--watch-retry-max
+                   (max 0.1 (* 2 (or thb-md-render--watch-retry-delay
+                                     thb-md-render-watch-debounce)))))
+        (thb-md-render--schedule-watch-update
+         preview-buffer t thb-md-render--watch-retry-delay))))))
 
 (defun thb-md-render--schedule-watch-update (preview-buffer reattach &optional delay)
   "Refresh PREVIEW-BUFFER after DELAY seconds (default: the debounce).
@@ -2830,13 +2837,21 @@ When REATTACH is non-nil, replace its file watch immediately before refresh."
        (error (message "thb-md-render watch error: %s" err))))))
 
 (defun thb-md-render--ensure-watch (preview-buffer)
-  "Ensure PREVIEW-BUFFER owns one watch and its cleanup hook."
+  "Ensure PREVIEW-BUFFER owns a local-file watch and its cleanup hook.
+Remote previews use explicit `C-c C-r' refresh (`g r' with Evil): a timer
+reading through TRAMP can interrupt another operation on the same
+connection and corrupt its output."
   (with-current-buffer preview-buffer
     (add-hook 'kill-buffer-hook #'thb-md-render--cleanup nil t)
-    (unless thb-md-render--watch
-      (setq thb-md-render--watch
-            (thb-md-render--setup-watch
-             preview-buffer thb-md-render--source-file)))))
+    (if (file-remote-p thb-md-render--source-file)
+        (progn
+          (thb-md-render--cancel-watch-timer)
+          (thb-md-render--remove-watch)
+          (setq thb-md-render--watch-retry-delay nil))
+      (unless thb-md-render--watch
+        (setq thb-md-render--watch
+              (thb-md-render--setup-watch
+               preview-buffer thb-md-render--source-file))))))
 
 (defun thb-md-render--cleanup ()
   "Remove file-notify resources and timers owned by the current buffer."
@@ -2850,7 +2865,8 @@ When REATTACH is non-nil, replace its file watch immediately before refresh."
   "Toggle between a markdown source buffer and its rendered preview.
 
 In `markdown-ts-mode' -> render the file, swap to the preview buffer,
-install a `file-notify' watch that re-renders on disk changes.
+install a `file-notify' watch for local sources.  For remote sources,
+refresh with `C-c C-r' (`g r' with Evil), not TRAMP I/O from a timer.
 
 In an existing `thb-md-render-mode' preview -> quit back to the source
 via `quit-window'."
@@ -2870,8 +2886,8 @@ via `quit-window'."
    (t (user-error "Not in markdown-ts-mode or a render preview"))))
 
 (defun thb-md-render--show-preview (source-file)
-  "Render SOURCE-FILE into its watched preview in the selected window.
-Return the preview buffer."
+  "Render SOURCE-FILE into its preview in the selected window.
+Watch local sources only; return the preview buffer."
   ;; Show the preview before rendering so the first prose wrap uses the
   ;; live window width; rendering hidden would wrap to a fallback width
   ;; and then wrap the whole document again on first display.
