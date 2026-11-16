@@ -74,6 +74,7 @@
 ;; Local lisp under thbemacs/lisp/ — homegrown modules live here.
 (add-to-list 'load-path (expand-file-name "lisp" user-emacs-directory))
 (require 'thb-open)
+(require 'thb-snapshot)
 
 
 
