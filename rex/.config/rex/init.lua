@@ -2,7 +2,7 @@
 require("open-emacs")({
   local_host_id = "87d7a4f6-d26b-4b7e-a5fe-c6fb94ecd823",
   remote_hosts = {
-    ["2647dfb9-130a-43cc-8836-4c09288f6f4b"] = "pi-remote",
+    ["2647dfb9-130a-43cc-8836-4c09288f6f4b"] = "workspace-pi-remote",
   },
   emacsclient = "/opt/homebrew/bin/emacsclient",
   node = os.getenv("HOME") .. "/.volta/bin/node",

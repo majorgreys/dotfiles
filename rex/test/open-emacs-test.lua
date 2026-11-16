@@ -16,7 +16,7 @@ end
 local function fixture(overrides)
   local state = {execs = {}, host = "mac", cwd = "/Users/test/project", home = "/Users/test"}
   local options = {
-    local_host_id = "mac", remote_hosts = {remote = "pi-remote"},
+    local_host_id = "mac", remote_hosts = {remote = "workspace-pi-remote"},
     emacsclient = "/opt/homebrew/bin/emacsclient", node = "/usr/bin/node",
   }
   for key, value in pairs(overrides or {}) do options[key] = value end
@@ -104,7 +104,7 @@ test("remote originals use the configured SSH alias", function()
   local state = fixture()
   state.host, state.cwd, state.home = "remote", "/home/bits/project", "/home/bits"
   equal(state.run({path = "/home/bits/report.md"}).remote, true)
-  contains(state.expression(), '"/ssh:pi-remote:/home/bits/report.md"')
+  contains(state.expression(), '"/ssh:workspace-pi-remote:/home/bits/report.md"')
   assert(not state.expression():find("file-name-quote", 1, true))
 end)
 
@@ -113,7 +113,7 @@ test("remote directory picker skips local artifact registration", function()
   state.host, state.cwd, state.home = "remote", "/home/bits/project", "/home/bits"
   with_open(function() error("must not inspect a local registration") end, function()
     state.run()
-    contains(state.expression(), '#\'thb-open nil "/ssh:pi-remote:/home/bits/project"')
+    contains(state.expression(), '#\'thb-open nil "/ssh:workspace-pi-remote:/home/bits/project"')
     equal(#state.execs, 1)
   end)
 end)
@@ -136,7 +136,7 @@ test("tilde uses the source host's home", function()
   local state = fixture()
   state.host, state.cwd, state.home = "remote", "/home/bits/project", "/home/bits"
   state.run({path = "~/report.md"})
-  contains(state.expression(), '"/ssh:pi-remote:/home/bits/report.md"')
+  contains(state.expression(), '"/ssh:workspace-pi-remote:/home/bits/report.md"')
 end)
 
 test("ordinary local shell starts at its working directory", function()
@@ -209,6 +209,14 @@ test("spaces, quotes and unicode remain one encoded argv value", function()
   local argv = state.execs[1].argv
   equal(#argv, 5)
   contains(argv[5], 'report \\" λ.md')
+end)
+
+test("pi-remote configuration uses its generated workspace SSH alias", function()
+  local init = source:gsub("open%-emacs%.lua$", "init.lua")
+  local file = assert(io.open(init, "rb"))
+  local config = file:read("*a")
+  file:close()
+  contains(config, '["2647dfb9-130a-43cc-8836-4c09288f6f4b"] = "workspace-pi-remote"')
 end)
 
 for _, entry in ipairs(tests) do
