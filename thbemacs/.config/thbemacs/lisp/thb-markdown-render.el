@@ -105,7 +105,7 @@ slightly more compact reading view than the editor default."
   :type 'integer
   :group 'thb-md-render)
 
-(defcustom thb-md-render-body-width 140
+(defcustom thb-md-render-body-width 100
   "Maximum body width (in characters) for the rendered preview.
 Content is centered in the window with the rest as margins, the way
 document viewers and reading apps do.  nil disables the constraint and
@@ -219,8 +219,13 @@ font-lock-keywords which is always available."
   :group 'thb-md-render)
 
 (defface thb-md-render-code-inline
-  '((t :inherit (fixed-pitch font-lock-string-face)))
-  "Face for `inline code`."
+  '((((background dark))
+     :inherit (fixed-pitch font-lock-string-face)
+     :background "#303030" :extend nil)
+    (t :inherit (fixed-pitch font-lock-string-face)
+       :background "#eeeeee" :extend nil))
+  "Face for `inline code`, shaded separately from links.
+`thb-md-render-apply-theme' adapts the background to the Modus palette."
   :group 'thb-md-render)
 
 (defface thb-md-render-code-block
@@ -254,7 +259,7 @@ Proportional so bullets match the prose they introduce."
   :group 'thb-md-render)
 
 (defface thb-md-render-link-text
-  '((t :inherit (variable-pitch link)))
+  '((t :inherit (variable-pitch link) :underline t))
   "Face for the visible text of an inline link or image description."
   :group 'thb-md-render)
 
@@ -321,6 +326,7 @@ Should be called after a theme toggle.  Ignore hook arguments."
   (when (featurep 'modus-themes)
     (let ((bg-code  (modus-themes-get-color-value 'bg-dim))
           (bg-quote (modus-themes-get-color-value 'bg-blue-nuanced)))
+      (set-face-attribute 'thb-md-render-code-inline nil :background bg-code)
       (set-face-attribute 'thb-md-render-code-block nil :background bg-code)
       (set-face-attribute 'thb-md-render-blockquote nil :background bg-quote)
       ;; GitHub's alert colours: blue, green, purple, yellow, red.
@@ -2576,6 +2582,18 @@ Jumps inside Emacs push the xref marker stack, so \\[xref-go-back] returns."
   (when-let* ((w (get-buffer-window (current-buffer))))
     (set-window-fringes w 0 0))
   (setq-local header-line-format nil)
+  ;; Preview buffer names retain the full path for identity.  Show only the
+  ;; source basename here; keep the complete path available on hover.  Escape
+  ;; percent signs so filenames are not interpreted as mode-line directives.
+  (setq-local mode-line-format
+              '(" " (:eval (propertize
+                             (replace-regexp-in-string
+                              "%" "%%"
+                              (file-name-nondirectory
+                               (or thb-md-render--source-file (buffer-name))) t t)
+                             'face 'mode-line-buffer-id
+                             'help-echo thb-md-render--source-file))
+                "  " mode-name "  " mode-line-position))
   (display-line-numbers-mode -1)
   ;; Buffer default stays fixed-pitch (PragmataPro from the user's global
   ;; default) so olivetti's char-width measurement matches what tables
